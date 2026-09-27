@@ -130,8 +130,12 @@ open class ToolAction(private val operation: String) : AnAction() {
             val active = FileEditorManager.getInstance(project).selectedFiles.firstOrNull()
             val selected = games.firstOrNull { active != null && active.toNioPath().startsWith(Path.of(it.sceneDir)) }
                 ?: if (games.size == 1) games.first() else {
-                    val index = Messages.showChooseDialog(project, "Select a game", "ChoiceScript Tools", null, games.map { it.name }.toTypedArray(), games.first().name)
-                    games.getOrNull(index)
+                    val dialog = object : com.intellij.ide.util.ChooseElementsDialog<GameProject>(project, games, "ChoiceScript Tools", "Select a game") {
+                        override fun getItemText(item: GameProject) = item.name + " — " + item.root
+                        override fun getItemIcon(item: GameProject): javax.swing.Icon? = null
+                        init { myChooser.setSingleSelectionMode() }
+                    }
+                    dialog.showAndGetResult().singleOrNull()
                 } ?: return@request
             args["projectId"] = selected.id
             if (operation == "randomtest") {

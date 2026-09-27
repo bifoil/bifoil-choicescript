@@ -9,7 +9,7 @@ dependencies {
     intellijPlatform { intellijIdea("2026.1.4"); testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform); pluginVerifier("1.410") }
     testImplementation("junit:junit:4.13.2")
 }
-kotlin { jvmToolchain(21) }
+kotlin { jvmToolchain(21); compilerOptions { jvmDefault.set(org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode.NO_COMPATIBILITY) } }
 intellijPlatform {
     pluginConfiguration { name = "Branchlight - ChoiceScript Tools (Unofficial)"; ideaVersion { sinceBuild = "261.26222.65" } }
     pluginVerification { ides { current() } }

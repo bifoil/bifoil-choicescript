@@ -22,9 +22,12 @@ object ChoiceColors {
         val base = keys[name] ?: return null
         val font = (if ("bold" in modifiers) java.awt.Font.BOLD else 0) or (if ("italic" in modifiers) java.awt.Font.ITALIC else 0)
         if (font == 0) return base
-        val attributes = com.intellij.openapi.editor.colors.EditorColorsManager.getInstance().globalScheme.getAttributes(base).clone()
+        val scheme = com.intellij.openapi.editor.colors.EditorColorsManager.getInstance().globalScheme
+        val attributes = scheme.getAttributes(base).clone()
         attributes.fontType = attributes.fontType or font
-        return TextAttributesKey.createTextAttributesKey(base.externalName + "_" + font + "_" + attributes.hashCode(), attributes)
+        val key = TextAttributesKey.createTextAttributesKey(base.externalName + "_" + font + "_" + attributes.hashCode(), base)
+        scheme.setAttributes(key, attributes)
+        return key
     }
     val tokens = names.associateWith { IElementType(it, ChoiceLanguage) }
 }
