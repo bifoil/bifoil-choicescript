@@ -1,0 +1,11 @@
+*title Dialogue Regression
+*author ChoiceScript Tools
+*create gender "male"
+*create implicit_control_flow true
+She said "This is the end,
+*if gender = "male"
+    William."
+*else
+    Belle."
+She walked away.
+*ending

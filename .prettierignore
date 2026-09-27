@@ -1,0 +1,12 @@
+vendor/
+pnpm-lock.yaml
+node_modules/
+dist/
+.cache/
+.gradle/
+**/build/
+editors/vscode/server/
+**/runtime/
+**/bundle/
+editors/vscode/README.md
+editors/vscode/LICENSE

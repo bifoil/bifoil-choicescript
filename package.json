@@ -1,0 +1,41 @@
+{
+  "name": "choicescript-tools-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@10.29.3",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test --test-isolation=none packages/core/test/*.test.ts packages/tooling/test/*.test.ts packages/server/test/*.test.ts",
+    "check": "node scripts/check-engine.mjs && pnpm build && pnpm typecheck && pnpm test",
+    "generate": "node scripts/generate.mjs",
+    "runtime": "node scripts/runtime.mjs",
+    "package:vscode": "node scripts/package-vscode.mjs",
+    "package:intellij": "node scripts/package-intellij.mjs",
+    "format": "prettier --write \"packages/**/*.ts\" \"editors/vscode/src/*.ts\" \"scripts/*.mjs\"",
+    "package:all": "pnpm build && node scripts/package-all.mjs && pnpm package:intellij"
+  },
+  "devDependencies": {
+    "@types/node": "24.3.0",
+    "@types/vscode": "1.109.0",
+    "@vscode/test-electron": "2.5.2",
+    "@vscode/vsce": "3.7.1",
+    "esbuild": "0.25.12",
+    "fflate": "0.8.2",
+    "prettier": "3.8.1",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3",
+    "vscode-oniguruma": "2.0.1",
+    "vscode-textmate": "9.3.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "9.0.1",
+    "vscode-languageserver": "9.0.1",
+    "vscode-languageserver-textdocument": "1.0.12",
+    "vscode-uri": "3.1.0"
+  }
+}

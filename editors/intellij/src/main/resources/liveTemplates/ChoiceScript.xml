@@ -1,0 +1,4 @@
+<templateSet group="ChoiceScript">
+  <template name="csif" value="*if $CONDITION$&#10;  $END$&#10;*else&#10;  " description="ChoiceScript conditional" toReformat="false" toShortenFQNames="false"><variable name="CONDITION" expression="" defaultValue="&quot;condition&quot;" alwaysStopAt="true"/><context><option name="CHOICESCRIPT" value="true"/></context></template>
+  <template name="cschoice" value="*choice&#10;  #$OPTION$&#10;    $END$" description="ChoiceScript choice" toReformat="false" toShortenFQNames="false"><variable name="OPTION" expression="" defaultValue="&quot;Option text&quot;" alwaysStopAt="true"/><context><option name="CHOICESCRIPT" value="true"/></context></template>
+</templateSet>
