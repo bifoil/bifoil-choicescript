@@ -25,7 +25,7 @@ import type {
   JobEvent,
   BufferSnapshot,
 } from "../../protocol/src/index.js";
-import { contains, exists } from "./projects.js";
+import { contains, exists, sameFileUri } from "./projects.js";
 type Job = {
   id: string;
   project: Project;
@@ -297,9 +297,16 @@ export class ToolRunner {
         if (match) {
           sawError = true;
           this.event(job, "diagnostic", {
-            uri: URI.file(
-              path.join(project.sceneDir, match[1] + ".txt"),
-            ).toString(),
+            uri:
+              buffers.find((buffer) =>
+                sameFileUri(
+                  buffer.uri,
+                  pathToFileURL(path.join(project.sceneDir, match[1] + ".txt"))
+                    .href,
+                ),
+              )?.uri ??
+              pathToFileURL(path.join(project.sceneDir, match[1] + ".txt"))
+                .href,
             line: Math.max(0, Number(match[2]) - 1),
             message: match[3],
           });

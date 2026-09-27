@@ -4,7 +4,12 @@ import { mkdtemp, rm, writeFile, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { discoverProjects, ToolRunner, projectFor } from "../src/index.js";
+import {
+  discoverProjects,
+  ToolRunner,
+  projectFor,
+  readProject,
+} from "../src/index.js";
 import type { JobEvent } from "../../protocol/src/index.js";
 const engine = fileURLToPath(
   new URL("../../../vendor/choicescript", import.meta.url),
@@ -201,6 +206,32 @@ test("official template, QuickTest, RandomTest, snapshot preview, export, cancel
     assert.equal((await completed(cancelled.jobId)).exitCode, 130);
   } finally {
     await runner?.dispose();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("project snapshots deduplicate equivalent encoded file URIs", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "branchlight URI Ω "));
+  try {
+    await mkdir(path.join(root, "scenes"));
+    const file = path.join(root, "scenes/startup.txt");
+    await writeFile(file, "Disk");
+    const [project] = await discoverProjects([root]);
+    const original = pathToFileURL(file).href;
+    const uri =
+      process.platform === "win32"
+        ? original.replace(
+            /file:\/\/\/([A-Za-z]):/,
+            (_, drive) => `file:///${drive.toLowerCase()}%3A`,
+          )
+        : original.replace("startup", "%73tartup");
+    const files = await readProject(project, [
+      { uri, version: 9, text: "Unsaved" },
+    ]);
+    assert.equal(files.length, 1);
+    assert.equal(files[0].text, "Unsaved");
+    assert.equal(files[0].uri, uri);
+  } finally {
     await rm(root, { recursive: true, force: true });
   }
 });

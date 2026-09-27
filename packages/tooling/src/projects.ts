@@ -85,6 +85,15 @@ export function projectFor(projects: Project[], uri: string) {
     .filter((p) => contains(p.sceneDir, file))
     .sort((a, b) => b.sceneDir.length - a.sceneDir.length)[0];
 }
+export function sameFileUri(left: string, right: string) {
+  if (!left.startsWith("file:") || !right.startsWith("file:"))
+    return left === right;
+  const a = path.resolve(fileURLToPath(left)),
+    b = path.resolve(fileURLToPath(right));
+  return process.platform === "win32"
+    ? a.toLowerCase() === b.toLowerCase()
+    : a === b;
+}
 export async function readProject(
   project: Project,
   buffers: BufferSnapshot[] = [],
@@ -95,9 +104,9 @@ export async function readProject(
       const file = path.join(dir, e.name);
       if (e.isDirectory() && !excluded.has(e.name)) await walk(file);
       else if (e.isFile() && e.name.endsWith(".txt")) {
-        const uri = URI.file(file).toString();
+        const uri = pathToFileURL(file).href;
         files.push(
-          buffers.find((b) => fileURLToPath(b.uri) === fileURLToPath(uri)) ?? {
+          buffers.find((b) => sameFileUri(b.uri, uri)) ?? {
             uri,
             text: await readFile(file, "utf8"),
             version: 0,
@@ -108,7 +117,10 @@ export async function readProject(
   }
   await walk(project.sceneDir);
   for (const b of buffers)
-    if (projectFor([project], b.uri) && !files.some((f) => f.uri === b.uri))
+    if (
+      projectFor([project], b.uri) &&
+      !files.some((f) => sameFileUri(f.uri, b.uri))
+    )
       files.push(b);
   return files;
 }

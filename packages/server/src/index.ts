@@ -29,6 +29,7 @@ import {
 import {
   discoverProjects,
   projectFor,
+  sameFileUri,
   readProject,
   ToolRunner,
 } from "../../tooling/src/index.js";
@@ -78,12 +79,19 @@ const runner = new ToolRunner(
       });
   },
 );
+function analysisUri(a: Analysis | undefined, uri: string) {
+  if (!a || a.documents.has(uri)) return uri;
+  return (
+    [...a.documents.keys()].find((candidate) => sameFileUri(candidate, uri)) ??
+    uri
+  );
+}
 function get(uri: string) {
   const id = projectFor(projects, uri)?.id ?? uri;
   if (analysisVersions.get(id) !== revision) return undefined;
   const a = analyses.get(id),
     open = documents.get(uri);
-  return open && a?.documents.get(uri)?.version !== open.version
+  return open && a?.documents.get(analysisUri(a, uri))?.version !== open.version
     ? undefined
     : a;
 }
@@ -267,35 +275,43 @@ connection.onDidChangeConfiguration((e) => {
 });
 connection.onCompletion((p) => {
   const a = get(p.textDocument.uri);
-  return a ? completions(a, p.textDocument.uri, p.position) : [];
+  return a
+    ? completions(a, analysisUri(a, p.textDocument.uri), p.position)
+    : [];
 });
 connection.onHover((p) => {
   const a = get(p.textDocument.uri);
-  return a ? hover(a, p.textDocument.uri, p.position) : null;
+  return a ? hover(a, analysisUri(a, p.textDocument.uri), p.position) : null;
 });
 connection.onDefinition((p) => {
   const a = get(p.textDocument.uri);
-  return a ? definition(a, p.textDocument.uri, p.position) : null;
+  return a
+    ? definition(a, analysisUri(a, p.textDocument.uri), p.position)
+    : null;
 });
 connection.onReferences((p) => {
   const a = get(p.textDocument.uri);
-  return a ? references(a, p.textDocument.uri, p.position) : [];
+  return a ? references(a, analysisUri(a, p.textDocument.uri), p.position) : [];
 });
 connection.onPrepareRename((p) => {
   const a = get(p.textDocument.uri);
-  return a ? prepareRename(a, p.textDocument.uri, p.position) : null;
+  return a
+    ? prepareRename(a, analysisUri(a, p.textDocument.uri), p.position)
+    : null;
 });
 connection.onRenameRequest((p) => {
   const a = get(p.textDocument.uri);
   try {
-    return a ? rename(a, p.textDocument.uri, p.position, p.newName) : null;
+    return a
+      ? rename(a, analysisUri(a, p.textDocument.uri), p.position, p.newName)
+      : null;
   } catch (e) {
     throw new ResponseError(ErrorCodes.InvalidParams, String(e));
   }
 });
 connection.onDocumentSymbol((p) => {
   const a = get(p.textDocument.uri);
-  return a ? documentSymbols(a, p.textDocument.uri) : [];
+  return a ? documentSymbols(a, analysisUri(a, p.textDocument.uri)) : [];
 });
 connection.onWorkspaceSymbol((p) =>
   [...analyses.entries()]
@@ -312,21 +328,23 @@ connection.onWorkspaceSymbol((p) =>
 );
 connection.onFoldingRanges((p) => {
   const a = get(p.textDocument.uri);
-  return a ? folding(a, p.textDocument.uri) : [];
+  return a ? folding(a, analysisUri(a, p.textDocument.uri)) : [];
 });
 connection.onSelectionRanges((p) => {
   const a = get(p.textDocument.uri);
-  return a ? selections(a, p.textDocument.uri, p.positions) : [];
+  return a
+    ? selections(a, analysisUri(a, p.textDocument.uri), p.positions)
+    : [];
 });
 connection.languages.semanticTokens.on((p) => {
   const a = get(p.textDocument.uri);
-  return a ? encodeTokens(a, p.textDocument.uri) : { data: [] };
+  return a ? encodeTokens(a, analysisUri(a, p.textDocument.uri)) : { data: [] };
 });
 connection.onRequest("choicescript/projects", () => projects);
-connection.onRequest(
-  "choicescript/wordCount",
-  (p: { uri: string }) => get(p.uri)?.wordCounts.get(p.uri) ?? 0,
-);
+connection.onRequest("choicescript/wordCount", (p: { uri: string }) => {
+  const a = get(p.uri);
+  return a?.wordCounts.get(analysisUri(a, p.uri)) ?? 0;
+});
 async function execute(request: JobRequest) {
   if (!request || request.protocolVersion !== 1)
     throw new ResponseError(
