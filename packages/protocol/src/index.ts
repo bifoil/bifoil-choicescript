@@ -1,11 +1,11 @@
 export const PROTOCOL_VERSION = 1;
 export type Operation =
-  | 'createProject'
-  | 'run'
-  | 'stop'
-  | 'quicktest'
-  | 'randomtest'
-  | 'exportHtml';
+  | "createProject"
+  | "run"
+  | "stop"
+  | "quicktest"
+  | "randomtest"
+  | "exportHtml";
 export interface Project {
   id: string;
   root: string;
@@ -29,7 +29,14 @@ export interface JobEvent {
   protocolVersion: 1;
   jobId: string;
   projectId: string;
-  kind: 'started' | 'output' | 'diagnostic' | 'coverage' | 'preview' | 'completed' | 'stale';
+  kind:
+    | "started"
+    | "output"
+    | "diagnostic"
+    | "coverage"
+    | "preview"
+    | "completed"
+    | "stale";
   message?: string;
   uri?: string;
   line?: number;
@@ -50,10 +57,10 @@ export interface BufferSnapshot {
   version: number;
 }
 export const commands = [
-  'choicescriptTools.server.createProject',
-  'choicescriptTools.server.run',
-  'choicescriptTools.server.stop',
-  'choicescriptTools.server.quicktest',
-  'choicescriptTools.server.randomtest',
-  'choicescriptTools.server.exportHtml',
+  "choicescriptTools.server.createProject",
+  "choicescriptTools.server.run",
+  "choicescriptTools.server.stop",
+  "choicescriptTools.server.quicktest",
+  "choicescriptTools.server.randomtest",
+  "choicescriptTools.server.exportHtml",
 ];

@@ -1,37 +1,41 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-const commands = JSON.parse(await readFile('packages/core/src/commands.json', 'utf8'));
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+const commands = JSON.parse(
+  await readFile("packages/core/src/commands.json", "utf8"),
+);
 const grammar = {
-  name: 'ChoiceScript',
-  scopeName: 'source.choicescript',
+  name: "ChoiceScript",
+  scopeName: "source.choicescript",
   patterns: [
-    { name: 'comment.line.choicescript', match: '^\\s*\\*comment\\b.*$' },
+    { name: "comment.line.choicescript", match: "^\\s*\\*comment\\b.*$" },
     {
-      begin: '^\\s*(\\*(?:' + Object.keys(commands).join('|') + '))\\b',
-      end: '$',
-      beginCaptures: { 1: { name: 'keyword.control.choicescript' } },
+      begin: "^\\s*(\\*(?:" + Object.keys(commands).join("|") + "))\\b",
+      end: "$",
+      beginCaptures: { 1: { name: "keyword.control.choicescript" } },
       patterns: [
         {
-          name: 'string.quoted.double.choicescript',
+          name: "string.quoted.double.choicescript",
           begin: '"',
           end: '"|$',
-          patterns: [{ name: 'constant.character.escape', match: '\\\\.' }],
+          patterns: [{ name: "constant.character.escape", match: "\\\\." }],
         },
-        { name: 'constant.language.boolean', match: '\\b(?:true|false)\\b' },
-        { name: 'constant.numeric', match: '\\b[0-9]+(?:\\.[0-9]+)?\\b' },
+        { name: "constant.language.boolean", match: "\\b(?:true|false)\\b" },
+        { name: "constant.numeric", match: "\\b[0-9]+(?:\\.[0-9]+)?\\b" },
       ],
     },
-    { name: 'punctuation.definition.choice', match: '^\\s*#' },
-    { name: 'punctuation.section.interpolation', match: '[$@]!{0,2}\\{|\\}' },
-    { name: 'punctuation.definition.tag', match: '\\[/?[bi]\\]' },
+    { name: "punctuation.definition.choice", match: "^\\s*#" },
+    { name: "punctuation.section.interpolation", match: "[$@]!{0,2}\\{|\\}" },
+    { name: "punctuation.definition.tag", match: "\\[/?[bi]\\]" },
   ],
 };
-await mkdir('editors/vscode/syntaxes', { recursive: true });
+await mkdir("editors/vscode/syntaxes", { recursive: true });
 await writeFile(
-  'editors/vscode/syntaxes/choicescript.tmLanguage.json',
-  JSON.stringify(grammar, null, 2) + '\n',
+  "editors/vscode/syntaxes/choicescript.tmLanguage.json",
+  JSON.stringify(grammar, null, 2) + "\n",
 );
-await mkdir('editors/intellij/src/main/resources/choicescript', { recursive: true });
+await mkdir("editors/intellij/src/main/resources/choicescript", {
+  recursive: true,
+});
 await writeFile(
-  'editors/intellij/src/main/resources/choicescript/commands.json',
-  JSON.stringify(commands, null, 2) + '\n',
+  "editors/intellij/src/main/resources/choicescript/commands.json",
+  JSON.stringify(commands, null, 2) + "\n",
 );

@@ -1,9 +1,14 @@
-import { type Analysis, type Position, type Range, range } from './types.js';
-import { commandDocs } from './parser.js';
+import { type Analysis, type Position, type Range, range } from "./types.js";
+import { commandDocs } from "./parser.js";
 export function tokenAt(a: Analysis, uri: string, p: Position) {
   return a.tokens
     .get(uri)
-    ?.find((t) => t.line === p.line && p.character >= t.start && p.character < t.start + t.length);
+    ?.find(
+      (t) =>
+        t.line === p.line &&
+        p.character >= t.start &&
+        p.character < t.start + t.length,
+    );
 }
 export function definition(a: Analysis, uri: string, p: Position) {
   const id = tokenAt(a, uri, p)?.symbol,
@@ -16,14 +21,18 @@ export function references(a: Analysis, uri: string, p: Position) {
 }
 export function prepareRename(a: Analysis, uri: string, p: Position) {
   const t = tokenAt(a, uri, p);
-  if (!t?.symbol || !a.symbols.has(t.symbol) || a.symbols.get(t.symbol)?.kind === 'scene')
+  if (
+    !t?.symbol ||
+    !a.symbols.has(t.symbol) ||
+    a.symbols.get(t.symbol)?.kind === "scene"
+  )
     return null;
   return range(t.line, t.start, t.referenceLength ?? t.length);
 }
 export function rename(a: Analysis, uri: string, p: Position, name: string) {
   if (!/^[A-Za-z]\w*$/.test(name))
     throw new Error(
-      'Names must start with a letter and contain only letters, digits, or underscores.',
+      "Names must start with a letter and contain only letters, digits, or underscores.",
     );
   if (!prepareRename(a, uri, p)) return null;
   const id = tokenAt(a, uri, p)!.symbol!,
@@ -31,10 +40,12 @@ export function rename(a: Analysis, uri: string, p: Position, name: string) {
   if (
     [...a.symbols.values()].some(
       (s) =>
-        s.id !== id && s.name === name.toLowerCase() && (s.kind === 'global' || s.uri === old.uri),
+        s.id !== id &&
+        s.name === name.toLowerCase() &&
+        (s.kind === "global" || s.uri === old.uri),
     )
   )
-    throw new Error('That name already exists in this scope.');
+    throw new Error("That name already exists in this scope.");
   const changes: Record<string, { range: Range; newText: string }[]> = {};
   for (const ref of references(a, uri, p))
     (changes[ref.uri] ??= []).push({ range: ref.range, newText: name });
@@ -45,15 +56,15 @@ export function hover(a: Analysis, uri: string, p: Position) {
     line = doc?.lines[p.line],
     t = tokenAt(a, uri, p);
   if (!line) return null;
-  if (t?.type === 'keyword' && line.command)
+  if (t?.type === "keyword" && line.command)
     return {
       contents: {
-        kind: 'markdown' as const,
+        kind: "markdown" as const,
         value:
-          '**`*' +
+          "**`*" +
           line.command +
-          '`**\n\n' +
-          (commandDocs[line.command] ?? 'ChoiceScript command.'),
+          "`**\n\n" +
+          (commandDocs[line.command] ?? "ChoiceScript command."),
       },
     };
   if (t?.symbol) {
@@ -62,9 +73,13 @@ export function hover(a: Analysis, uri: string, p: Position) {
     if (s)
       return {
         contents: {
-          kind: 'markdown' as const,
+          kind: "markdown" as const,
           value:
-            '**' + s.name + '** — ' + s.kind + (v ? '\n\nType: `' + v.types.join(' | ') + '`' : ''),
+            "**" +
+            s.name +
+            "** — " +
+            s.kind +
+            (v ? "\n\nType: `" + v.types.join(" | ") + "`" : ""),
         },
       };
   }
@@ -72,38 +87,40 @@ export function hover(a: Analysis, uri: string, p: Position) {
 }
 export function completions(a: Analysis, uri: string, p: Position) {
   const line = a.documents.get(uri)?.lines[p.line],
-    before = line?.raw.slice(0, p.character) ?? '';
+    before = line?.raw.slice(0, p.character) ?? "";
   if (/^\s*\*\w*$/.test(before))
     return Object.entries(commandDocs).map(([name, documentation]) => ({
-      label: '*' + name,
+      label: "*" + name,
       insertText: name,
       kind: 14 as const,
-      documentation: { kind: 'markdown' as const, value: documentation },
+      documentation: { kind: "markdown" as const, value: documentation },
     }));
   if (/\*(?:goto_scene|gosub_scene|redirect_scene)\s+\w*$/.test(before))
     return [...a.symbols.values()]
-      .filter((s) => s.kind === 'scene')
+      .filter((s) => s.kind === "scene")
       .map((s) => ({ label: s.name, kind: 17 as const }));
   if (/\*(?:goto|gosub)\s+\w*$/.test(before))
     return [...a.symbols.values()]
-      .filter((s) => s.kind === 'label' && s.uri === uri)
+      .filter((s) => s.kind === "label" && s.uri === uri)
       .map((s) => ({ label: s.name, kind: 18 as const }));
-  if (line?.kind === 'command' || /[$@]!{0,2}\{[^}]*$/.test(before))
+  if (line?.kind === "command" || /[$@]!{0,2}\{[^}]*$/.test(before))
     return [...a.symbols.values()]
-      .filter((s) => s.kind === 'global' || (s.kind === 'local' && s.uri === uri))
+      .filter(
+        (s) => s.kind === "global" || (s.kind === "local" && s.uri === uri),
+      )
       .map((s) => ({
         label: s.name,
         kind: 6 as const,
-        detail: a.values.get(s.id)?.types.join(' | ') ?? s.kind,
+        detail: a.values.get(s.id)?.types.join(" | ") ?? s.kind,
       }));
   return [];
 }
 export function documentSymbols(a: Analysis, uri: string) {
   return [...a.symbols.values()]
-    .filter((s) => s.uri === uri && s.kind !== 'scene')
+    .filter((s) => s.uri === uri && s.kind !== "scene")
     .map((s) => ({
       name: s.name,
-      kind: s.kind === 'label' ? (12 as const) : (13 as const),
+      kind: s.kind === "label" ? (12 as const) : (13 as const),
       range: s.range,
       selectionRange: s.range,
     }));
@@ -125,7 +142,7 @@ export function folding(a: Analysis, uri: string) {
         return {
           startLine: l.line,
           endLine: end,
-          kind: l.command === 'comment' ? 'comment' : 'region',
+          kind: l.command === "comment" ? "comment" : "region",
         };
       })
       .filter((f) => f.endLine > f.startLine) ?? []
@@ -163,11 +180,14 @@ export function encodeTokens(a: Analysis, uri: string) {
       delta === 0 ? t.start - previousChar : t.start,
       t.length,
       type,
-      (t.modifiers ?? []).reduce((mask, m) => mask | (1 << modifiers.indexOf(m)), 0),
+      (t.modifiers ?? []).reduce(
+        (mask, m) => mask | (1 << modifiers.indexOf(m)),
+        0,
+      ),
     );
     previousLine = t.line;
     previousChar = t.start;
   }
   return { data };
 }
-import { tokenTypes as legend, tokenModifiers as modifiers } from './types.js';
+import { tokenTypes as legend, tokenModifiers as modifiers } from "./types.js";
