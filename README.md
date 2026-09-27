@@ -6,6 +6,8 @@ The shared TypeScript language server supplies syntax diagnostics, dialogue-awar
 
 ## Install
 
+Download the seven installers and `SHA256SUMS.txt` from the private repository’s Releases page when a prerelease is available. The workflow rebuilds and tests all targets before upload and verifies downloaded hashes. Manual visual gates remain listed in [editor validation](docs/editor-validation.md).
+
 Build artifacts are placed in `dist/packages` (VSIX) and `editors/intellij/build/distributions` (JetBrains ZIP). Install a VSIX using VS Code's **Extensions: Install from VSIX** command. In a compatible JetBrains IDE, use **Settings → Plugins → Install Plugin from Disk**. Node.js is included in packaged plugins.
 
 Open an existing game directory containing `scenes/startup.txt`, or use **ChoiceScript Tools → New Project**. Only detected scene `.txt` files are associated automatically; unrelated text files remain plain text. You can also select the ChoiceScript language explicitly. Multiple games in one workspace are supported.
@@ -42,8 +44,8 @@ cd editors/intellij
 ./gradlew buildPlugin verifyPlugin
 ```
 
-Runtime downloads are verified against `runtime-lock.json`. The official ChoiceScript snapshot is already vendored and requires no other checkout. `pnpm generate` regenerates conservative fallback grammar and IntelliJ command metadata. `pnpm test` exercises the shared analyzer and official game tools. `pnpm exec node scripts/test-vscode.mjs` runs the VS Code extension-host smoke test.
+Runtime downloads are verified against `runtime-lock.json`. The official ChoiceScript snapshot is already vendored and requires no other checkout. `pnpm generate` regenerates conservative fallback grammar and IntelliJ command metadata. `pnpm test` exercises the shared analyzer and official game tools. `node scripts/extract-vsix.mjs` selects and verifies the packaged extension; then `pnpm exec node scripts/test-vscode.mjs` runs its VS Code extension-host smoke test.
 
 See [architecture](docs/architecture.md), [supported features](docs/support.md), [validation results and remaining release gates](docs/validation.md), and [dependency notices](THIRD_PARTY_NOTICES.md).
 
-The [commit roadmap](docs/commit-roadmap.md) lists the remaining work toward the first validated release.
+The [commit roadmap](docs/commit-roadmap.md) records the implementation sequence and remaining manual gates. The **Private prerelease** workflow accepts a new tag such as `v0.1.0-alpha.1`; run it after signing the intended source history. It publishes only prereleases in a private repository, with six VSIX files, one universal JetBrains ZIP, provenance and checksums.

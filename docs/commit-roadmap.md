@@ -1,6 +1,6 @@
 # Commit roadmap toward 0.1.0
 
-The initial implementation is already committed on `main`. This roadmap describes **future commits**, in recommended order; it does not claim their work has been completed. The existing validation baseline is documented in [validation.md](validation.md). Keep the repository private and retain the independent-project notices and unmodified, pinned ChoiceScript engine throughout.
+The eight planned implementation steps are now represented by commits on `main`, with an additional focused Windows URI fix discovered by the platform matrix. The acceptance criteria below remain the release checklist: automated implementation does not mark the manual visual gates as passed. The existing validation baseline is documented in [validation.md](validation.md). Keep the repository private and retain the independent-project notices and unmodified, pinned ChoiceScript engine throughout.
 
 Use one reviewable concern per commit. If a regression exposes a bug, put the regression and its fix together in a focused commit before continuing. Do not rewrite the initial history to imply these checks already existed.
 
@@ -51,6 +51,12 @@ Done when both adapters have matching behavior for their shared features and the
 Add a manually triggered release workflow that builds from a clean checkout, runs the acceptance checks, and produces six VSIX files plus the universal JetBrains ZIP with checksums and dependency notices. Update installation instructions, the validated support matrix, and release notes using actual run results. Attach build products to a private GitHub release rather than committing runtime binaries or IDE caches to Git.
 
 Done when a fresh checkout reproduces the package contents without either old repository, artifact hashes are checked after upload, and all advertised targets have passed their gates. Mark the release as a prerelease while any required platform or UI validation remains open. Marketplace publication remains outside this roadmap.
+
+## Implemented sequence and remaining gates
+
+The commits add extracted-package CI, differential regressions, LSP invalidation fixes, tooling cleanup, IntelliJ API maintenance, three-product native CI, editor workflows and private prerelease packaging. See [validation](validation.md) for executed results. The Windows follow-up reconciles URI encodings and drive-letter casing, preventing unsaved buffers from being analyzed alongside stale disk copies.
+
+The release workflow is ready to run after signing the desired source history. It requires all nine CI jobs, uploads seven installers plus notices/provenance, downloads them again and verifies hashes. No release tag is created during ordinary implementation commits. Manual visual/JCEF/browser/progress checks in [editor validation](editor-validation.md) remain open, so publication stays private and marked as a prerelease.
 
 ## Dependencies and workflow
 

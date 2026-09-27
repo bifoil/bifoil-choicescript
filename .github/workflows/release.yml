@@ -1,0 +1,54 @@
+name: Private prerelease
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: New prerelease tag (for example v0.1.0-alpha.1)
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require a private repository and a prerelease tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          test "$(gh api "repos/$GH_REPO" --jq .private)" = true
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-[a-zA-Z0-9.-]+$ ]]
+  build:
+    needs: validate
+    uses: ./.github/workflows/ci.yml
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 24.21.0}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: vscode-*
+          merge-multiple: true
+          path: release
+      - uses: actions/download-artifact@v4
+        with:
+          name: intellij-idea
+          path: release
+      - run: node scripts/release-manifest.mjs release
+      - name: Upload private prerelease and verify downloaded assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          gh release create "$RELEASE_TAG" release/* --target "$GITHUB_SHA" --prerelease --title "Branchlight $RELEASE_TAG" --notes-file docs/release-notes.md
+          gh release download "$RELEASE_TAG" --dir downloaded
+          cmp release/SHA256SUMS.txt downloaded/SHA256SUMS.txt
+          node scripts/verify-release.mjs downloaded
