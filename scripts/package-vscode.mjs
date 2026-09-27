@@ -12,6 +12,6 @@ await createVSIX({
   packagePath: path.resolve(`dist/packages/choicescript-tools-${target}.vsix`),
   target,
   dependencies: false,
-  allowMissingRepository: true,
+  githubBranch: 'main',
   skipLicense: false,
 });
