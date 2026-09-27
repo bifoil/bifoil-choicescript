@@ -8,7 +8,7 @@ for (const target of Object.keys(lock.archives)) {
   execFileSync(process.execPath, ["scripts/package-vscode.mjs", target], {
     stdio: "inherit",
   });
-  const file = "choicescript-tools-" + target + ".vsix";
+  const file = "branchlight-" + target + ".vsix";
   hashes.push(
     createHash("sha256")
       .update(await readFile("dist/packages/" + file))

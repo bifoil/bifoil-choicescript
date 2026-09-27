@@ -1,37 +1,37 @@
 <idea-plugin>
-  <id>dev.chira.choicescripttools</id>
-  <name>Branchlight - ChoiceScript Tools (Unofficial)</name>
+  <id>dev.chira.branchlight</id>
+  <name>Branchlight</name>
   <vendor>Independent personal project</vendor>
   <description><![CDATA[Independent ChoiceScript editing, dialogue-aware highlighting, navigation, preview, testing, and HTML export. Unaffiliated with Choice of Games or upstream ChoiceScript.]]></description>
   <depends>com.intellij.modules.platform</depends>
   <depends>com.intellij.modules.lsp</depends>
   <extensions defaultExtensionNs="com.intellij">
-    <platform.lsp.integrationProvider implementation="dev.chira.choicescripttools.ChoiceIntegration"/>
-    <lang.substitutor language="TEXT" implementationClass="dev.chira.choicescripttools.ChoiceSubstitutor"/>
-    <fileType name="ChoiceScript" implementationClass="dev.chira.choicescripttools.ChoiceFileType" fieldName="INSTANCE" language="ChoiceScript"/>
-    <lang.syntaxHighlighterFactory language="ChoiceScript" implementationClass="dev.chira.choicescripttools.ChoiceHighlighterFactory"/>
-    <colorSettingsPage implementation="dev.chira.choicescripttools.ChoiceColorsPage"/>
-    <lang.parserDefinition language="ChoiceScript" implementationClass="dev.chira.choicescripttools.ChoiceParserDefinition"/>
-    <lang.commenter language="ChoiceScript" implementationClass="dev.chira.choicescripttools.ChoiceCommenter"/>
-    <enterHandlerDelegate implementation="dev.chira.choicescripttools.ChoiceEnterHandler"/>
-    <liveTemplateContext contextId="CHOICESCRIPT" implementation="dev.chira.choicescripttools.ChoiceTemplateContext"/>
+    <platform.lsp.integrationProvider implementation="dev.chira.branchlight.ChoiceIntegration"/>
+    <lang.substitutor language="TEXT" implementationClass="dev.chira.branchlight.ChoiceSubstitutor"/>
+    <fileType name="ChoiceScript" implementationClass="dev.chira.branchlight.ChoiceFileType" fieldName="INSTANCE" language="ChoiceScript"/>
+    <lang.syntaxHighlighterFactory language="ChoiceScript" implementationClass="dev.chira.branchlight.ChoiceHighlighterFactory"/>
+    <colorSettingsPage implementation="dev.chira.branchlight.ChoiceColorsPage"/>
+    <lang.parserDefinition language="ChoiceScript" implementationClass="dev.chira.branchlight.ChoiceParserDefinition"/>
+    <lang.commenter language="ChoiceScript" implementationClass="dev.chira.branchlight.ChoiceCommenter"/>
+    <enterHandlerDelegate implementation="dev.chira.branchlight.ChoiceEnterHandler"/>
+    <liveTemplateContext contextId="CHOICESCRIPT" implementation="dev.chira.branchlight.ChoiceTemplateContext"/>
     <defaultLiveTemplates file="/liveTemplates/ChoiceScript"/>
-    <toolWindow id="ChoiceScript Tools" anchor="bottom" factoryClass="dev.chira.choicescripttools.ChoiceToolWindow"/>
+    <toolWindow id="Branchlight" anchor="bottom" factoryClass="dev.chira.branchlight.ChoiceToolWindow"/>
   </extensions>
   <actions>
-    <group id="ChoiceScriptTools.Actions" text="ChoiceScript Tools" popup="true">
+    <group id="Branchlight.Actions" text="Branchlight" popup="true">
       <add-to-group group-id="ToolsMenu" anchor="last"/>
-      <action id="ChoiceScriptTools.New" class="dev.chira.choicescripttools.NewProjectAction" text="New Project"/>
-      <action id="ChoiceScriptTools.Run" class="dev.chira.choicescripttools.RunAction" text="Run Game"/>
-      <action id="ChoiceScriptTools.Stop" class="dev.chira.choicescripttools.StopAction" text="Stop Game or Tests"/>
-      <action id="ChoiceScriptTools.QuickTest" class="dev.chira.choicescripttools.QuickTestAction" text="Run QuickTest"/>
-      <action id="ChoiceScriptTools.RandomTest" class="dev.chira.choicescripttools.RandomTestAction" text="Run RandomTest"/>
-      <action id="ChoiceScriptTools.Export" class="dev.chira.choicescripttools.ExportAction" text="Export HTML"/>
-      <action id="ChoiceScriptTools.Words" class="dev.chira.choicescripttools.WordCountAction" text="Show Narrative Word Count"/>
-      <action id="ChoiceScriptTools.Bold" class="dev.chira.choicescripttools.BoldAction" text="Bold Selection"/>
-      <action id="ChoiceScriptTools.Italic" class="dev.chira.choicescripttools.ItalicAction" text="Italicize Selection"/>
-      <action id="ChoiceScriptTools.QuoteWarnings" class="dev.chira.choicescripttools.QuoteWarningsAction" text="Narrative Quote Warnings"/>
-      <action id="ChoiceScriptTools.About" class="dev.chira.choicescripttools.AboutAction" text="About"/>
+      <action id="Branchlight.New" class="dev.chira.branchlight.NewProjectAction" text="New Project"/>
+      <action id="Branchlight.Run" class="dev.chira.branchlight.RunAction" text="Run Game"/>
+      <action id="Branchlight.Stop" class="dev.chira.branchlight.StopAction" text="Stop Game or Tests"/>
+      <action id="Branchlight.QuickTest" class="dev.chira.branchlight.QuickTestAction" text="Run QuickTest"/>
+      <action id="Branchlight.RandomTest" class="dev.chira.branchlight.RandomTestAction" text="Run RandomTest"/>
+      <action id="Branchlight.Export" class="dev.chira.branchlight.ExportAction" text="Export HTML"/>
+      <action id="Branchlight.Words" class="dev.chira.branchlight.WordCountAction" text="Show Narrative Word Count"/>
+      <action id="Branchlight.Bold" class="dev.chira.branchlight.BoldAction" text="Bold Selection"/>
+      <action id="Branchlight.Italic" class="dev.chira.branchlight.ItalicAction" text="Italicize Selection"/>
+      <action id="Branchlight.QuoteWarnings" class="dev.chira.branchlight.QuoteWarningsAction" text="Narrative Quote Warnings"/>
+      <action id="Branchlight.About" class="dev.chira.branchlight.AboutAction" text="About"/>
     </group>
   </actions>
 </idea-plugin>

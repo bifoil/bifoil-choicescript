@@ -19,7 +19,7 @@ export interface ToolOptions {
 }
 let client: LanguageClient | undefined;
 export async function activate(context: vscode.ExtensionContext) {
-  const output = vscode.window.createOutputChannel("ChoiceScript Tools"),
+  const output = vscode.window.createOutputChannel("Branchlight"),
     coverage = vscode.window.createTextEditorDecorationType({
       isWholeLine: true,
       backgroundColor: new vscode.ThemeColor(
@@ -41,8 +41,8 @@ export async function activate(context: vscode.ExtensionContext) {
       path.join("runtime", process.platform === "win32" ? "node.exe" : "node"),
     );
   client = new LanguageClient(
-    "choicescriptTools",
-    "ChoiceScript Tools",
+    "branchlight",
+    "Branchlight",
     {
       command: existsSync(runtime) ? runtime : process.execPath,
       args: [
@@ -61,7 +61,7 @@ export async function activate(context: vscode.ExtensionContext) {
     },
     {
       documentSelector: [{ scheme: "file", language: "choicescript" }],
-      synchronize: { configurationSection: "choicescriptTools" },
+      synchronize: { configurationSection: "branchlight" },
       outputChannel: output,
     },
   );
@@ -106,7 +106,7 @@ export async function activate(context: vscode.ExtensionContext) {
       );
     if (event.kind === "completed" && event.exitCode && event.exitCode !== 130)
       void vscode.window.showErrorMessage(
-        "ChoiceScript operation failed. See ChoiceScript Tools output.",
+        "Branchlight operation failed. See Branchlight output.",
       );
     if (event.kind === "stale") {
       for (const editor of vscode.window.visibleTextEditors)
@@ -240,7 +240,7 @@ export async function activate(context: vscode.ExtensionContext) {
       result = await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: "ChoiceScript " + operation,
+          title: "Branchlight " + operation,
           cancellable: true,
         },
         async (progress, cancellation) => {
@@ -316,7 +316,7 @@ export async function activate(context: vscode.ExtensionContext) {
   ] as Operation[])
     context.subscriptions.push(
       vscode.commands.registerCommand(
-        "choicescriptTools." + operation,
+        "branchlight." + operation,
         (options?: ToolOptions) =>
           job(operation, options).catch((e) =>
             vscode.window.showErrorMessage(String(e)),
@@ -328,7 +328,7 @@ export async function activate(context: vscode.ExtensionContext) {
     ["italic", "i"],
   ])
     context.subscriptions.push(
-      vscode.commands.registerCommand("choicescriptTools." + name, () => {
+      vscode.commands.registerCommand("branchlight." + name, () => {
         const editor = vscode.window.activeTextEditor;
         if (editor)
           return editor.edit((edit) => {
@@ -341,7 +341,7 @@ export async function activate(context: vscode.ExtensionContext) {
       }),
     );
   context.subscriptions.push(
-    vscode.commands.registerCommand("choicescriptTools.wordCount", async () => {
+    vscode.commands.registerCommand("branchlight.wordCount", async () => {
       const uri = vscode.window.activeTextEditor?.document.uri;
       if (uri) {
         const count = await client!.sendRequest<number>(
@@ -356,9 +356,9 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
   context.subscriptions.push(
-    vscode.commands.registerCommand("choicescriptTools.about", () =>
+    vscode.commands.registerCommand("branchlight.about", () =>
       vscode.window.showInformationMessage(
-        "Branchlight 0.1.0 — ChoiceScript Tools — an unofficial personal project, unaffiliated with Choice of Games or upstream ChoiceScript.",
+        "Branchlight 0.1.0 — an unofficial personal project, unaffiliated with Choice of Games or upstream ChoiceScript.",
       ),
     ),
   );

@@ -208,7 +208,7 @@ connection.onInitialize((params) => {
   roots = (params.workspaceFolders ?? []).map((f) => f.uri);
   if (!roots.length && params.rootUri) roots = [params.rootUri];
   return {
-    serverInfo: { name: "ChoiceScript Tools (Unofficial)", version: "0.1.0" },
+    serverInfo: { name: "Branchlight (Unofficial)", version: "0.1.0" },
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
       completionProvider: { triggerCharacters: ["*", "{"] },
@@ -270,7 +270,7 @@ connection.onNotification(
   },
 );
 connection.onDidChangeConfiguration((e) => {
-  quoteWarnings = e.settings?.choicescriptTools?.quoteWarnings ?? true;
+  quoteWarnings = e.settings?.branchlight?.quoteWarnings ?? true;
   schedule();
 });
 connection.onCompletion((p) => {

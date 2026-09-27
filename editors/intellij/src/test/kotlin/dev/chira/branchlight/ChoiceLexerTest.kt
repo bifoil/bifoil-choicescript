@@ -1,4 +1,4 @@
-package dev.chira.choicescripttools
+package dev.chira.branchlight
 import org.junit.Assert.*
 import org.junit.Test
 class ChoiceLexerTest {

@@ -1,4 +1,4 @@
-package dev.chira.choicescripttools
+package dev.chira.branchlight
 
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.openapi.actionSystem.IdeActions

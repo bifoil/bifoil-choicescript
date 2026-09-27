@@ -145,7 +145,7 @@ test(
         (d) => d?.diagnostics.some((x: any) => x.code === "quote-unclosed"),
       );
       h.rpc.sendNotification("workspace/didChangeConfiguration", {
-        settings: { choicescriptTools: { quoteWarnings: false } },
+        settings: { branchlight: { quoteWarnings: false } },
       });
       await waitFor(
         () => h.diagnostics.filter((d) => d.uri === one).at(-1),

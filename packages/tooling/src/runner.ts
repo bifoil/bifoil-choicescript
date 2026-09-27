@@ -93,7 +93,7 @@ export class ToolRunner {
     };
   }
   async stage(project: Project, buffers: BufferSnapshot[]) {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "choicescript-tools-"));
+    const dir = await mkdtemp(path.join(os.tmpdir(), "branchlight-"));
     try {
       await cp(this.engine, dir, { recursive: true });
       const game = path.join(dir, "web/mygame");
@@ -111,7 +111,7 @@ export class ToolRunner {
             "build",
             "export",
             ".idea",
-            ".choicescript-tools",
+            ".branchlight",
             "scenes",
           ].includes(e.name) ||
           e.isSymbolicLink()
@@ -275,7 +275,7 @@ export class ToolRunner {
         script = "compile.js";
         args = ["export.html"];
       }
-      const logDir = path.join(project.root, ".choicescript-tools", "logs");
+      const logDir = path.join(project.root, ".branchlight", "logs");
       await mkdir(logDir, { recursive: true });
       const output = path.join(logDir, job.id + ".log"),
         log = createWriteStream(output);
@@ -316,7 +316,7 @@ export class ToolRunner {
       };
       const nodeArgs = [script, ...args];
       if (request.operation === "exportHtml") {
-        const preload = path.join(stage, "choicescript-tools-preload.cjs");
+        const preload = path.join(stage, "branchlight-preload.cjs");
         await writeFile(
           preload,
           "// Bridge the upstream compiler's VM-loaded generator to its CommonJS host.\nglobal.rootDir = 'web/';\n",

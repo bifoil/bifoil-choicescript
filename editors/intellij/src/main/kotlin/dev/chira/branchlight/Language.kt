@@ -1,4 +1,4 @@
-package dev.chira.choicescripttools
+package dev.chira.branchlight
 
 import com.google.gson.JsonParser
 import com.intellij.lang.Language

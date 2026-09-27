@@ -1,4 +1,4 @@
-package dev.chira.choicescripttools
+package dev.chira.branchlight
 
 import com.intellij.lang.Commenter
 import com.intellij.openapi.actionSystem.AnAction

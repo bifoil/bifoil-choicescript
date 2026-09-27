@@ -3,8 +3,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { unzipSync } from "fflate";
 const target = `${process.platform}-${process.arch}`;
-const artifact =
-  process.argv[2] ?? `dist/packages/choicescript-tools-${target}.vsix`;
+const artifact = process.argv[2] ?? `dist/packages/branchlight-${target}.vsix`;
 const files = unzipSync(new Uint8Array(await readFile(artifact)));
 const descriptor = Buffer.from(files["extension.vsixmanifest"]).toString();
 if (!descriptor.includes(`TargetPlatform="${target}"`))

@@ -1,4 +1,4 @@
-package dev.chira.choicescripttools
+package dev.chira.branchlight
 
 import com.intellij.lexer.LexerBase
 import com.intellij.openapi.editor.DefaultLanguageHighlighterColors as C
@@ -17,7 +17,7 @@ import javax.swing.Icon
 object ChoiceColors {
     val names = listOf("keyword", "comment", "string", "number", "operator", "variable", "function", "label", "boolean", "dialogue", "narrative", "stringVariable", "numberVariable", "booleanVariable", "markup", "interpolation")
     private val defaults = listOf(C.KEYWORD, C.LINE_COMMENT, C.STRING, C.NUMBER, C.OPERATION_SIGN, C.LOCAL_VARIABLE, C.FUNCTION_CALL, C.LABEL, C.KEYWORD, C.STRING, HighlighterColors.TEXT, C.STRING, C.NUMBER, C.KEYWORD, C.MARKUP_TAG, C.BRACES)
-    val keys = names.mapIndexed { i, name -> name to TextAttributesKey.createTextAttributesKey("CHOICESCRIPT_TOOLS_${name.uppercase()}", defaults[i]) }.toMap()
+    val keys = names.mapIndexed { i, name -> name to TextAttributesKey.createTextAttributesKey("BRANCHLIGHT_${name.uppercase()}", defaults[i]) }.toMap()
     fun key(name: String, modifiers: List<String>): TextAttributesKey? {
         val base = keys[name] ?: return null
         val font = (if ("bold" in modifiers) java.awt.Font.BOLD else 0) or (if ("italic" in modifiers) java.awt.Font.ITALIC else 0)
@@ -78,5 +78,5 @@ class ChoiceColorsPage : ColorSettingsPage {
     override fun getAdditionalHighlightingTagToDescriptorMap() = ChoiceColors.keys
     override fun getAttributeDescriptors() = ChoiceColors.names.map { AttributesDescriptor(it, ChoiceColors.keys.getValue(it)) }.toTypedArray()
     override fun getColorDescriptors(): Array<ColorDescriptor> = ColorDescriptor.EMPTY_ARRAY
-    override fun getDisplayName() = "ChoiceScript Tools"
+    override fun getDisplayName() = "Branchlight"
 }

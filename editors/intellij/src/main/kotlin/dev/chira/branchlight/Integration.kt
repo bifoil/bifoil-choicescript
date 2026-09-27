@@ -1,4 +1,4 @@
-package dev.chira.choicescripttools
+package dev.chira.branchlight
 
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.openapi.components.service
@@ -25,7 +25,7 @@ class ChoiceIntegration : LspIntegrationProvider {
         if (ChoiceProjects.supports(project, file)) clientStarter.ensureClientStarted(ChoiceDescriptor(project))
     }
 }
-class ChoiceDescriptor(project: Project) : ProjectWideLspClientDescriptor(project, "ChoiceScript Tools (Unofficial)") {
+class ChoiceDescriptor(project: Project) : ProjectWideLspClientDescriptor(project, "Branchlight (Unofficial)") {
     override fun isSupportedFile(file: VirtualFile) = ChoiceProjects.supports(project, file)
     override fun getLanguageId(file: VirtualFile) = "choicescript"
     override fun createCommandLine(): GeneralCommandLine {

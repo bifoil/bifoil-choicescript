@@ -1,6 +1,6 @@
 # Third-party notices
 
-ChoiceScript Tools is an independent personal project. It is unaffiliated with Choice of Games or upstream ChoiceScript.
+Branchlight is an independent personal project. It is unaffiliated with Choice of Games or upstream ChoiceScript.
 
 The original editor tooling is MIT licensed; see `LICENSE`.
 

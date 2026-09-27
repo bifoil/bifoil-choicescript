@@ -12,8 +12,11 @@ editors/vscode/runtime/
 editors/vscode/README.md
 editors/vscode/LICENSE
 editors/intellij/src/main/resources/bundle/
-.choicescript-tools/
+.branchlight/
 .vscode-test/
 .kotlin/
 .intellijPlatform/
 fixtures/dialogue/.vscode/
+
+# Ignore output from pre-branding development builds.
+.choicescript-tools/

@@ -1,6 +1,6 @@
 {
-  "name": "choicescript-tools-unofficial",
-  "displayName": "Branchlight \u2014 ChoiceScript Tools (Unofficial)",
+  "name": "branchlight",
+  "displayName": "Branchlight",
   "description": "Independent ChoiceScript authoring tools. Unaffiliated with Choice of Games or upstream ChoiceScript.",
   "version": "0.1.0",
   "publisher": "chira-independent",
@@ -48,60 +48,60 @@
     ],
     "commands": [
       {
-        "command": "choicescriptTools.createProject",
+        "command": "branchlight.createProject",
         "title": "New Project",
-        "category": "ChoiceScript Tools"
+        "category": "Branchlight"
       },
       {
-        "command": "choicescriptTools.run",
+        "command": "branchlight.run",
         "title": "Run Game",
-        "category": "ChoiceScript Tools"
+        "category": "Branchlight"
       },
       {
-        "command": "choicescriptTools.stop",
+        "command": "branchlight.stop",
         "title": "Stop Game or Tests",
-        "category": "ChoiceScript Tools"
+        "category": "Branchlight"
       },
       {
-        "command": "choicescriptTools.quicktest",
+        "command": "branchlight.quicktest",
         "title": "Run QuickTest",
-        "category": "ChoiceScript Tools"
+        "category": "Branchlight"
       },
       {
-        "command": "choicescriptTools.randomtest",
+        "command": "branchlight.randomtest",
         "title": "Run RandomTest",
-        "category": "ChoiceScript Tools"
+        "category": "Branchlight"
       },
       {
-        "command": "choicescriptTools.exportHtml",
+        "command": "branchlight.exportHtml",
         "title": "Export HTML",
-        "category": "ChoiceScript Tools"
+        "category": "Branchlight"
       },
       {
-        "command": "choicescriptTools.wordCount",
+        "command": "branchlight.wordCount",
         "title": "Show Narrative Word Count",
-        "category": "ChoiceScript Tools"
+        "category": "Branchlight"
       },
       {
-        "command": "choicescriptTools.bold",
+        "command": "branchlight.bold",
         "title": "Bold Selection",
-        "category": "ChoiceScript Tools"
+        "category": "Branchlight"
       },
       {
-        "command": "choicescriptTools.italic",
+        "command": "branchlight.italic",
         "title": "Italicize Selection",
-        "category": "ChoiceScript Tools"
+        "category": "Branchlight"
       },
       {
-        "command": "choicescriptTools.about",
+        "command": "branchlight.about",
         "title": "About",
-        "category": "ChoiceScript Tools"
+        "category": "Branchlight"
       }
     ],
     "configuration": {
-      "title": "ChoiceScript Tools",
+      "title": "Branchlight",
       "properties": {
-        "choicescriptTools.quoteWarnings": {
+        "branchlight.quoteWarnings": {
           "type": "boolean",
           "default": true,
           "description": "Report inconsistent or unclosed narrative dialogue separately from expression syntax errors."

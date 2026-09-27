@@ -1,6 +1,6 @@
 # Commit roadmap toward 0.1.0
 
-The eight planned implementation steps are now represented by commits on `main`, with an additional focused Windows URI fix discovered by the platform matrix. The acceptance criteria below remain the release checklist: automated implementation does not mark the manual visual gates as passed. The existing validation baseline is documented in [validation.md](validation.md). Keep the repository private and retain the independent-project notices and unmodified, pinned ChoiceScript engine throughout.
+The eight planned implementation steps are now represented by commits on `main`, with focused Windows URI and test-launcher fixes discovered by the platform matrix. A follow-up also applies Branchlight branding consistently to both editor plugins, settings and package identifiers. The acceptance criteria below remain the release checklist: automated implementation does not mark the manual visual gates as passed. The existing validation baseline is documented in [validation.md](validation.md). Keep the repository private and retain the independent-project notices and unmodified, pinned ChoiceScript engine throughout.
 
 Use one reviewable concern per commit. If a regression exposes a bug, put the regression and its fix together in a focused commit before continuing. Do not rewrite the initial history to imply these checks already existed.
 

@@ -1,2 +1,2 @@
 pluginManagement { repositories { gradlePluginPortal(); mavenCentral() } }
-rootProject.name = "choicescript-tools-unofficial"
+rootProject.name = "branchlight"

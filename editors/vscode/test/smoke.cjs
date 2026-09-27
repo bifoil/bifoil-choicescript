@@ -2,7 +2,7 @@ const vscode = require("vscode");
 const assert = require("node:assert/strict");
 exports.run = async () => {
   const extension = vscode.extensions.getExtension(
-    "chira-independent.choicescript-tools-unofficial",
+    "chira-independent.branchlight",
   );
   assert(extension);
   const api = await extension.activate();
@@ -115,7 +115,7 @@ exports.run = async () => {
   try {
     await setText("Hello");
     editor.selection = new vscode.Selection(0, 0, 0, 5);
-    await vscode.commands.executeCommand("choicescriptTools.bold");
+    await vscode.commands.executeCommand("branchlight.bold");
     assert.equal(document.getText(), "[b]Hello[/b]");
     editor.selection = new vscode.Selection(
       0,
@@ -123,7 +123,7 @@ exports.run = async () => {
       0,
       document.lineAt(0).text.length,
     );
-    await vscode.commands.executeCommand("choicescriptTools.italic");
+    await vscode.commands.executeCommand("branchlight.italic");
     assert.equal(document.getText(), "[i][b]Hello[/b][/i]");
     editor.selection = new vscode.Selection(0, 0, 0, 0);
     await vscode.commands.executeCommand("editor.action.commentLine");
@@ -162,7 +162,7 @@ exports.run = async () => {
       let timer;
       try {
         return await Promise.race([
-          vscode.commands.executeCommand("choicescriptTools." + name, {
+          vscode.commands.executeCommand("branchlight." + name, {
             ...options,
             ...extra,
           }),

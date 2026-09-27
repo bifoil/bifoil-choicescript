@@ -1,6 +1,6 @@
-# Branchlight — ChoiceScript Tools (Unofficial)
+# Branchlight
 
-An independent personal project for authoring ChoiceScript games in VS Code and JetBrains IDEs. **Unaffiliated with Choice of Games or the upstream ChoiceScript project.**
+An unofficial, independent personal project for authoring ChoiceScript games in VS Code and JetBrains IDEs. **Unaffiliated with Choice of Games or the upstream ChoiceScript project.**
 
 The shared TypeScript language server supplies syntax diagnostics, dialogue-aware semantic highlighting, inferred variable colors, completion, hover, navigation, references, rename, symbols, folding, and selection ranges. Editor adapters supply project creation, embedded preview, QuickTest, RandomTest, HTML export, formatting shortcuts, and word counts.
 
@@ -10,9 +10,9 @@ Download the seven installers and `SHA256SUMS.txt` from the private repository�
 
 Build artifacts are placed in `dist/packages` (VSIX) and `editors/intellij/build/distributions` (JetBrains ZIP). Install a VSIX using VS Code's **Extensions: Install from VSIX** command. In a compatible JetBrains IDE, use **Settings → Plugins → Install Plugin from Disk**. Node.js is included in packaged plugins.
 
-Open an existing game directory containing `scenes/startup.txt`, or use **ChoiceScript Tools → New Project**. Only detected scene `.txt` files are associated automatically; unrelated text files remain plain text. You can also select the ChoiceScript language explicitly. Multiple games in one workspace are supported.
+Open an existing game directory containing `scenes/startup.txt`, or use **Branchlight → New Project**. Only detected scene `.txt` files are associated automatically; unrelated text files remain plain text. You can also select the ChoiceScript language explicitly. Multiple games in one workspace are supported.
 
-Run commands from the command palette/Tools menu. Running, testing, and exporting require a trusted project. Test logs are saved under `.choicescript-tools/logs`. Preview and tests use snapshots including unsaved editor buffers; changing source marks running results stale. Restart preview to see changes. Export to a new directory to avoid overwriting companion assets.
+Run commands from the command palette/Tools menu. Running, testing, and exporting require a trusted project. Test logs are saved under `.branchlight/logs`. Preview and tests use snapshots including unsaved editor buffers; changing source marks running results stale. Restart preview to see changes. Export to a new directory to avoid overwriting companion assets.
 
 ## Quotes
 

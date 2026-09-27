@@ -2,7 +2,7 @@ plugins {
     kotlin("jvm") version "2.2.20"
     id("org.jetbrains.intellij.platform") version "2.19.0"
 }
-group = "dev.chira.choicescripttools"
+group = "dev.chira.branchlight"
 version = "0.1.0"
 repositories { mavenCentral(); intellijPlatform { defaultRepositories() } }
 dependencies {
@@ -16,7 +16,7 @@ dependencies {
 }
 kotlin { jvmToolchain(21); compilerOptions { jvmDefault.set(org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode.NO_COMPATIBILITY) } }
 intellijPlatform {
-    pluginConfiguration { name = "Branchlight - ChoiceScript Tools (Unofficial)"; ideaVersion { sinceBuild = "261.26222" } }
+    pluginConfiguration { name = "Branchlight"; ideaVersion { sinceBuild = "261.26222" } }
     pluginVerification { ides { current() } }
 }
 tasks.test { useJUnit() }

@@ -13,7 +13,7 @@ const lock = JSON.parse(await readFile("runtime-lock.json", "utf8"));
 const names = await readdir(directory);
 const targets = Object.keys(lock.archives).sort();
 for (const target of targets) {
-  if (!names.includes(`choicescript-tools-${target}.vsix`))
+  if (!names.includes(`branchlight-${target}.vsix`))
     throw new Error(`Missing package for ${target}`);
 }
 const native = names.filter((name) => name.endsWith(".zip"));
@@ -39,7 +39,7 @@ for (const [source, destination] of [
   await copyFile(source, path.join(directory, destination));
 const artifacts = [];
 for (const file of [
-  ...targets.map((target) => `choicescript-tools-${target}.vsix`),
+  ...targets.map((target) => `branchlight-${target}.vsix`),
   ...native,
 ]) {
   const bytes = await readFile(path.join(directory, file));

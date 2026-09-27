@@ -57,10 +57,10 @@ export interface BufferSnapshot {
   version: number;
 }
 export const commands = [
-  "choicescriptTools.server.createProject",
-  "choicescriptTools.server.run",
-  "choicescriptTools.server.stop",
-  "choicescriptTools.server.quicktest",
-  "choicescriptTools.server.randomtest",
-  "choicescriptTools.server.exportHtml",
+  "branchlight.server.createProject",
+  "branchlight.server.run",
+  "branchlight.server.stop",
+  "branchlight.server.quicktest",
+  "branchlight.server.randomtest",
+  "branchlight.server.exportHtml",
 ];

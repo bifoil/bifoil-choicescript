@@ -1,4 +1,4 @@
-package dev.chira.choicescripttools
+package dev.chira.branchlight
 
 import com.intellij.execution.filters.OpenFileHyperlinkInfo
 import com.intellij.execution.ui.ConsoleView
@@ -34,7 +34,7 @@ import java.nio.file.Path
 import javax.swing.*
 
 data class ChoiceState(var quoteWarnings: Boolean = true)
-@State(name = "ChoiceScriptTools", storages = [Storage("choicescript-tools.xml")])
+@State(name = "Branchlight", storages = [Storage("branchlight.xml")])
 @Service(Service.Level.PROJECT)
 class ChoiceSettings : PersistentStateComponent<ChoiceState> {
     private var data = ChoiceState()
@@ -61,7 +61,7 @@ class ChoiceUi(private val project: Project) : Disposable {
         if (event.kind == "completed") console.print("Exit: ${event.exitCode}\n", if (event.exitCode == 0) ConsoleViewContentType.NORMAL_OUTPUT else ConsoleViewContentType.ERROR_OUTPUT)
     }
     fun track(result: JobResult) {
-        com.intellij.openapi.progress.ProgressManager.getInstance().run(object : com.intellij.openapi.progress.Task.Backgroundable(project, "ChoiceScript operation", true) {
+        com.intellij.openapi.progress.ProgressManager.getInstance().run(object : com.intellij.openapi.progress.Task.Backgroundable(project, "Branchlight operation", true) {
             override fun run(indicator: com.intellij.openapi.progress.ProgressIndicator) {
                 indicator.isIndeterminate = true
                 while (!completed.remove(result.jobId) && !project.isDisposed) {
@@ -73,7 +73,7 @@ class ChoiceUi(private val project: Project) : Disposable {
     }
     fun preview(result: JobResult) {
         val url = result.url ?: return
-        val window = ToolWindowManager.getInstance(project).getToolWindow("ChoiceScript Tools") ?: return
+        val window = ToolWindowManager.getInstance(project).getToolWindow("Branchlight") ?: return
         if (!JBCefApp.isSupported()) { BrowserUtil.browse(url); return }
         val browser = JBCefBrowser(url)
         val panel = JPanel(BorderLayout())
@@ -93,8 +93,8 @@ class ChoiceToolWindow : ToolWindowFactory {
         val console = ChoiceUi.get(project).console
         val panel = JPanel(BorderLayout())
         val group = DefaultActionGroup()
-        for (id in listOf("Run", "Stop", "QuickTest", "RandomTest", "Export")) group.add(ActionManager.getInstance().getAction("ChoiceScriptTools.$id"))
-        val toolbar = ActionManager.getInstance().createActionToolbar("ChoiceScriptTools", group, true)
+        for (id in listOf("Run", "Stop", "QuickTest", "RandomTest", "Export")) group.add(ActionManager.getInstance().getAction("Branchlight.$id"))
+        val toolbar = ActionManager.getInstance().createActionToolbar("Branchlight", group, true)
         toolbar.targetComponent = panel
         panel.add(toolbar.component, BorderLayout.NORTH); panel.add(console.component, BorderLayout.CENTER)
         toolWindow.contentManager.addContent(ContentFactory.getInstance().createContent(panel, "Output", false))
@@ -110,27 +110,27 @@ fun <T> request(project: Project, callback: (ChoiceServer) -> java.util.concurre
             check(client != null) { "ChoiceScript language server did not start. Check packaged runtime resources." }
             val result = client!!.sendRequestSync { callback(it as ChoiceServer) }
             ApplicationManager.getApplication().invokeLater { if (!project.isDisposed) done(result) }
-        } catch (error: Exception) { ApplicationManager.getApplication().invokeLater { if (!project.isDisposed) Messages.showErrorDialog(project, error.message ?: error.toString(), "ChoiceScript Tools") } }
+        } catch (error: Exception) { ApplicationManager.getApplication().invokeLater { if (!project.isDisposed) Messages.showErrorDialog(project, error.message ?: error.toString(), "Branchlight") } }
     }
 }
 open class ToolAction(private val operation: String) : AnAction() {
     override fun actionPerformed(event: AnActionEvent) {
         val project = event.project ?: return
-        if (operation != "stop" && !TrustedProjects.isProjectTrusted(project)) { Messages.showInfoMessage(project, "Trust this project before running game code.", "ChoiceScript Tools"); return }
+        if (operation != "stop" && !TrustedProjects.isProjectTrusted(project)) { Messages.showInfoMessage(project, "Trust this project before running game code.", "Branchlight"); return }
         val args = mutableMapOf<String, Any>("protocolVersion" to 1, "operation" to operation, "trusted" to true)
         if (operation == "createProject") {
             val parent = FileChooser.chooseFile(FileChooserDescriptorFactory.createSingleFolderDescriptor(), project, null) ?: return
-            val name = Messages.showInputDialog(project, "New project folder name", "ChoiceScript Tools", null, "my-choice-game", null) ?: return
+            val name = Messages.showInputDialog(project, "New project folder name", "Branchlight", null, "my-choice-game", null) ?: return
             if (!name.matches(Regex("[\\w -]+"))) return
             args["destination"] = parent.toNioPath().resolve(name).toString()
             execute(project, args); return
         }
         request(project, { it.projects() }) { games ->
-            if (games.isNullOrEmpty()) { Messages.showInfoMessage(project, "Open a folder containing scenes/startup.txt.", "ChoiceScript Tools"); return@request }
+            if (games.isNullOrEmpty()) { Messages.showInfoMessage(project, "Open a folder containing scenes/startup.txt.", "Branchlight"); return@request }
             val active = FileEditorManager.getInstance(project).selectedFiles.firstOrNull()
             val selected = games.firstOrNull { active != null && active.toNioPath().startsWith(Path.of(it.sceneDir)) }
                 ?: if (games.size == 1) games.first() else {
-                    val dialog = object : com.intellij.ide.util.ChooseElementsDialog<GameProject>(project, games, "ChoiceScript Tools", "Select a game") {
+                    val dialog = object : com.intellij.ide.util.ChooseElementsDialog<GameProject>(project, games, "Branchlight", "Select a game") {
                         override fun getItemText(item: GameProject) = item.name + " — " + item.root
                         override fun getItemIcon(item: GameProject): javax.swing.Icon? = null
                         init { myChooser.setSingleSelectionMode() }
@@ -151,8 +151,8 @@ open class ToolAction(private val operation: String) : AnAction() {
         }
     }
     private fun execute(project: Project, args: Map<String, Any>) {
-        ToolWindowManager.getInstance(project).getToolWindow("ChoiceScript Tools")?.show()
-        request(project, { server -> if (operation == "run") server.job(args + ("operation" to "stop")).thenCompose { server.job(args) } else server.job(args) }) { result -> if (result != null) { ChoiceUi.get(project).preview(result); if (operation in listOf("quicktest", "randomtest", "exportHtml")) ChoiceUi.get(project).track(result); if (operation == "createProject") Messages.showInfoMessage(project, "Created ${args["destination"]}. Open that folder to edit your game.", "ChoiceScript Tools") } }
+        ToolWindowManager.getInstance(project).getToolWindow("Branchlight")?.show()
+        request(project, { server -> if (operation == "run") server.job(args + ("operation" to "stop")).thenCompose { server.job(args) } else server.job(args) }) { result -> if (result != null) { ChoiceUi.get(project).preview(result); if (operation in listOf("quicktest", "randomtest", "exportHtml")) ChoiceUi.get(project).track(result); if (operation == "createProject") Messages.showInfoMessage(project, "Created ${args["destination"]}. Open that folder to edit your game.", "Branchlight") } }
     }
 }
 class NewProjectAction : ToolAction("createProject")
@@ -162,12 +162,12 @@ class QuickTestAction : ToolAction("quicktest")
 class RandomTestAction : ToolAction("randomtest")
 class ExportAction : ToolAction("exportHtml")
 class WordCountAction : AnAction() {
-    override fun actionPerformed(e: AnActionEvent) { val project=e.project?:return; val file=FileEditorManager.getInstance(project).selectedFiles.firstOrNull()?:return; request(project, { it.wordCount(mapOf("uri" to file.toNioPath().toUri().toString())) }) { Messages.showInfoMessage(project, "Narrative word count: $it", "ChoiceScript Tools") } }
+    override fun actionPerformed(e: AnActionEvent) { val project=e.project?:return; val file=FileEditorManager.getInstance(project).selectedFiles.firstOrNull()?:return; request(project, { it.wordCount(mapOf("uri" to file.toNioPath().toUri().toString())) }) { Messages.showInfoMessage(project, "Narrative word count: $it", "Branchlight") } }
 }
 class AboutAction : AnAction() {
-    override fun actionPerformed(e: AnActionEvent) { Messages.showInfoMessage(e.project, "Branchlight 0.1.0 — ChoiceScript Tools\nAn independent personal project, unaffiliated with Choice of Games or upstream ChoiceScript.", "About ChoiceScript Tools") }
+    override fun actionPerformed(e: AnActionEvent) { Messages.showInfoMessage(e.project, "Branchlight 0.1.0\nAn independent personal project, unaffiliated with Choice of Games or upstream ChoiceScript.", "About Branchlight") }
 }
 class QuoteWarningsAction : ToggleAction() {
     override fun isSelected(e: AnActionEvent) = e.project?.service<ChoiceSettings>()?.state?.quoteWarnings ?: true
-    override fun setSelected(e: AnActionEvent, state: Boolean) { val project=e.project?:return;project.service<ChoiceSettings>().state.quoteWarnings=state;for(client in LspClientManager.getInstance(project).getClients(ChoiceIntegration::class.java))client.sendNotification { it.workspaceService.didChangeConfiguration(DidChangeConfigurationParams(mapOf("choicescriptTools" to mapOf("quoteWarnings" to state)))) } }
+    override fun setSelected(e: AnActionEvent, state: Boolean) { val project=e.project?:return;project.service<ChoiceSettings>().state.quoteWarnings=state;for(client in LspClientManager.getInstance(project).getClients(ChoiceIntegration::class.java))client.sendNotification { it.workspaceService.didChangeConfiguration(DidChangeConfigurationParams(mapOf("branchlight" to mapOf("quoteWarnings" to state)))) } }
 }
