@@ -4,7 +4,7 @@ const {readFile,mkdtemp,rm} = require('node:fs/promises');
 const {pathToFileURL} = require('node:url');
 const path = require('node:path'); const os = require('node:os'); const assert = require('node:assert/strict');
 const root = path.resolve(__dirname,'..');
-const server = spawn(process.execPath,[path.join(root,'dist/server/server.cjs'),'--stdio'],{stdio:['pipe','pipe','inherit']});
+const server = spawn(process.execPath,[process.env.BRANCHLIGHT_SERVER_PATH || path.join(root,'dist/server/server.cjs'),'--stdio'],{stdio:['pipe','pipe','inherit']});
 const pending = new Map(), events = [], diagnostics = []; let serial=0, buffer=Buffer.alloc(0);
 function send(message) { const body=Buffer.from(JSON.stringify({jsonrpc:'2.0',...message})); server.stdin.write('Content-Length: '+body.length+'\r\n\r\n');server.stdin.write(body); }
 function request(method,params) {const id=++serial;return new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Timeout: '+method)),30000); pending.set(id,{resolve:v=>{clearTimeout(timer);resolve(v)},reject:e=>{clearTimeout(timer);reject(e)}});send({id,method,params});});}

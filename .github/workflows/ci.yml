@@ -16,11 +16,18 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm package:vscode
+      - run: node scripts/extract-vsix.mjs
       - run: node scripts/test-bundle.mjs
       - if: runner.os == 'Linux'
         run: xvfb-run -a node scripts/test-vscode.mjs
       - if: runner.os != 'Linux'
         run: node scripts/test-vscode.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: diagnostics-${{ matrix.os }}
+          path: dist/test-results
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
           name: vscode-${{ matrix.os }}
