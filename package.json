@@ -16,7 +16,7 @@
     "runtime": "node scripts/runtime.mjs",
     "package:vscode": "node scripts/package-vscode.mjs",
     "package:intellij": "node scripts/package-intellij.mjs",
-    "format": "prettier --write \"packages/**/*.ts\" \"editors/vscode/src/*.ts\" \"scripts/*.mjs\"",
+    "format": "prettier --write \"packages/**/*.ts\" \"editors/vscode/src/*.ts\" \"editors/vscode/test/*.cjs\" \"scripts/*.{mjs,cjs}\"",
     "package:all": "pnpm build && node scripts/package-all.mjs && pnpm package:intellij"
   },
   "devDependencies": {

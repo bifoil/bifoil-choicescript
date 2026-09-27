@@ -9,6 +9,14 @@ import type {
   JobResult,
   Operation,
 } from "../../../packages/protocol/src/index.js";
+export interface ToolOptions {
+  projectId?: string;
+  destination?: string;
+  iterations?: number;
+  seed?: number;
+  jobId?: string;
+  openCreatedProject?: boolean;
+}
 let client: LanguageClient | undefined;
 export async function activate(context: vscode.ExtensionContext) {
   const output = vscode.window.createOutputChannel("ChoiceScript Tools"),
@@ -19,6 +27,8 @@ export async function activate(context: vscode.ExtensionContext) {
       ),
     });
   context.subscriptions.push(output, coverage);
+  const events = new vscode.EventEmitter<JobEvent>();
+  context.subscriptions.push(events);
   const completed = new Set<string>();
   const pendingJobs = new Map<
     string,
@@ -79,6 +89,7 @@ export async function activate(context: vscode.ExtensionContext) {
   };
   client.onNotification("choicescript/projectsChanged", update);
   client.onNotification("choicescript/jobEvent", (event: JobEvent) => {
+    events.fire(event);
     if (event.kind === "completed") {
       completed.add(event.jobId);
       pendingJobs.get(event.jobId)?.resolve();
@@ -134,7 +145,7 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     return selected?.project;
   }
-  async function job(operation: Operation) {
+  async function job(operation: Operation, options: ToolOptions = {}) {
     if (operation !== "stop" && !vscode.workspace.isTrusted) {
       await vscode.commands.executeCommand("workbench.trust.manage");
       return;
@@ -142,28 +153,36 @@ export async function activate(context: vscode.ExtensionContext) {
     const request: JobRequest = {
       protocolVersion: 1,
       operation,
-      trusted: true,
+      trusted: vscode.workspace.isTrusted,
+      destination: options.destination,
+      iterations: options.iterations,
+      seed: options.seed,
+      jobId: options.jobId,
     };
     if (operation === "createProject") {
-      const parent = await vscode.window.showOpenDialog({
-        canSelectFiles: false,
-        canSelectFolders: true,
-        canSelectMany: false,
-        openLabel: "Choose parent folder",
-      });
-      if (!parent) return;
-      const name = await vscode.window.showInputBox({
-        prompt: "New project folder name",
-        value: "my-choice-game",
-        validateInput: (s) =>
-          /^[\w -]+$/.test(s)
-            ? undefined
-            : "Use letters, digits, spaces, dashes, or underscores.",
-      });
-      if (!name) return;
-      request.destination = path.join(parent[0].fsPath, name);
+      if (!request.destination) {
+        const parent = await vscode.window.showOpenDialog({
+          canSelectFiles: false,
+          canSelectFolders: true,
+          canSelectMany: false,
+          openLabel: "Choose parent folder",
+        });
+        if (!parent) return;
+        const name = await vscode.window.showInputBox({
+          prompt: "New project folder name",
+          value: "my-choice-game",
+          validateInput: (s) =>
+            /^[\w -]+$/.test(s)
+              ? undefined
+              : "Use letters, digits, spaces, dashes, or underscores.",
+        });
+        if (!name) return;
+        request.destination = path.join(parent[0].fsPath, name);
+      }
     } else {
-      const project = await selectProject();
+      const project = options.projectId
+        ? projects.find((p) => p.id === options.projectId)
+        : await selectProject();
       if (!project) {
         void vscode.window.showInformationMessage(
           "Open a folder containing a ChoiceScript scenes/startup.txt file.",
@@ -171,7 +190,10 @@ export async function activate(context: vscode.ExtensionContext) {
         return;
       }
       request.projectId = project.id;
-      if (operation === "randomtest") {
+      if (
+        operation === "randomtest" &&
+        (options.iterations === undefined || options.seed === undefined)
+      ) {
         const iterations = await vscode.window.showInputBox({
           prompt: "RandomTest iterations",
           value: String(project.randomtest?.iterations ?? 1000),
@@ -191,7 +213,7 @@ export async function activate(context: vscode.ExtensionContext) {
         request.iterations = Number(iterations);
         request.seed = Number(seed);
       }
-      if (operation === "exportHtml") {
+      if (operation === "exportHtml" && !request.destination) {
         const dest = await vscode.window.showSaveDialog({
           filters: { HTML: ["html"] },
           defaultUri: vscode.Uri.file(
@@ -272,12 +294,17 @@ export async function activate(context: vscode.ExtensionContext) {
         });
       });
     }
-    if (operation === "createProject" && request.destination)
+    if (
+      operation === "createProject" &&
+      request.destination &&
+      options.openCreatedProject !== false
+    )
       await vscode.commands.executeCommand(
         "vscode.openFolder",
         vscode.Uri.file(request.destination),
         true,
       );
+    return result;
   }
   for (const operation of [
     "createProject",
@@ -288,8 +315,12 @@ export async function activate(context: vscode.ExtensionContext) {
     "exportHtml",
   ] as Operation[])
     context.subscriptions.push(
-      vscode.commands.registerCommand("choicescriptTools." + operation, () =>
-        job(operation).catch((e) => vscode.window.showErrorMessage(String(e))),
+      vscode.commands.registerCommand(
+        "choicescriptTools." + operation,
+        (options?: ToolOptions) =>
+          job(operation, options).catch((e) =>
+            vscode.window.showErrorMessage(String(e)),
+          ),
       ),
     );
   for (const [name, tag] of [
@@ -300,7 +331,7 @@ export async function activate(context: vscode.ExtensionContext) {
       vscode.commands.registerCommand("choicescriptTools." + name, () => {
         const editor = vscode.window.activeTextEditor;
         if (editor)
-          void editor.edit((edit) => {
+          return editor.edit((edit) => {
             for (const selection of editor.selections)
               edit.replace(
                 selection,
@@ -312,10 +343,16 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("choicescriptTools.wordCount", async () => {
       const uri = vscode.window.activeTextEditor?.document.uri;
-      if (uri)
-        void vscode.window.showInformationMessage(
-          `Narrative word count: ${await client!.sendRequest("choicescript/wordCount", { uri: uri.toString() })}`,
+      if (uri) {
+        const count = await client!.sendRequest<number>(
+          "choicescript/wordCount",
+          { uri: uri.toString() },
         );
+        void vscode.window.showInformationMessage(
+          `Narrative word count: ${count}`,
+        );
+        return count;
+      }
     }),
   );
   context.subscriptions.push(
@@ -331,6 +368,7 @@ export async function activate(context: vscode.ExtensionContext) {
       void client?.stop();
     },
   });
+  return { onJobEvent: events.event, projects: () => [...projects] };
 }
 export async function deactivate() {
   await client?.stop();
