@@ -45,3 +45,5 @@ cd editors/intellij
 Runtime downloads are verified against `runtime-lock.json`. The official ChoiceScript snapshot is already vendored and requires no other checkout. `pnpm generate` regenerates conservative fallback grammar and IntelliJ command metadata. `pnpm test` exercises the shared analyzer and official game tools. `pnpm exec node scripts/test-vscode.mjs` runs the VS Code extension-host smoke test.
 
 See [architecture](docs/architecture.md), [supported features](docs/support.md), [validation results and remaining release gates](docs/validation.md), and [dependency notices](THIRD_PARTY_NOTICES.md).
+
+The [commit roadmap](docs/commit-roadmap.md) lists the remaining work toward the first validated release.
