@@ -87,9 +87,13 @@ function get(uri: string) {
     ? undefined
     : a;
 }
+let discoveryRevision = 0;
 async function refreshProjects() {
+  const discovery = ++discoveryRevision;
   try {
-    projects = await discoverProjects(roots);
+    const found = await discoverProjects([...roots]);
+    if (discovery !== discoveryRevision || disposed) return;
+    projects = found;
     connection.sendNotification("choicescript/projectsChanged", projects);
   } catch (error) {
     connection.window.showErrorMessage(String(error));
@@ -238,6 +242,7 @@ documents.onDidChangeContent((e) => {
 });
 documents.onDidClose(() => schedule());
 connection.onDidChangeWatchedFiles(async () => {
+  schedule();
   await refreshProjects();
   for (const project of projects) runner.markStale(project.id);
   schedule();
@@ -251,6 +256,7 @@ connection.onNotification(
   }) => {
     roots = roots.filter((r) => !event.removed.some((f) => f.uri === r));
     roots.push(...event.added.map((f) => f.uri));
+    schedule();
     await refreshProjects();
     schedule();
   },
@@ -292,15 +298,17 @@ connection.onDocumentSymbol((p) => {
   return a ? documentSymbols(a, p.textDocument.uri) : [];
 });
 connection.onWorkspaceSymbol((p) =>
-  [...analyses.values()].flatMap((a) =>
-    [...a.symbols.values()]
-      .filter((s) => s.name.toLowerCase().includes(p.query.toLowerCase()))
-      .map((s) => ({
-        name: s.name,
-        kind: s.kind === "label" ? 12 : 13,
-        location: { uri: s.uri, range: s.range },
-      })),
-  ),
+  [...analyses.entries()]
+    .filter(([id]) => analysisVersions.get(id) === revision)
+    .flatMap(([, a]) =>
+      [...a.symbols.values()]
+        .filter((s) => s.name.toLowerCase().includes(p.query.toLowerCase()))
+        .map((s) => ({
+          name: s.name,
+          kind: s.kind === "label" ? 12 : 13,
+          location: { uri: s.uri, range: s.range },
+        })),
+    ),
 );
 connection.onFoldingRanges((p) => {
   const a = get(p.textDocument.uri);
