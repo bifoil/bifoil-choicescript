@@ -1,0 +1,29 @@
+{
+  "if/else": {
+    "prefix": "if",
+    "body": [
+      "*if ${1:condition}",
+      "  ${2:text}",
+      "*else",
+      "  ${3:text}"
+    ]
+  },
+  "choice": {
+    "prefix": "choice",
+    "body": [
+      "*choice",
+      "  #${1:First option}",
+      "    ${2:*finish}",
+      "  #${3:Second option}",
+      "    ${4:*finish}"
+    ]
+  },
+  "variable": {
+    "prefix": "create",
+    "body": "*create ${1:name} ${2:0}"
+  },
+  "substitution": {
+    "prefix": "display",
+    "body": "\\${${1:name}}"
+  }
+}

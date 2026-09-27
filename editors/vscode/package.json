@@ -1,0 +1,226 @@
+{
+  "name": "choicescript-tools-unofficial",
+  "displayName": "Branchlight \u2014 ChoiceScript Tools (Unofficial)",
+  "description": "Independent ChoiceScript authoring tools. Unaffiliated with Choice of Games or upstream ChoiceScript.",
+  "version": "0.1.0",
+  "publisher": "chira-independent",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.109.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./dist/extension.cjs",
+  "activationEvents": [
+    "onStartupFinished",
+    "onLanguage:choicescript"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Language analysis works; game execution requires workspace trust."
+    },
+    "virtualWorkspaces": false
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "choicescript",
+        "aliases": [
+          "ChoiceScript"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "choicescript",
+        "scopeName": "source.choicescript",
+        "path": "./syntaxes/choicescript.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "choicescript",
+        "path": "./snippets.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "choicescriptTools.createProject",
+        "title": "New Project",
+        "category": "ChoiceScript Tools"
+      },
+      {
+        "command": "choicescriptTools.run",
+        "title": "Run Game",
+        "category": "ChoiceScript Tools"
+      },
+      {
+        "command": "choicescriptTools.stop",
+        "title": "Stop Game or Tests",
+        "category": "ChoiceScript Tools"
+      },
+      {
+        "command": "choicescriptTools.quicktest",
+        "title": "Run QuickTest",
+        "category": "ChoiceScript Tools"
+      },
+      {
+        "command": "choicescriptTools.randomtest",
+        "title": "Run RandomTest",
+        "category": "ChoiceScript Tools"
+      },
+      {
+        "command": "choicescriptTools.exportHtml",
+        "title": "Export HTML",
+        "category": "ChoiceScript Tools"
+      },
+      {
+        "command": "choicescriptTools.wordCount",
+        "title": "Show Narrative Word Count",
+        "category": "ChoiceScript Tools"
+      },
+      {
+        "command": "choicescriptTools.bold",
+        "title": "Bold Selection",
+        "category": "ChoiceScript Tools"
+      },
+      {
+        "command": "choicescriptTools.italic",
+        "title": "Italicize Selection",
+        "category": "ChoiceScript Tools"
+      },
+      {
+        "command": "choicescriptTools.about",
+        "title": "About",
+        "category": "ChoiceScript Tools"
+      }
+    ],
+    "configuration": {
+      "title": "ChoiceScript Tools",
+      "properties": {
+        "choicescriptTools.quoteWarnings": {
+          "type": "boolean",
+          "default": true,
+          "description": "Report inconsistent or unclosed narrative dialogue separately from expression syntax errors."
+        }
+      }
+    },
+    "configurationDefaults": {
+      "[choicescript]": {
+        "editor.semanticHighlighting.enabled": true,
+        "editor.quickSuggestions": {
+          "other": false,
+          "comments": false,
+          "strings": false
+        },
+        "editor.insertSpaces": true,
+        "editor.tabSize": 2
+      },
+      "editor.semanticTokenColorCustomizations": {
+        "rules": {
+          "*.bold:choicescript": {
+            "bold": true
+          },
+          "*.italic:choicescript": {
+            "italic": true
+          }
+        }
+      }
+    },
+    "semanticTokenTypes": [
+      {
+        "id": "stringVariable",
+        "description": "stringVariable in ChoiceScript",
+        "superType": "variable"
+      },
+      {
+        "id": "numberVariable",
+        "description": "numberVariable in ChoiceScript",
+        "superType": "variable"
+      },
+      {
+        "id": "booleanVariable",
+        "description": "booleanVariable in ChoiceScript",
+        "superType": "variable"
+      },
+      {
+        "id": "dialogue",
+        "description": "dialogue in ChoiceScript",
+        "superType": "string"
+      },
+      {
+        "id": "boolean",
+        "description": "boolean in ChoiceScript",
+        "superType": "type"
+      },
+      {
+        "id": "label",
+        "description": "label in ChoiceScript",
+        "superType": "type"
+      },
+      {
+        "id": "narrative",
+        "description": "narrative in ChoiceScript"
+      },
+      {
+        "id": "markup",
+        "description": "markup in ChoiceScript"
+      },
+      {
+        "id": "interpolation",
+        "description": "interpolation in ChoiceScript"
+      }
+    ],
+    "semanticTokenModifiers": [
+      {
+        "id": "bold",
+        "description": "bold narrative markup"
+      },
+      {
+        "id": "italic",
+        "description": "italic narrative markup"
+      }
+    ],
+    "semanticTokenScopes": [
+      {
+        "language": "choicescript",
+        "scopes": {
+          "stringVariable": [
+            "string.quoted.double"
+          ],
+          "numberVariable": [
+            "constant.numeric"
+          ],
+          "booleanVariable": [
+            "constant.language.boolean"
+          ],
+          "boolean": [
+            "constant.language.boolean"
+          ],
+          "dialogue": [
+            "string.quoted.other.dialogue"
+          ],
+          "label": [
+            "entity.name.function"
+          ],
+          "narrative": [
+            "text.plain"
+          ],
+          "markup": [
+            "punctuation.definition.tag"
+          ],
+          "interpolation": [
+            "punctuation.section.interpolation"
+          ]
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "test:editor": "node ../../scripts/test-vscode.mjs"
+  },
+  "private": true
+}

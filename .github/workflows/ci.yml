@@ -1,0 +1,46 @@
+name: Build and verify
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  javascript:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, windows-2025, windows-11-arm, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: {version: 10.29.3}
+      - uses: actions/setup-node@v4
+        with: {node-version: 24.21.0, cache: pnpm}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm package:vscode
+      - run: node scripts/test-bundle.mjs
+      - if: runner.os == 'Linux'
+        run: xvfb-run -a node scripts/test-vscode.mjs
+      - if: runner.os != 'Linux'
+        run: node scripts/test-vscode.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vscode-${{ matrix.os }}
+          path: dist/packages/*.vsix
+  intellij:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: {version: 10.29.3}
+      - uses: actions/setup-node@v4
+        with: {node-version: 24.21.0, cache: pnpm}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: 21}
+      - uses: gradle/actions/setup-gradle@v4
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm package:intellij
+      - run: bash editors/intellij/gradlew -p editors/intellij test buildPlugin verifyPlugin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: intellij-plugin
+          path: editors/intellij/build/distributions/*.zip
