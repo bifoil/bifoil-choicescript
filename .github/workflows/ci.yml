@@ -33,6 +33,10 @@ jobs:
           name: vscode-${{ matrix.os }}
           path: dist/packages/*.vsix
   intellij:
+    strategy:
+      fail-fast: false
+      matrix:
+        product: [idea, webstorm, pycharm]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -46,8 +50,16 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm package:intellij
-      - run: bash editors/intellij/gradlew -p editors/intellij test buildPlugin verifyPlugin
+      - run: bash editors/intellij/gradlew -p editors/intellij -PplatformProduct=${{ matrix.product }} test buildPlugin verifyPlugin
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: diagnostics-intellij-${{ matrix.product }}
+          path: |
+            editors/intellij/build/reports
+            editors/intellij/build/test-results
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
-          name: intellij-plugin
+          name: intellij-${{ matrix.product }}
           path: editors/intellij/build/distributions/*.zip

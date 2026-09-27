@@ -60,7 +60,7 @@ class ChoiceIntegrationTest : BasePlatformTestCase() {
             override fun registerCapability(value: RegistrationParams) = CompletableFuture.completedFuture<Void>(null)
             override fun refreshSemanticTokens() = CompletableFuture.completedFuture<Void>(null)
         }
-        val launcher = LSPLauncher.createClientLauncher(client, process.inputStream, process.outputStream)
+        val launcher = org.eclipse.lsp4j.jsonrpc.Launcher.Builder<ChoiceServer>().setLocalService(client).setRemoteInterface(ChoiceServer::class.java).setInput(process.inputStream).setOutput(process.outputStream).create()
         val listening = launcher.startListening()
         try {
             val server = launcher.remoteProxy
@@ -85,6 +85,19 @@ class ChoiceIntegrationTest : BasePlatformTestCase() {
             assertEquals("dialogue", kind(2, 10)); assertEquals("string", kind(3, 15))
             assertEquals("dialogue", kind(4, 4)); assertEquals("dialogue", kind(6, 4))
             assertEquals("narrative", kind(7, 0))
+            val games = server.projects().get(10, TimeUnit.SECONDS)
+            assertEquals(1, games.size)
+            val completion = server.textDocumentService.completion(CompletionParams(TextDocumentIdentifier(uri), Position(3, 5))).get(10, TimeUnit.SECONDS)
+            assertTrue((completion.left ?: completion.right.items).any { it.label == "gender" })
+            val rename = server.textDocumentService.rename(RenameParams(TextDocumentIdentifier(uri), Position(3, 5), "identity")).get(10, TimeUnit.SECONDS)
+            assertEquals(2, rename.changes[uri]!!.size)
+            try {
+                server.job(mapOf("protocolVersion" to 1, "operation" to "run", "projectId" to games.single().id, "trusted" to false)).get(10, TimeUnit.SECONDS)
+                fail("Untrusted execution must be refused")
+            } catch (error: java.util.concurrent.ExecutionException) {
+                assertTrue(error.cause.toString().contains("Trust"))
+            }
+            assertTrue(server.textDocumentService.semanticTokensFull(SemanticTokensParams(TextDocumentIdentifier(uri))).get(10, TimeUnit.SECONDS).data.isNotEmpty())
             server.shutdown().get(5, TimeUnit.SECONDS); server.exit()
         } finally { listening.cancel(true); process.destroyForcibly(); com.intellij.openapi.util.io.FileUtil.delete(directory.toFile()) }
     }
