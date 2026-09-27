@@ -35,10 +35,14 @@ type Job = {
   stale: boolean;
   cancelled: boolean;
   completion?: Promise<void>;
+  stopping?: Promise<void>;
 };
 export class ToolRunner {
   readonly jobs = new Map<string, Job>();
   private readonly results = new Map<string, Job>();
+  private readonly starts = new Map<string, Promise<void>>();
+  private readonly revisions = new Map<string, number>();
+  private closing = false;
   constructor(
     readonly engine: string,
     readonly emit: (event: JobEvent) => void,
@@ -171,6 +175,29 @@ export class ToolRunner {
     project: Project,
     buffers: BufferSnapshot[],
   ): Promise<JobResult> {
+    if (this.closing) throw new Error("Game tooling is shutting down.");
+    const revision = this.revisions.get(project.id) ?? 0;
+    const snapshot = buffers.map((buffer) => ({ ...buffer }));
+    const result = (this.starts.get(project.id) ?? Promise.resolve()).then(() =>
+      this.startNow({ ...request }, project, snapshot, revision),
+    );
+    const settled = result.then(
+      () => {},
+      () => {},
+    );
+    this.starts.set(project.id, settled);
+    void settled.then(() => {
+      if (this.starts.get(project.id) === settled)
+        this.starts.delete(project.id);
+    });
+    return result;
+  }
+  private async startNow(
+    request: JobRequest,
+    project: Project,
+    buffers: BufferSnapshot[],
+    revision: number,
+  ): Promise<JobResult> {
     if (
       !["stop", "run", "quicktest", "randomtest", "exportHtml"].includes(
         request.operation,
@@ -188,12 +215,17 @@ export class ToolRunner {
           if (j.project.id === project.id) await this.stop(j.id);
       return { jobId: request.jobId ?? "", projectId: project.id };
     }
+    if (request.operation === "run") {
+      for (const job of this.jobs.values())
+        if (job.project.id === project.id && job.server)
+          await this.stop(job.id);
+    }
     const stage = await this.stage(project, buffers),
       job: Job = {
         id: randomUUID(),
         project,
         stage,
-        stale: false,
+        stale: revision !== (this.revisions.get(project.id) ?? 0),
         cancelled: false,
       };
     this.jobs.set(job.id, job);
@@ -427,6 +459,7 @@ export class ToolRunner {
     return { jobId: job.id, projectId: job.project.id, url };
   }
   markStale(projectId: string) {
+    this.revisions.set(projectId, (this.revisions.get(projectId) ?? 0) + 1);
     for (const job of [...this.jobs.values(), ...this.results.values()])
       if (job.project.id === projectId && !job.stale) {
         job.stale = true;
@@ -439,6 +472,9 @@ export class ToolRunner {
   async stop(id: string) {
     const job = this.jobs.get(id);
     if (!job) return;
+    return (job.stopping ??= this.stopJob(job));
+  }
+  private async stopJob(job: Job) {
     job.cancelled = true;
     if (job.child) {
       job.child.kill();
@@ -455,11 +491,13 @@ export class ToolRunner {
       job.server.closeAllConnections();
       await new Promise<void>((resolve) => job.server!.close(() => resolve()));
     }
-    this.jobs.delete(id);
+    this.jobs.delete(job.id);
     await rm(job.stage, { recursive: true, force: true });
     this.event(job, "completed", { exitCode: 130 });
   }
   async dispose() {
+    this.closing = true;
+    await Promise.all(this.starts.values());
     await Promise.all([...this.jobs.keys()].map((id) => this.stop(id)));
   }
 }
