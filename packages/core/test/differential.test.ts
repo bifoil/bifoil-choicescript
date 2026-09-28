@@ -2,16 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
-import { analyzeProject, parseDocument } from "../src/index.js";
+import { analyzeProject, parseDocument } from "@branchlight/core";
+
 const uri = "file:///differential/scenes/startup.txt";
 function engine() {
   const context = vm.createContext({ console });
   for (const name of ["scene", "util"])
     vm.runInContext(
-      readFileSync(
-        new URL(`../../../vendor/choicescript/web/${name}.js`, import.meta.url),
-        "utf8",
-      ),
+      readFileSync(new URL(`../../../vendor/choicescript/web/${name}.js`, import.meta.url), "utf8"),
       context,
     );
   vm.runInContext(
@@ -43,19 +41,12 @@ test("expression combinations agree with the pinned interpreter", () => {
   ]) {
     let accepted = true;
     try {
-      vm.runInContext(
-        `scene.evaluateExpr(scene.tokenizeExpr(${JSON.stringify(expression)}))`,
-        context,
-      );
+      vm.runInContext(`scene.evaluateExpr(scene.tokenizeExpr(${JSON.stringify(expression)}))`, context);
     } catch {
       accepted = false;
     }
     const parsed = parseDocument(uri, "*print " + expression);
-    assert.equal(
-      !parsed.diagnostics.some((d) => d.severity === 1),
-      accepted,
-      expression,
-    );
+    assert.equal(!parsed.diagnostics.some((d) => d.severity === 1), accepted, expression);
   }
 });
 test("interpolation and multireplace match engine text retain expression token boundaries", () => {
@@ -67,19 +58,11 @@ test("interpolation and multireplace match engine text retain expression token b
     ["${items[index]} and $!{name}", "20 and Alex"],
   ]);
   for (const [source, expected] of cases) {
-    assert.equal(
-      vm.runInContext(
-        `scene.replaceVariables(${JSON.stringify(source)})`,
-        context,
-      ),
-      expected,
-    );
+    assert.equal(vm.runInContext(`scene.replaceVariables(${JSON.stringify(source)})`, context), expected);
     const parsed = parseDocument(uri, source);
     assert(!parsed.diagnostics.some((d) => d.severity === 1), source);
     assert(
-      parsed.lines
-        .flatMap((line) => line.tokens)
-        .some((t) => t.type === "interpolation"),
+      parsed.lines.flatMap((line) => line.tokens).some((t) => t.type === "interpolation"),
       source,
     );
   }
@@ -116,10 +99,7 @@ test("seeded conditional mutations retain local recovery and independent alterna
       );
     assert(tokens.some((t) => t.line === 9 && t.type === "narrative"));
     const diagnostics = result.diagnostics.get(uri)!;
-    assert.equal(
-      diagnostics.filter((d) => d.code === "expression-string").length,
-      malformed ? 1 : 0,
-    );
+    assert.equal(diagnostics.filter((d) => d.code === "expression-string").length, malformed ? 1 : 0);
     assert(!diagnostics.some((d) => d.code.startsWith("quote-")));
   }
 });
@@ -127,15 +107,8 @@ test("static parsing does not mistake runtime-only failures for syntax errors", 
   const context = engine();
   for (const expression of ["missing_variable", "items[99]"]) {
     assert.throws(() =>
-      vm.runInContext(
-        `scene.evaluateExpr(scene.tokenizeExpr(${JSON.stringify(expression)}))`,
-        context,
-      ),
+      vm.runInContext(`scene.evaluateExpr(scene.tokenizeExpr(${JSON.stringify(expression)}))`, context),
     );
-    assert(
-      !parseDocument(uri, "*print " + expression).diagnostics.some((d) =>
-        d.code.startsWith("expression-"),
-      ),
-    );
+    assert(!parseDocument(uri, "*print " + expression).diagnostics.some((d) => d.code.startsWith("expression-")));
   }
 });

@@ -1,13 +1,7 @@
 import commands from "./commands.json" with { type: "json" };
-import {
-  type Document,
-  type Line,
-  type Span,
-  type Expr,
-  diagnostic,
-  sceneName,
-} from "./types.js";
-import { lex, parseExpression, valueGroups } from "./expression.js";
+import { diagnostic, type Document, type Expr, type Line, sceneName } from "./types.js";
+import { lex, parseExpression, referenceGroups, valueGroups } from "./expression.js";
+
 export const commandDocs: Record<string, string> = commands;
 const blocks = new Set([
   "if",
@@ -21,56 +15,25 @@ const blocks = new Set([
   "achievement",
   "goto_random_scene",
 ]);
-const metadata = new Set([
-  "scene_list",
-  "stat_chart",
-  "achievement",
-  "goto_random_scene",
-]);
-const expressions = new Set([
-  "if",
-  "elseif",
-  "elsif",
-  "selectable_if",
-  "print",
-  "looplimit",
-]);
+const metadata = new Set(["scene_list", "stat_chart", "achievement", "goto_random_scene"]);
+const expressions = new Set(["if", "elseif", "elsif", "selectable_if", "print", "looplimit"]);
 const declaration = new Set(["create", "temp", "create_array", "temp_array"]);
-function addExpression(
-  doc: Document,
-  node: Line,
-  text: string,
-  start: number,
-  partial = false,
-): Expr {
+function addExpression(doc: Document, node: Line, text: string, start: number, partial = false): Expr {
   const tokens = lex(text, node.line, start, doc.diagnostics);
   node.tokens.push(...tokens.map((t) => t.span));
   return parseExpression(tokens, doc.diagnostics, partial);
 }
 export function matching(text: string, start: number): number {
-  let depth = 1,
-    quoted = false;
+  // The interpreter balances raw braces before evaluating the expression or
+  // replacement alternatives. Quotes in alternatives are narrative punctuation.
+  let depth = 1;
   for (let i = start + 1; i < text.length; i++) {
-    if (text[i] === "\\") {
-      i++;
-      continue;
-    }
-    if (text[i] === '"') {
-      quoted = !quoted;
-      continue;
-    }
-    if (quoted) continue;
     if (text[i] === "{") depth++;
     if (text[i] === "}" && !--depth) return i;
   }
   return -1;
 }
-export function narrative(
-  doc: Document,
-  node: Line,
-  start: number,
-  end = node.raw.length,
-): void {
+export function narrative(doc: Document, node: Line, start: number, end = node.raw.length): void {
   const text = node.raw;
   for (let i = start; i < end; ) {
     const substitution = /^([$@])(!{0,2})\{/.exec(text.slice(i));
@@ -79,13 +42,7 @@ export function narrative(
         close = matching(text, open);
       if (close < 0 || close >= end) {
         doc.diagnostics.push(
-          diagnostic(
-            node.line,
-            i,
-            end - i,
-            "interpolation-close",
-            "Substitution must close on this line.",
-          ),
+          diagnostic(node.line, i, end - i, "interpolation-close", "Substitution must close on this line."),
         );
         node.tokens.push({
           line: node.line,
@@ -132,13 +89,7 @@ export function narrative(
           const options = body.slice(split + 1);
           if (!options.includes("|"))
             doc.diagnostics.push(
-              diagnostic(
-                node.line,
-                i,
-                close - i + 1,
-                "multireplace-options",
-                "Provide at least two alternatives.",
-              ),
+              diagnostic(node.line, i, close - i + 1, "multireplace-options", "Provide at least two alternatives."),
             );
           let pos = open + split + 2;
           for (const part of options.split("|")) {
@@ -150,9 +101,7 @@ export function narrative(
       i = close + 1;
       continue;
     }
-    const tag = /^\[\/?(?:b|i|u|s|url|n|c)(?:=[^\]]*)?\/?\]/i.exec(
-      text.slice(i),
-    );
+    const tag = /^\[\/?(?:b|i|u|s|url|n|c)(?:=[^\]]*)?\/?]/i.exec(text.slice(i));
     if (tag) {
       node.tokens.push({
         line: node.line,
@@ -172,13 +121,7 @@ function command(doc: Document, node: Line): void {
     s = node.argStart;
   if (!commandDocs[c] && !["selectable_if"].includes(c))
     doc.diagnostics.push(
-      diagnostic(
-        node.line,
-        node.indent,
-        c.length + 1,
-        "unknown-command",
-        `Unknown ChoiceScript command *${c}.`,
-      ),
+      diagnostic(node.line, node.indent, c.length + 1, "unknown-command", `Unknown ChoiceScript command *${c}.`),
     );
   if (["hide_reuse", "disable_reuse", "allow_reuse"].includes(c)) {
     const option = a.indexOf("#");
@@ -201,15 +144,7 @@ function command(doc: Document, node: Line): void {
   }
   if (
     declaration.has(c) ||
-    [
-      "set",
-      "setref",
-      "delete",
-      "delete_array",
-      "rand",
-      "input_text",
-      "input_number",
-    ].includes(c)
+    ["set", "setref", "delete", "delete_array", "rand", "input_text", "input_number"].includes(c)
   ) {
     const ts = lex(a, node.line, s, doc.diagnostics);
     let end = 1;
@@ -241,33 +176,13 @@ function command(doc: Document, node: Line): void {
       node.targetToken = ts[0].span;
       if (declaration.has(c)) node.targetToken.modifiers = ["declaration"];
     }
-    if (!ts[0])
-      doc.diagnostics.push(
-        diagnostic(
-          node.line,
-          s,
-          1,
-          "missing-variable",
-          "Expected a variable name.",
-        ),
-      );
+    if (!ts[0]) doc.diagnostics.push(diagnostic(node.line, s, 1, "missing-variable", "Expected a variable name."));
     if (declaration.has(c) && ts[0] && !/^[a-z]\w*$/i.test(ts[0].text))
       doc.diagnostics.push(
-        diagnostic(
-          node.line,
-          s,
-          ts[0].text.length,
-          "variable-name",
-          "Variable names must start with a letter.",
-        ),
+        diagnostic(node.line, s, ts[0].text.length, "variable-name", "Variable names must start with a letter."),
       );
     let rest = ts.slice(end);
-    if (
-      c === "set" &&
-      rest[0]?.kind === "operator" &&
-      !["(", "{"].includes(rest[0].text) &&
-      node.targetToken
-    )
+    if (c === "set" && rest[0]?.kind === "operator" && !["(", "{"].includes(rest[0].text) && node.targetToken)
       node.expr = {
         kind: "binary",
         op: rest[0].text,
@@ -278,19 +193,8 @@ function command(doc: Document, node: Line): void {
         },
         right: parseExpression(rest.slice(1), doc.diagnostics),
       };
-    else if (
-      !c.endsWith("_array") &&
-      ![
-        "rand",
-        "input_text",
-        "input_number",
-        "delete",
-        "delete_array",
-      ].includes(c)
-    )
-      node.expr = rest.length
-        ? parseExpression(rest, doc.diagnostics)
-        : { kind: "unknown" };
+    else if (!c.endsWith("_array") && !["rand", "input_text", "input_number", "delete", "delete_array"].includes(c))
+      node.expr = rest.length ? parseExpression(rest, doc.diagnostics) : { kind: "unknown" };
     if (
       c === "create" &&
       rest.length &&
@@ -308,19 +212,9 @@ function command(doc: Document, node: Line): void {
         ),
       );
     if ((c === "create" || c === "set") && !rest.length)
-      doc.diagnostics.push(
-        diagnostic(
-          node.line,
-          s + a.length,
-          1,
-          "missing-value",
-          "Expected a value.",
-        ),
-      );
+      doc.diagnostics.push(diagnostic(node.line, s + a.length, 1, "missing-value", "Expected a value."));
     if (c.endsWith("_array")) {
-      node.expressions = valueGroups(rest).map((t) =>
-        parseExpression(t, doc.diagnostics),
-      );
+      node.expressions = valueGroups(rest).map((t) => parseExpression(t, doc.diagnostics));
       node.expr = node.expressions[1];
     }
   } else if (expressions.has(c)) {
@@ -347,67 +241,35 @@ function command(doc: Document, node: Line): void {
     }
     node.expr = addExpression(doc, node, expr, s);
     if (!expr.trim())
-      doc.diagnostics.push(
-        diagnostic(
-          node.line,
-          s,
-          1,
-          "missing-expression",
-          "Expected an expression.",
-        ),
-      );
-  } else if (
-    [
-      "label",
-      "goto",
-      "gosub",
-      "goto_scene",
-      "gosub_scene",
-      "redirect_scene",
-      "gotoref",
-    ].includes(c)
-  ) {
-    const ts = lex(a, node.line, s, doc.diagnostics);
+      doc.diagnostics.push(diagnostic(node.line, s, 1, "missing-expression", "Expected an expression."));
+  } else if (["label", "goto", "gosub", "goto_scene", "gosub_scene", "redirect_scene", "gotoref"].includes(c)) {
+    const count = c.endsWith("_scene") ? 2 : 1;
+    const groups =
+      c === "gotoref"
+        ? valueGroups(lex(a, node.line, s, doc.diagnostics))
+        : referenceGroups(a, node.line, s, doc.diagnostics, count);
+    const ts = groups.flat();
     node.tokens.push(...ts.map((t) => t.span));
-    for (let i = 0; i < ts.length; i++) {
-      if (
-        c !== "gotoref" &&
-        ts[i].kind === "variable" &&
-        (i === 0 || (c.endsWith("_scene") && i === 1))
-      )
-        ts[i].span.type = "label";
-    }
+    for (const group of c === "gotoref" ? [] : groups.slice(0, count))
+      if (group.length === 1 && group[0].kind === "variable") group[0].span.type = "label";
     if (ts[0]) {
-      node.targetExpr = parseExpression(valueGroups(ts)[0] ?? [], [], true);
+      node.targetExpr =
+        ts[0].kind === "reference" ? { kind: "literal", value: ts[0].text } : parseExpression(groups[0], [], true);
       node.target = ts[0].text.toLowerCase();
       node.targetToken = ts[0].span;
       if (c === "label") node.targetToken.modifiers = ["declaration"];
     }
   } else if (c === "params") {
     const ts = lex(a, node.line, s, doc.diagnostics);
-    node.tokens.push(
-      ...ts.map((t) => ({ ...t.span, modifiers: ["declaration"] })),
-    );
+    node.tokens.push(...ts.map((t) => ({ ...t.span, modifiers: ["declaration"] })));
   } else if (["else", "return", "finish", "ending"].includes(c) && a.trim()) {
     if (c === "else")
-      doc.diagnostics.push(
-        diagnostic(
-          node.line,
-          s,
-          a.length,
-          "unexpected-argument",
-          "Nothing may follow *else.",
-        ),
-      );
+      doc.diagnostics.push(diagnostic(node.line, s, a.length, "unexpected-argument", "Nothing may follow *else."));
   } else if (c === "script") {
     /* JavaScript is opaque to the ChoiceScript analyzer. */
   } else if (!blocks.has(c)) narrative(doc, node, s);
 }
-export function parseDocument(
-  uri: string,
-  text: string,
-  version = 0,
-): Document {
+export function parseDocument(uri: string, text: string, version = 0): Document {
   const doc: Document = {
     uri,
     text,
@@ -452,27 +314,13 @@ export function parseDocument(
       node.parent = stack.at(-1);
       (node.parent?.children ?? doc.roots).push(node);
     }
-    if (/[ \t]/.test(whitespace)) {
+    if (body && /[ \t]/.test(whitespace)) {
       const style = whitespace.includes("\t") ? "tabs" : "spaces";
-      if (
-        (whitespace.includes(" ") && whitespace.includes("\t")) ||
-        (indentStyle && style !== indentStyle)
-      )
-        doc.diagnostics.push(
-          diagnostic(
-            line,
-            0,
-            indent,
-            "mixed-indentation",
-            "Use a consistent indentation style.",
-          ),
-        );
+      if ((whitespace.includes(" ") && whitespace.includes("\t")) || (indentStyle && style !== indentStyle))
+        doc.diagnostics.push(diagnostic(line, 0, indent, "mixed-indentation", "Use a consistent indentation style."));
       indentStyle ||= style;
     }
-    if (
-      (node.parent && metadata.has(node.parent.command ?? "")) ||
-      node.parent?.kind === "metadata"
-    )
+    if ((node.parent && metadata.has(node.parent.command ?? "")) || node.parent?.kind === "metadata")
       node.kind = "metadata";
     if (node.kind === "command" || node.kind === "comment") {
       const m = /^\*(\w+)(?:\s*(.*))?$/.exec(body);
@@ -487,19 +335,10 @@ export function parseDocument(
           type: "keyword",
         });
         command(doc, node);
-      } else
-        doc.diagnostics.push(
-          diagnostic(
-            line,
-            indent,
-            body.length,
-            "command-syntax",
-            "Expected a command name.",
-          ),
-        );
+      } else doc.diagnostics.push(diagnostic(line, indent, body.length, "command-syntax", "Expected a command name."));
     } else if (node.kind === "metadata") {
       if (node.parent?.command === "scene_list") {
-        const m = /^(?:\$\S+\s+)?(\w+)/.exec(body);
+        const m = /^(?:\$\S+\s+)?(\S+)/.exec(body);
         if (m)
           node.tokens.push({
             line,
@@ -523,8 +362,7 @@ export function parseDocument(
         } else narrative(doc, node, indent);
       }
     } else if (node.kind === "prose" || node.kind === "option") {
-      if (node.kind === "option")
-        node.tokens.push({ line, start: indent, length: 1, type: "operator" });
+      if (node.kind === "option") node.tokens.push({ line, start: indent, length: 1, type: "operator" });
       narrative(doc, node, indent + (node.kind === "option" ? 1 : 0));
     }
     doc.lines.push(node);
@@ -564,9 +402,7 @@ export function parseDocument(
         ),
       );
     if (["else", "elseif", "elsif"].includes(node.command ?? "")) {
-      const siblings = (node.parent?.children ?? doc.roots).filter(
-        (n) => !["blank", "comment"].includes(n.kind),
-      );
+      const siblings = (node.parent?.children ?? doc.roots).filter((n) => !["blank", "comment"].includes(n.kind));
       const previous = siblings[siblings.indexOf(node) - 1];
       if (!["if", "elseif", "elsif"].includes(previous?.command ?? ""))
         doc.diagnostics.push(

@@ -1,20 +1,22 @@
-import { parseDocument, matching } from "./parser.js";
-import { evaluate, lex, parseExpression, valueGroups } from "./expression.js";
+import { Worklist } from "./worklist.js";
+import { Environment, sameValue } from "./environment.js";
+import { matching, parseDocument } from "./parser.js";
+import { evaluate, lex, parseExpression, referenceGroups, valueGroups } from "./expression.js";
 import {
   type Analysis,
-  type Document,
-  type Line,
-  type Span,
-  type Value,
-  type SymbolInfo,
-  type Diagnostic,
-  range,
   diagnostic,
-  literal,
-  unknown,
+  type Document,
   joinValue,
+  type Line,
+  literal,
+  range,
+  type Span,
+  type SymbolInfo,
+  unknown,
+  type Value,
 } from "./types.js";
-type State = { quote: number; paragraph: boolean; env: Map<string, Value> };
+
+type State = { quote: number; paragraph: boolean; env: Environment };
 type Node = { line: Line; next: string[] };
 type Waiting = {
   context: string;
@@ -26,15 +28,18 @@ type Waiting = {
 const clone = (s: State): State => ({
   quote: s.quote,
   paragraph: s.paragraph,
-  env: new Map(s.env),
+  env: s.env.clone(),
 });
-const same = (a: unknown, b: unknown) =>
-  JSON.stringify(a) === JSON.stringify(b);
 function merge(a: State | undefined, b: State): State {
   if (!a) return clone(b);
-  const env = new Map<string, Value>();
-  for (const k of new Set([...a.env.keys(), ...b.env.keys()]))
-    env.set(k, joinValue(a.env.get(k) ?? unknown(), b.env.get(k) ?? unknown()));
+  const env = a.env.clone();
+  if (!a.env.shares(b.env)) {
+    for (const [k, value] of a.env) {
+      const other = b.env.get(k) ?? unknown();
+      if (!sameValue(value, other)) env.set(k, joinValue(value, other));
+    }
+    for (const [k, value] of b.env) if (!a.env.has(k)) env.set(k, joinValue(unknown(), value));
+  }
   return {
     quote: a.quote | b.quote,
     paragraph: a.paragraph && b.paragraph,
@@ -46,16 +51,17 @@ function equal(a: State | undefined, b: State): boolean {
     !!a &&
     a.quote === b.quote &&
     a.paragraph === b.paragraph &&
-    a.env.size === b.env.size &&
-    [...a.env].every(([k, v]) => same(v, b.env.get(k)))
+    (a.env.shares(b.env) || (a.env.size === b.env.size && [...a.env].every(([k, v]) => sameValue(v, b.env.get(k)))))
   );
 }
 function advance(mask: number, char: string, continuation = false): number {
+  // Unknown generated text cannot become a provable branch disagreement simply
+  // because later punctuation eliminates one of the possible quote styles.
+  if (mask === 7) return 7;
   let next = 0;
   for (const bit of [1, 2, 4])
     if (mask & bit) {
-      if (char === '"')
-        next |= bit === 2 ? (continuation ? 2 : 1) : bit === 1 ? 2 : bit;
+      if (char === '"') next |= bit === 2 ? (continuation ? 2 : 1) : bit === 1 ? 2 : bit;
       else if (char === "“") next |= bit === 1 ? 4 : bit;
       else if (char === "”") next |= bit === 4 ? 1 : bit;
       else next |= bit;
@@ -69,17 +75,9 @@ function graph(doc: Document, nodes: Map<string, Node>): string | undefined {
     let next = after;
     for (let i = lines.length - 1; i >= 0; i--) {
       const line = lines[i];
-      if (
-        line.command === "else" ||
-        line.command === "elseif" ||
-        line.command === "elsif"
-      ) {
+      if (line.command === "else" || line.command === "elseif" || line.command === "elsif") {
         let start = i;
-        while (
-          start >= 0 &&
-          ["else", "elseif", "elsif"].includes(lines[start].command ?? "")
-        )
-          start--;
+        while (start >= 0 && ["else", "elseif", "elsif"].includes(lines[start].command ?? "")) start--;
         if (start >= 0 && lines[start].command === "if") {
           let alternative = next;
           for (let j = i; j >= start; j--) {
@@ -87,10 +85,7 @@ function graph(doc: Document, nodes: Map<string, Node>): string | undefined {
             const body = block(branch.children, next);
             nodes.set(branch.id, {
               line: branch,
-              next:
-                branch.command === "else"
-                  ? body
-                  : [...new Set([...body, ...alternative])],
+              next: branch.command === "else" ? body : [...new Set([...body, ...alternative])],
             });
             alternative = [branch.id];
           }
@@ -105,23 +100,15 @@ function graph(doc: Document, nodes: Map<string, Node>): string | undefined {
           next: [...new Set([...block(line.children, next), ...next])],
         });
       else if (line.command === "choice" || line.command === "fake_choice") {
-        const options = line.children.filter(
-          (n) => n.kind !== "blank" && n.kind !== "comment",
-        );
+        const options = line.children.filter((n) => n.kind !== "blank" && n.kind !== "comment");
         const targets = options.flatMap((option) => block([option], next));
         nodes.set(line.id, { line, next: targets.length ? targets : next });
       } else if (
         line.kind === "metadata" ||
-        [
-          "scene_list",
-          "stat_chart",
-          "achievement",
-          "goto_random_scene",
-        ].includes(line.command ?? "")
+        ["scene_list", "stat_chart", "achievement", "goto_random_scene"].includes(line.command ?? "")
       ) {
         nodes.set(line.id, { line, next });
-        for (const child of line.children)
-          nodes.set(child.id, { line: child, next: [] });
+        for (const child of line.children) nodes.set(child.id, { line: child, next: [] });
       } else
         nodes.set(line.id, {
           line,
@@ -142,9 +129,7 @@ export function analyzeProject(
   input: { uri: string; text: string; version?: number }[],
   options: AnalyzeOptions = {},
 ): Analysis {
-  const documents = new Map(
-    input.map((d) => [d.uri, parseDocument(d.uri, d.text, d.version)]),
-  );
+  const documents = new Map(input.map((d) => [d.uri, parseDocument(d.uri, d.text, d.version)]));
   const result: Analysis = {
     documents,
     tokens: new Map(),
@@ -177,15 +162,9 @@ export function analyzeProject(
     for (const line of doc.lines) {
       const c = line.command ?? "";
       const declarations =
-        c === "params"
-          ? line.tokens.filter((t) => t.type === "variable")
-          : line.targetToken
-            ? [line.targetToken]
-            : [];
+        c === "params" ? line.tokens.filter((t) => t.type === "variable") : line.targetToken ? [line.targetToken] : [];
       for (const token of declarations) {
-        const name = line.raw
-          .slice(token.start, token.start + token.length)
-          .toLowerCase();
+        const name = line.raw.slice(token.start, token.start + token.length).toLowerCase();
         const kind =
           c === "label"
             ? "label"
@@ -195,22 +174,11 @@ export function analyzeProject(
                 ? "local"
                 : undefined;
         if (!kind) continue;
-        const id =
-          kind === "global"
-            ? "global:" + name
-            : kind + ":" + doc.uri + ":" + name;
+        const id = kind === "global" ? "global:" + name : kind + ":" + doc.uri + ":" + name;
         if (result.symbols.has(id) && kind !== "local")
           result.diagnostics
             .get(doc.uri)!
-            .push(
-              diagnostic(
-                line.line,
-                token.start,
-                token.length,
-                "duplicate-symbol",
-                `Duplicate ${kind} ${name}.`,
-              ),
-            );
+            .push(diagnostic(line.line, token.start, token.length, "duplicate-symbol", `Duplicate ${kind} ${name}.`));
         const symbol: SymbolInfo = {
           id,
           name,
@@ -242,11 +210,7 @@ export function analyzeProject(
       : (globals.get(name)?.id ?? "global:" + name));
   const activeResolve = (state: State, uri: string, name: string): string => {
     const id = resolve(uri, name);
-    return id.startsWith("local:") &&
-      !state.env.has(id) &&
-      !state.env.has(id + "_*")
-      ? "global:" + name
-      : id;
+    return id.startsWith("local:") && !state.env.has(id) && !state.env.has(id + "_*") ? "global:" + name : id;
   };
   const lookup = (state: State, uri: string, name: string): Value =>
     state.env.get(activeResolve(state, uri, name)) ??
@@ -258,9 +222,7 @@ export function analyzeProject(
     if (e.kind === "variable") return e.name;
     if (e.kind === "indirect") {
       const v = evaluate(e.expr, (n) => lookup(state, line.uri, n));
-      return typeof v.constant === "string"
-        ? v.constant.toLowerCase()
-        : undefined;
+      return typeof v.constant === "string" ? v.constant.toLowerCase() : undefined;
     }
     if (e.kind === "array") {
       let name = e.name;
@@ -275,7 +237,8 @@ export function analyzeProject(
   };
   const states = new Map<string, State>(),
     observed = new Map<string, State>(),
-    queue: { context: string; id: string }[] = [],
+    queue = new Worklist<{ context: string; id: string }>(),
+    priorities = new Map<string, number>(),
     pending = new Set<string>();
   const summaries = new Map<string, State>(),
     waiting = new Map<string, Map<string, Waiting>>();
@@ -288,16 +251,14 @@ export function analyzeProject(
     states.set(key, joined);
     if (!pending.has(key)) {
       pending.add(key);
-      queue.push({ context, id });
+      queue.push({ context, id }, priorities.get(id)!);
     }
   }
   function deliver(w: Waiting, summary: State) {
     const state = clone(summary);
     if (w.restore) {
-      for (const k of state.env.keys())
-        if (k.startsWith("local:" + w.callerUri + ":")) state.env.delete(k);
-      for (const [k, v] of w.caller.env)
-        if (k.startsWith("local:" + w.callerUri + ":")) state.env.set(k, v);
+      for (const k of state.env.keys()) if (k.startsWith("local:" + w.callerUri + ":")) state.env.delete(k);
+      for (const [k, v] of w.caller.env) if (k.startsWith("local:" + w.callerUri + ":")) state.env.set(k, v);
     }
     for (const next of w.next) schedule(w.context, next, state);
   }
@@ -321,20 +282,25 @@ export function analyzeProject(
   const initial: State = {
     quote: 1,
     paragraph: true,
-    env: new Map([["global:implicit_control_flow", literal(false)]]),
+    env: new Environment(new Map([["global:implicit_control_flow", literal(false)]])),
   };
   const start = scenes.get("startup") ?? documents.values().next().value;
-  if (start && entries.has(start.uri))
-    schedule("root", entries.get(start.uri)!, initial);
-  let cursor = 0,
-    steps = 0;
+  for (const doc of new Set([start, ...orderedScenes.map((name) => scenes.get(name)), ...documents.values()]))
+    if (doc) for (const line of doc.lines) priorities.set(line.id, priorities.size);
+  if (start && entries.has(start.uri)) schedule("root", entries.get(start.uri)!, initial);
+  let steps = 0;
   const maxSteps = options.maxSteps ?? 200000;
-  function textTransfer(line: Line, state: State, collect = false): Span[] {
+  function textTransfer(
+    line: Line,
+    state: State,
+    collect = false,
+    start = line.inlineText ?? line.indent + (line.kind === "option" ? 1 : 0),
+    limit = line.raw.length,
+    replacement = false,
+  ): Span[] {
     const spans: Span[] = [];
-    let start =
-        line.inlineText ?? line.indent + (line.kind === "option" ? 1 : 0),
-      mask = state.quote;
-    if (line.kind === "option" || line.inlineText !== undefined) mask = 1;
+    let mask = state.quote;
+    if (!replacement && (line.kind === "option" || line.inlineText !== undefined)) mask = 1;
     let run = start,
       runType = mask === 2 || mask === 4 ? "dialogue" : "narrative",
       first = true;
@@ -347,22 +313,22 @@ export function analyzeProject(
           type: runType,
         });
     };
-    for (let i = start; i < line.raw.length; i++) {
+    for (let i = start; i < limit; i++) {
       const match = /^([$@])!{0,2}\{/.exec(line.raw.slice(i));
       if (match) {
         const open = i + match[0].length - 1,
           end = matching(line.raw, open);
-        if (end < 0) break;
+        if (end < 0 || end >= limit) break;
+        emit(i);
         const body = line.raw.slice(open + 1, end);
         if (match[1] === "$") {
           const expr = parseExpression(lex(body, line.line, open + 1, []), []),
             v = evaluate(expr, (n) => lookup(state, line.uri, n));
           if (v.constant !== undefined) {
             for (const char of String(v.constant)) mask = advance(mask, char);
-          } else if (v.types.includes("string") || v.types.includes("unknown"))
-            mask = 7;
+          } else if (v.types.includes("string") || v.types.includes("unknown")) mask = 7;
         } else {
-          let cut = body.indexOf(" ");
+          let cut = body.search(/\s/);
           if (body.startsWith("(")) {
             let depth = 0;
             for (let p = 0; p < body.length; p++) {
@@ -373,15 +339,20 @@ export function analyzeProject(
               }
             }
           }
-          let union = 0;
+          let union = 0,
+            position = open + cut + 2;
           for (const alternative of body.slice(cut + 1).split("|")) {
-            let q = mask;
-            for (const char of alternative) q = advance(q, char);
-            union |= q;
+            const branch = {
+              ...state,
+              quote: mask,
+              paragraph: state.paragraph && first,
+            };
+            spans.push(...textTransfer(line, branch, collect, position, position + alternative.length, true));
+            union |= branch.quote;
+            position += alternative.length + 1;
           }
           mask = union || 7;
         }
-        emit(i);
         i = end;
         run = i + 1;
         runType = mask === 2 || mask === 4 ? "dialogue" : "narrative";
@@ -389,7 +360,7 @@ export function analyzeProject(
         continue;
       }
       if (line.raw[i] === "[") {
-        const tag = /^\[[^\]]*\]/.exec(line.raw.slice(i));
+        const tag = /^\[[^\]]*]/.exec(line.raw.slice(i));
         if (tag) {
           i += tag[0].length - 1;
           continue;
@@ -397,12 +368,7 @@ export function analyzeProject(
       }
       const ch = line.raw[i];
       if (/\S/.test(ch) && !['"', "“", "”"].includes(ch)) first = false;
-      if (
-        collect &&
-        options.quoteWarnings !== false &&
-        ch === "”" &&
-        mask === 1
-      )
+      if (collect && options.quoteWarnings !== false && ch === "”" && mask === 1)
         result.diagnostics
           .get(line.uri)!
           .push(
@@ -432,21 +398,21 @@ export function analyzeProject(
         first = false;
       }
     }
-    emit(line.raw.length);
-    if (line.kind !== "option" && line.inlineText === undefined) {
+    emit(limit);
+    if (replacement || (line.kind !== "option" && line.inlineText === undefined)) {
       state.quote = mask;
       state.paragraph = false;
     }
     return spans;
   }
   function processQueue() {
-    while (cursor < queue.length) {
+    while (queue.size) {
       if (options.signal?.aborted) throw new Error("Analysis cancelled");
       if (++steps > maxSteps) {
         result.truncated = true;
         break;
       }
-      const { context, id } = queue[cursor++],
+      const { context, id } = queue.pop()!,
         key = context + "\n" + id;
       pending.delete(key);
       const node = nodes.get(id)!,
@@ -455,23 +421,8 @@ export function analyzeProject(
       observed.set(id, merge(observed.get(id), s));
       const c = line.command ?? "";
       if (line.kind === "blank") s.paragraph = true;
-      if (
-        line.kind === "prose" ||
-        line.kind === "option" ||
-        line.inlineText !== undefined
-      )
-        textTransfer(line, s);
-      if (
-        [
-          "create",
-          "temp",
-          "set",
-          "rand",
-          "input_text",
-          "input_number",
-        ].includes(c) &&
-        line.target
-      ) {
+      if (line.kind === "prose" || line.kind === "option" || line.inlineText !== undefined) textTransfer(line, s);
+      if (["create", "temp", "set", "rand", "input_text", "input_number"].includes(c) && line.target) {
         let value =
           c === "rand" || c === "input_number"
             ? { types: ["number"] as const }
@@ -490,10 +441,7 @@ export function analyzeProject(
             const prefix = id.slice(0, -1);
             for (const [key, prior] of s.env)
               if (key.startsWith(prefix) && !key.endsWith("_count"))
-                s.env.set(
-                  key,
-                  joinValue(prior, { ...value, types: [...value.types] }),
-                );
+                s.env.set(key, joinValue(prior, { ...value, types: [...value.types] }));
           } else s.env.set(id, { ...value, types: [...value.types] });
           if (name.includes("_")) {
             const base = name.replace(/_\d+(?:_\d+)*$/, "");
@@ -512,39 +460,26 @@ export function analyzeProject(
       }
       if (c === "create_array" || c === "temp_array") {
         const name = line.target ?? "",
-          values = (line.expressions ?? [])
-            .slice(1)
-            .map((e) => evaluate(e, (n) => lookup(s, line.uri, n))),
+          values = (line.expressions ?? []).slice(1).map((e) => evaluate(e, (n) => lookup(s, line.uri, n))),
           v = values.reduce((a, b) => joinValue(a, b), values[0] ?? unknown());
         const arrayKey = (suffix: string) =>
-          (c === "create_array" ? "global:" : "local:" + line.uri + ":") +
-          name +
-          suffix;
+          (c === "create_array" ? "global:" : "local:" + line.uri + ":") + name + suffix;
         s.env.set(arrayKey("_*"), v);
-        const len = evaluate(line.expressions?.[0], (n) =>
-          lookup(s, line.uri, n),
-        );
+        const len = evaluate(line.expressions?.[0], (n) => lookup(s, line.uri, n));
         s.env.set(arrayKey("_count"), len);
         if (typeof len.constant === "number" && len.constant <= 1000)
           for (let i = 1; i <= len.constant; i++)
-            s.env.set(
-              arrayKey("_" + i),
-              values.length > 1 ? (values[i - 1] ?? unknown()) : v,
-            );
+            s.env.set(arrayKey("_" + i), values.length > 1 ? (values[i - 1] ?? unknown()) : v);
       }
       if (c === "params") {
         let p = 0;
         for (const t of line.tokens.filter((t) => t.type === "variable"))
           s.env.set(
-            resolve(
-              line.uri,
-              line.raw.slice(t.start, t.start + t.length).toLowerCase(),
-            ),
+            resolve(line.uri, line.raw.slice(t.start, t.start + t.length).toLowerCase()),
             s.env.get("@param" + p++) ?? unknown(),
           );
       }
-      if (c === "delete" || c === "delete_array")
-        s.env.delete(resolve(line.uri, line.target ?? ""));
+      if (c === "delete" || c === "delete_array") s.env.delete(resolve(line.uri, line.target ?? ""));
       if (c === "setref") {
         const name = evaluate(line.targetExpr, (n) => lookup(s, line.uri, n));
         if (typeof name.constant === "string")
@@ -557,13 +492,8 @@ export function analyzeProject(
       if (c === "print") {
         const value = evaluate(line.expr, (n) => lookup(s, line.uri, n));
         if (value.constant !== undefined) {
-          for (const char of String(value.constant))
-            s.quote = advance(s.quote, char);
-        } else if (
-          value.types.includes("string") ||
-          value.types.includes("unknown")
-        )
-          s.quote = 7;
+          for (const char of String(value.constant)) s.quote = advance(s.quote, char);
+        } else if (value.types.includes("string") || value.types.includes("unknown")) s.quote = 7;
       }
       if (c === "script") {
         s.quote = 7;
@@ -577,46 +507,32 @@ export function analyzeProject(
         returnState(context.startsWith("call:") ? "root" : context, s);
         continue;
       }
-      if (
-        [
-          "goto",
-          "gosub",
-          "goto_scene",
-          "gosub_scene",
-          "redirect_scene",
-          "gotoref",
-        ].includes(c)
-      ) {
-        const groups = valueGroups(
-          lex(line.args, line.line, line.argStart, []),
-        );
+      if (["goto", "gosub", "goto_scene", "gosub_scene", "redirect_scene", "gotoref"].includes(c)) {
+        const groups =
+          c === "gotoref"
+            ? valueGroups(lex(line.args, line.line, line.argStart, []))
+            : referenceGroups(line.args, line.line, line.argStart, [], c.endsWith("_scene") ? 2 : 1);
         const reference = (index: number): string | undefined => {
           const group = groups[index];
           if (!group) return undefined;
+          if (group[0]?.kind === "reference") return group[0].text.toLowerCase();
           const expr = parseExpression(group, [], true);
           if (expr.kind === "variable") return expr.name;
           if (expr.kind === "literal") return String(expr.value).toLowerCase();
           if (expr.kind === "indirect") {
             const v = evaluate(expr.expr, (n) => lookup(s, line.uri, n));
-            return v.constant === undefined
-              ? undefined
-              : String(v.constant).toLowerCase();
+            return v.constant === undefined ? undefined : String(v.constant).toLowerCase();
           }
           return undefined;
         };
-        const scene = c.endsWith("_scene")
-          ? scenes.get(reference(0) ?? "")
-          : documents.get(line.uri);
+        const sceneName = c.endsWith("_scene") ? reference(0) : undefined;
+        const scene = c.endsWith("_scene") ? scenes.get(sceneName ?? "") : documents.get(line.uri);
         let label = c.endsWith("_scene") ? reference(1) : reference(0);
         if (c === "gotoref") {
-          const v = evaluate(
-            parseExpression(lex(line.args, line.line, line.argStart, []), []),
-            (n) => lookup(s, line.uri, n),
+          const v = evaluate(parseExpression(lex(line.args, line.line, line.argStart, []), []), (n) =>
+            lookup(s, line.uri, n),
           );
-          label =
-            v.constant === undefined
-              ? undefined
-              : String(v.constant).toLowerCase();
+          label = v.constant === undefined ? undefined : String(v.constant).toLowerCase();
         }
         const target = scene
           ? label
@@ -628,18 +544,13 @@ export function analyzeProject(
         if (target && scene) {
           const isCall = c.startsWith("gosub");
           if (c.endsWith("_scene"))
-            for (const k of s.env.keys())
-              if (k.startsWith("local:" + scene.uri + ":")) s.env.delete(k);
+            for (const k of s.env.keys()) if (k.startsWith("local:" + scene.uri + ":")) s.env.delete(k);
           const argOffset = c.endsWith("_scene") ? (groups[1] ? 2 : 1) : 1;
-          const argumentsList = valueGroups(
-            lex(line.args, line.line, line.argStart, []),
-          ).slice(argOffset);
+          const argumentsList = groups.slice(argOffset);
           for (let p = 0; p < argumentsList.length; p++)
             s.env.set(
               "@param" + p,
-              evaluate(parseExpression(argumentsList[p], []), (n) =>
-                lookup(s, line.uri, n),
-              ),
+              evaluate(parseExpression(argumentsList[p], []), (n) => lookup(s, line.uri, n)),
             );
           if (isCall) {
             const callee = "call:" + target + ":" + s.quote;
@@ -662,14 +573,20 @@ export function analyzeProject(
           for (const k of s.env.keys()) s.env.set(k, unknown());
           // Unknown destinations can reach any matching scene or label. Never seed
           // those destinations with a falsely certain outside-dialogue state.
+          // A known but absent file/label is a broken or incomplete project,
+          // not an instruction to enter every scene. Only dynamic destinations
+          // need conservative fan-out, shared across jump sites to bound work.
           const possible = c.endsWith("_scene")
-            ? [...entries.values()]
-            : [...labels]
-                .filter(([k]) => k.startsWith(line.uri + ":"))
-                .map(([, v]) => v);
-          for (const next of possible) schedule("dynamic:" + line.id, next, s);
-          if (c.startsWith("gosub"))
-            for (const next of node.next) schedule(context, next, s);
+            ? sceneName === undefined
+              ? [...entries.values()]
+              : scene && label === undefined && groups[1]
+                ? [...labels].filter(([k]) => k.startsWith(scene.uri + ":")).map(([, v]) => v)
+                : []
+            : label === undefined
+              ? [...labels].filter(([k]) => k.startsWith(line.uri + ":")).map(([, v]) => v)
+              : [];
+          for (const next of possible) schedule("dynamic", next, s);
+          if (c.startsWith("gosub")) for (const next of node.next) schedule(context, next, s);
         }
         continue;
       }
@@ -677,16 +594,14 @@ export function analyzeProject(
         for (const child of line.children) {
           const name = /([\w-]+)\s*$/.exec(child.raw)?.[1]?.toLowerCase();
           const dest = scenes.get(name ?? "");
-          if (dest && entries.has(dest.uri))
-            schedule(context, entries.get(dest.uri)!, s);
+          if (dest && entries.has(dest.uri)) schedule(context, entries.get(dest.uri)!, s);
         }
         continue;
       }
       if (c === "finish") {
         const index = orderedScenes.indexOf(documents.get(line.uri)!.scene),
           scene = scenes.get(orderedScenes[index + 1]);
-        if (index >= 0 && scene && entries.has(scene.uri))
-          schedule(context, entries.get(scene.uri)!, s);
+        if (index >= 0 && scene && entries.has(scene.uri)) schedule(context, entries.get(scene.uri)!, s);
         else returnState(context, s);
         continue;
       }
@@ -707,17 +622,13 @@ export function analyzeProject(
     for (const line of doc.lines) {
       const state = observed.get(line.id) ?? { ...initial, quote: 7 };
       let base: Span[] = [];
-      if (
-        line.kind === "prose" ||
-        line.kind === "option" ||
-        line.inlineText !== undefined
-      ) {
+      if (line.kind === "prose" || line.kind === "option" || line.inlineText !== undefined) {
         base = textTransfer(line, clone(state), true);
         words += (
           line.raw
             .slice(line.inlineText ?? line.indent)
-            .replace(/\[[^\]]*\]/g, "")
-            .match(/[\p{L}\p{N}]+(?:['’][\p{L}]+)*/gu) ?? []
+            .replace(/\[[^\]]*]/g, "")
+            .match(/[\p{L}\p{N}]+(?:['’]\p{L}+)*/gu) ?? []
         ).length;
       }
       if (
@@ -746,8 +657,7 @@ export function analyzeProject(
               name.startsWith(a.name + "_") &&
               /^(?:\d+(?:_\d+)*|count)$/.test(name.slice(a.name.length + 1)),
           );
-          const id =
-            t.symbol ?? activeResolve(state, doc.uri, alias?.name ?? name);
+          const id = t.symbol ?? activeResolve(state, doc.uri, alias?.name ?? name);
           t.symbol = id;
           if (alias) t.referenceLength = alias.name.length;
           let value = lookup(state, doc.uri, name);
@@ -756,31 +666,23 @@ export function analyzeProject(
           if (line.raw[t.start + t.length] === "[") {
             const tail = line.raw.slice(t.start);
             const groups = valueGroups(lex(tail, line.line, t.start, []));
-            value = evaluate(parseExpression(groups[0] ?? [], [], true), (n) =>
-              lookup(state, line.uri, n),
-            );
+            value = evaluate(parseExpression(groups[0] ?? [], [], true), (n) => lookup(state, line.uri, n));
           }
           if (t.modifiers?.includes("declaration") && line.expr) {
             const v = evaluate(line.expr, (n) => lookup(state, line.uri, n));
             result.values.set(id, v);
-          } else
-            result.values.set(
-              id,
-              joinValue(result.values.get(id) ?? value, value),
-            );
+          } else result.values.set(id, joinValue(result.values.get(id) ?? value, value));
           const type = value.types.length === 1 ? value.types[0] : undefined;
           if (type && type !== "unknown") t.type = type + "Variable";
         } else if (t.type === "label" && !t.symbol) {
           if (
             line.parent?.command === "scene_list" ||
-            (line.command?.endsWith("_scene") &&
-              t === overlays.find((x) => x.type === "label"))
+            (line.command?.endsWith("_scene") && t === overlays.find((x) => x.type === "label"))
           )
             t.symbol = "scene:" + name;
           else {
             let uri = doc.uri;
-            if (line.command?.endsWith("_scene"))
-              uri = scenes.get(line.target ?? "")?.uri ?? uri;
+            if (line.command?.endsWith("_scene")) uri = scenes.get(line.target ?? "")?.uri ?? uri;
             t.symbol = "label:" + uri + ":" + name;
           }
         }
@@ -795,19 +697,11 @@ export function analyzeProject(
       }
       if (
         line.targetToken &&
-        [
-          "goto",
-          "gosub",
-          "goto_scene",
-          "gosub_scene",
-          "redirect_scene",
-        ].includes(line.command ?? "") &&
-        /^[a-z]\w*$/i.test(line.target ?? "")
+        ["goto", "gosub", "goto_scene", "gosub_scene", "redirect_scene"].includes(line.command ?? "") &&
+        line.targetToken.type === "label"
       ) {
         const c = line.command!,
-          found = c.endsWith("_scene")
-            ? scenes.has(line.target!)
-            : labels.has(doc.uri + ":" + line.target);
+          found = c.endsWith("_scene") ? scenes.has(line.target!) : labels.has(doc.uri + ":" + line.target);
         if (!found)
           diagnostics.push(
             diagnostic(
@@ -820,11 +714,9 @@ export function analyzeProject(
           );
       }
       // Overlay code and markup spans over prose without emitting overlapping LSP tokens.
-      const boundaries = [
-        ...new Set(
-          [...base, ...overlays].flatMap((t) => [t.start, t.start + t.length]),
-        ),
-      ].sort((a, b) => a - b);
+      const boundaries = [...new Set([...base, ...overlays].flatMap((t) => [t.start, t.start + t.length]))].sort(
+        (a, b) => a - b,
+      );
       let bold = false,
         italic = false;
       for (let i = 0; i < boundaries.length - 1; i++) {
@@ -856,12 +748,8 @@ export function analyzeProject(
   }
   if (options.quoteWarnings !== false)
     for (const [context, s] of summaries)
-      if (
-        (context === "root" || context.startsWith("isolated:")) &&
-        (s.quote === 2 || s.quote === 4)
-      ) {
-        const doc =
-          context === "root" ? start : documents.get(context.slice(9));
+      if ((context === "root" || context.startsWith("isolated:")) && (s.quote === 2 || s.quote === 4)) {
+        const doc = context === "root" ? start : documents.get(context.slice(9));
         if (doc) {
           const last = doc.lines.findLast((l) => l.kind === "prose");
           if (last)

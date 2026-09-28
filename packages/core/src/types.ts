@@ -120,9 +120,7 @@ export function diagnostic(
     message,
     code,
     severity,
-    source: code.startsWith("quote-")
-      ? "ChoiceScript dialogue"
-      : "ChoiceScript",
+    source: code.startsWith("quote-") ? "ChoiceScript dialogue" : "ChoiceScript",
   };
 }
 export function sceneName(uri: string): string {
@@ -138,8 +136,6 @@ export function joinValue(a: Value, b: Value): Value {
   const types = [...new Set([...a.types, ...b.types])].sort() as ValueType[];
   return {
     types,
-    ...(a.constant !== undefined && a.constant === b.constant
-      ? { constant: a.constant }
-      : {}),
+    ...(a.constant !== undefined && a.constant === b.constant ? { constant: a.constant } : {}),
   };
 }

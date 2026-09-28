@@ -1,14 +1,17 @@
-import { type Analysis, type Position, type Range, range } from "./types.js";
+import {
+  type Analysis,
+  type Position,
+  type Range,
+  range,
+  tokenModifiers as modifiers,
+  tokenTypes as legend,
+} from "./types.js";
 import { commandDocs } from "./parser.js";
+
 export function tokenAt(a: Analysis, uri: string, p: Position) {
   return a.tokens
     .get(uri)
-    ?.find(
-      (t) =>
-        t.line === p.line &&
-        p.character >= t.start &&
-        p.character < t.start + t.length,
-    );
+    ?.find((t) => t.line === p.line && p.character >= t.start && p.character < t.start + t.length);
 }
 export function definition(a: Analysis, uri: string, p: Position) {
   const id = tokenAt(a, uri, p)?.symbol,
@@ -21,34 +24,23 @@ export function references(a: Analysis, uri: string, p: Position) {
 }
 export function prepareRename(a: Analysis, uri: string, p: Position) {
   const t = tokenAt(a, uri, p);
-  if (
-    !t?.symbol ||
-    !a.symbols.has(t.symbol) ||
-    a.symbols.get(t.symbol)?.kind === "scene"
-  )
-    return null;
+  if (!t?.symbol || !a.symbols.has(t.symbol) || a.symbols.get(t.symbol)?.kind === "scene") return null;
   return range(t.line, t.start, t.referenceLength ?? t.length);
 }
 export function rename(a: Analysis, uri: string, p: Position, name: string) {
   if (!/^[A-Za-z]\w*$/.test(name))
-    throw new Error(
-      "Names must start with a letter and contain only letters, digits, or underscores.",
-    );
+    throw new Error("Names must start with a letter and contain only letters, digits, or underscores.");
   if (!prepareRename(a, uri, p)) return null;
   const id = tokenAt(a, uri, p)!.symbol!,
     old = a.symbols.get(id)!;
   if (
     [...a.symbols.values()].some(
-      (s) =>
-        s.id !== id &&
-        s.name === name.toLowerCase() &&
-        (s.kind === "global" || s.uri === old.uri),
+      (s) => s.id !== id && s.name === name.toLowerCase() && (s.kind === "global" || s.uri === old.uri),
     )
   )
     throw new Error("That name already exists in this scope.");
   const changes: Record<string, { range: Range; newText: string }[]> = {};
-  for (const ref of references(a, uri, p))
-    (changes[ref.uri] ??= []).push({ range: ref.range, newText: name });
+  for (const ref of references(a, uri, p)) (changes[ref.uri] ??= []).push({ range: ref.range, newText: name });
   return { changes };
 }
 export function hover(a: Analysis, uri: string, p: Position) {
@@ -60,11 +52,7 @@ export function hover(a: Analysis, uri: string, p: Position) {
     return {
       contents: {
         kind: "markdown" as const,
-        value:
-          "**`*" +
-          line.command +
-          "`**\n\n" +
-          (commandDocs[line.command] ?? "ChoiceScript command."),
+        value: "**`*" + line.command + "`**\n\n" + (commandDocs[line.command] ?? "ChoiceScript command."),
       },
     };
   if (t?.symbol) {
@@ -74,12 +62,7 @@ export function hover(a: Analysis, uri: string, p: Position) {
       return {
         contents: {
           kind: "markdown" as const,
-          value:
-            "**" +
-            s.name +
-            "** — " +
-            s.kind +
-            (v ? "\n\nType: `" + v.types.join(" | ") + "`" : ""),
+          value: "**" + s.name + "** — " + s.kind + (v ? "\n\nType: `" + v.types.join(" | ") + "`" : ""),
         },
       };
   }
@@ -96,18 +79,14 @@ export function completions(a: Analysis, uri: string, p: Position) {
       documentation: { kind: "markdown" as const, value: documentation },
     }));
   if (/\*(?:goto_scene|gosub_scene|redirect_scene)\s+\w*$/.test(before))
-    return [...a.symbols.values()]
-      .filter((s) => s.kind === "scene")
-      .map((s) => ({ label: s.name, kind: 17 as const }));
+    return [...a.symbols.values()].filter((s) => s.kind === "scene").map((s) => ({ label: s.name, kind: 17 as const }));
   if (/\*(?:goto|gosub)\s+\w*$/.test(before))
     return [...a.symbols.values()]
       .filter((s) => s.kind === "label" && s.uri === uri)
       .map((s) => ({ label: s.name, kind: 18 as const }));
   if (line?.kind === "command" || /[$@]!{0,2}\{[^}]*$/.test(before))
     return [...a.symbols.values()]
-      .filter(
-        (s) => s.kind === "global" || (s.kind === "local" && s.uri === uri),
-      )
+      .filter((s) => s.kind === "global" || (s.kind === "local" && s.uri === uri))
       .map((s) => ({
         label: s.name,
         kind: 6 as const,
@@ -180,14 +159,10 @@ export function encodeTokens(a: Analysis, uri: string) {
       delta === 0 ? t.start - previousChar : t.start,
       t.length,
       type,
-      (t.modifiers ?? []).reduce(
-        (mask, m) => mask | (1 << modifiers.indexOf(m)),
-        0,
-      ),
+      (t.modifiers ?? []).reduce((mask, m) => mask | (1 << modifiers.indexOf(m)), 0),
     );
     previousLine = t.line;
     previousChar = t.start;
   }
   return { data };
 }
-import { tokenTypes as legend, tokenModifiers as modifiers } from "./types.js";

@@ -1,25 +1,12 @@
-import {
-  type Expr,
-  type Span,
-  type Diagnostic,
-  type Value,
-  diagnostic,
-  unknown,
-  literal,
-  joinValue,
-} from "./types.js";
+import { type Diagnostic, diagnostic, type Expr, literal, type Span, unknown, type Value } from "./types.js";
+
 export interface Lexeme {
   text: string;
   start: number;
   kind: string;
   span: Span;
 }
-export function lex(
-  text: string,
-  line: number,
-  offset: number,
-  diagnostics: Diagnostic[],
-): Lexeme[] {
+export function lex(text: string, line: number, offset: number, diagnostics: Diagnostic[]): Lexeme[] {
   const result: Lexeme[] = [];
   for (let i = 0; i < text.length; ) {
     if (/\s/.test(text[i])) {
@@ -55,13 +42,7 @@ export function lex(
     } else if (/[\u201c\u201d]/.test(text[i])) {
       i++;
       diagnostics.push(
-        diagnostic(
-          line,
-          offset + start,
-          1,
-          "expression-smart-quote",
-          "Use straight double quotes in expressions.",
-        ),
+        diagnostic(line, offset + start, 1, "expression-smart-quote", "Use straight double quotes in expressions."),
       );
     } else if (/\d/.test(text[i])) {
       const m = /^\d+(?:\.\d+)?\b/.exec(text.slice(i));
@@ -101,26 +82,10 @@ export function lex(
   }
   return result;
 }
-export function parseExpression(
-  tokens: Lexeme[],
-  diagnostics: Diagnostic[],
-  partial = false,
-): Expr {
+export function parseExpression(tokens: Lexeme[], diagnostics: Diagnostic[], partial = false): Expr {
   let index = 0;
-  const fail = (
-    message: string,
-    t = tokens[Math.min(index, tokens.length - 1)],
-  ) => {
-    if (t)
-      diagnostics.push(
-        diagnostic(
-          t.span.line,
-          t.start,
-          t.text.length,
-          "expression-syntax",
-          message,
-        ),
-      );
+  const fail = (message: string, t = tokens[Math.min(index, tokens.length - 1)]) => {
+    if (t) diagnostics.push(diagnostic(t.span.line, t.start, t.text.length, "expression-syntax", message));
   };
   function value(): Expr {
     const t = tokens[index++];
@@ -129,8 +94,7 @@ export function parseExpression(
       return { kind: "unknown" };
     }
     if (t.kind === "number") return { kind: "literal", value: Number(t.text) };
-    if (t.kind === "boolean")
-      return { kind: "literal", value: t.text.toLowerCase() === "true" };
+    if (t.kind === "boolean") return { kind: "literal", value: t.text.toLowerCase() === "true" };
     if (t.kind === "string")
       return t.text.endsWith('"') && t.text.length > 1
         ? {
@@ -139,10 +103,7 @@ export function parseExpression(
           }
         : { kind: "unknown" };
     if (t.text === "-") {
-      fail(
-        "ChoiceScript does not accept unary minus here; write (0 - value).",
-        t,
-      );
+      fail("ChoiceScript does not accept unary minus here; write (0 - value).", t);
       value();
       return { kind: "unknown" };
     }
@@ -152,9 +113,7 @@ export function parseExpression(
     }
     if (t.kind === "function") {
       const name = t.text.toLowerCase();
-      if (
-        !["not", "round", "timestamp", "log", "length", "auto"].includes(name)
-      )
+      if (!["not", "round", "timestamp", "log", "length", "auto"].includes(name))
         fail("Unknown ChoiceScript function " + name + ".", t);
       if (tokens[index]?.text === "(") index++;
       const args: Expr[] = [];
@@ -165,8 +124,7 @@ export function parseExpression(
       }
       if (tokens[index]?.text === ")") index++;
       else fail("Expected closing parenthesis.");
-      if (name !== "auto" && args.length !== 1)
-        fail("This function accepts one expression.", t);
+      if (name !== "auto" && args.length !== 1) fail("This function accepts one expression.", t);
       return { kind: "call", name, args };
     }
     if (t.kind === "variable") {
@@ -186,9 +144,7 @@ export function parseExpression(
     let left = value();
     const t = tokens[index];
     if (t && t.text !== close && (!stopComma || t.text !== ",")) {
-      if (
-        /^(\+|-|\*|\/|&|%[+-]|\^|#|=|!=|<=?|>=?|and|or|modulo)$/i.test(t.text)
-      ) {
+      if (/^(\+|-|\*|\/|&|%[+-]|\^|#|=|!=|<=?|>=?|and|or|modulo)$/i.test(t.text)) {
         index++;
         left = {
           kind: "binary",
@@ -200,23 +156,17 @@ export function parseExpression(
     }
     if (close && !stopComma) {
       if (tokens[index]?.text === close) index++;
-      else
-        fail(`Expected ${close}; use parentheses around compound expressions.`);
+      else fail(`Expected ${close}; use parentheses around compound expressions.`);
     }
     return left;
   }
   if (!tokens.length) return { kind: "unknown" };
   const e = expression();
   if (!partial && index < tokens.length)
-    fail(
-      "Unexpected additional tokens; ChoiceScript requires parentheses around compound expressions.",
-    );
+    fail("Unexpected additional tokens; ChoiceScript requires parentheses around compound expressions.");
   return e;
 }
-export function evaluate(
-  expr: Expr | undefined,
-  lookup: (name: string) => Value,
-): Value {
+export function evaluate(expr: Expr | undefined, lookup: (name: string) => Value): Value {
   if (!expr) return unknown();
   switch (expr.kind) {
     case "literal":
@@ -236,14 +186,11 @@ export function evaluate(
     }
     case "indirect": {
       const v = evaluate(expr.expr, lookup);
-      return typeof v.constant === "string"
-        ? lookup(v.constant.toLowerCase())
-        : unknown();
+      return typeof v.constant === "string" ? lookup(v.constant.toLowerCase()) : unknown();
     }
     case "call": {
       if (expr.name === "not") return { types: ["boolean"] };
-      if (["round", "timestamp", "log", "length", "auto"].includes(expr.name))
-        return { types: ["number"] };
+      if (["round", "timestamp", "log", "length", "auto"].includes(expr.name)) return { types: ["number"] };
       return unknown();
     }
     case "binary": {
@@ -255,8 +202,7 @@ export function evaluate(
           ? literal(String(a.constant) + String(b.constant))
           : { types: ["string"] };
       if (op === "#") return { types: ["string"] };
-      if (["=", "!=", "<", ">", "<=", ">=", "and", "or"].includes(op))
-        return { types: ["boolean"] };
+      if (["=", "!=", "<", ">", "<=", ">=", "and", "or"].includes(op)) return { types: ["boolean"] };
       if (
         a.constant !== undefined &&
         b.constant !== undefined &&
@@ -273,8 +219,7 @@ export function evaluate(
           "^": x ** y,
           modulo: x % y,
         };
-        if (op in values && Number.isFinite(values[op]))
-          return literal(values[op]);
+        if (op in values && Number.isFinite(values[op])) return literal(values[op]);
       }
       return { types: ["number"] };
     }
@@ -313,5 +258,37 @@ export function valueGroups(tokens: Lexeme[]): Lexeme[][] {
     }
     groups.push(tokens.slice(begin, i));
   }
+  return groups;
+}
+
+/** Scene/label words are not expression identifiers (they may start with digits). */
+export function referenceGroups(
+  text: string,
+  line: number,
+  offset: number,
+  diagnostics: Diagnostic[],
+  count: number,
+): Lexeme[][] {
+  // Match parseGotoScene: indirect references switch the arguments to expressions.
+  if (/[\[{]/.test(text)) return valueGroups(lex(text, line, offset, diagnostics));
+  const groups: Lexeme[][] = [];
+  let position = 0;
+  for (let i = 0; i < count; i++) {
+    const match = /^(\s*)(\S+)/.exec(text.slice(position));
+    if (!match) break;
+    position += match[1].length;
+    const word = match[2],
+      start = offset + position;
+    groups.push([
+      {
+        text: word,
+        start,
+        kind: "reference",
+        span: { line, start, length: word.length, type: "label" },
+      },
+    ]);
+    position += word.length;
+  }
+  groups.push(...valueGroups(lex(text.slice(position), line, offset + position, diagnostics)));
   return groups;
 }
