@@ -6,7 +6,7 @@ The shared TypeScript language server supplies syntax diagnostics, dialogue-awar
 
 ## Install
 
-Download the seven installers and `SHA256SUMS.txt` from the private repository’s Releases page when a prerelease is available. The workflow rebuilds and tests all targets before upload and verifies downloaded hashes. Manual visual gates remain listed in [editor validation](docs/editor-validation.md).
+Download the installer for your platform and `SHA256SUMS.txt` from the private repository’s Releases page when a prerelease is available. See the [release notes](docs/release-notes.md) for features and limitations.
 
 Build artifacts are placed in `dist/packages` (VSIX) and `editors/intellij/build/distributions` (JetBrains ZIP). Install a VSIX using VS Code's **Extensions: Install from VSIX** command. In a compatible JetBrains IDE, use **Settings → Plugins → Install Plugin from Disk**. Node.js is included in packaged plugins.
 
@@ -32,7 +32,16 @@ Paths are relative to the configuration file. Keep generated exports outside the
 
 ## Build from a fresh checkout
 
-Install Node.js 24 LTS, pnpm 10.29.3, and JDK 21 (development only).
+Install Git, Node.js 24 LTS, pnpm 12.6.0, and JDK 21 (development only).
+
+Clone with the pinned submodule, preserving upstream line endings on every OS:
+
+```sh
+git -c core.autocrlf=false clone --recurse-submodules https://github.com/Chinay-Domitrix/branchlight.git
+cd branchlight
+```
+
+For an existing checkout, run `git -c core.autocrlf=false submodule update --init --recursive` before building and after pulling changes to the engine pin.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -44,8 +53,12 @@ cd editors/intellij
 ./gradlew buildPlugin verifyPlugin
 ```
 
-Runtime downloads are verified against `runtime-lock.json`. The official ChoiceScript snapshot is already vendored and requires no other checkout. `pnpm generate` regenerates conservative fallback grammar and IntelliJ command metadata. `pnpm test` exercises the shared analyzer and official game tools. `node scripts/extract-vsix.mjs` selects and verifies the packaged extension; then `pnpm exec node scripts/test-vscode.mjs` runs its VS Code extension-host smoke test.
+Dependency build-script decisions are checked into `pnpm-workspace.yaml`: esbuild and the VS Code signing helper are allowed; keytar, used for Marketplace credential storage, is disabled. CI reads the pnpm version from `package.json`.
 
-See [architecture](docs/architecture.md), [supported features](docs/support.md), [validation results and remaining release gates](docs/validation.md), and [dependency notices](THIRD_PARTY_NOTICES.md).
+Runtime downloads are verified against `runtime-lock.json`. The official ChoiceScript engine is pinned as the `vendor/choicescript` Git submodule. Builds verify its commit and file checksums, then copy its sources without Git metadata into the plugins. Packaged installations require neither Git nor a separate engine checkout. `pnpm generate` regenerates conservative fallback grammar and IntelliJ command metadata. `pnpm test` exercises the shared analyzer and official game tools. `node scripts/extract-vsix.mjs` selects and verifies the packaged extension; then `pnpm exec node scripts/test-vscode.mjs` runs its VS Code extension-host smoke test.
 
-The [commit roadmap](docs/commit-roadmap.md) records the implementation sequence and remaining manual gates. The **Private prerelease** workflow accepts a new tag such as `v0.1.0-alpha.1`; run it after signing the intended source history. It publishes only prereleases in a private repository, with six VSIX files, one universal JetBrains ZIP, provenance and checksums.
+Use `pnpm test:corpus "/path/to/game"` to run read-only analysis against local game sources. See [development testing](docs/testing.md) for command options and editor test instructions.
+
+See [architecture](docs/architecture.md), [supported features](docs/support.md), [development testing](docs/testing.md), and [dependency notices](THIRD_PARTY_NOTICES.md).
+
+The **Private prerelease** workflow accepts a new tag such as `v0.1.0-alpha.1`; run it after signing the intended source history. It publishes only prereleases in a private repository, with six VSIX files, one universal JetBrains ZIP, provenance and checksums.
