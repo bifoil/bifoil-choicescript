@@ -1,19 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile, mkdir, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import {
-  discoverProjects,
-  ToolRunner,
-  projectFor,
-  readProject,
-} from "../src/index.js";
-import type { JobEvent } from "../../protocol/src/index.js";
-const engine = fileURLToPath(
-  new URL("../../../vendor/choicescript", import.meta.url),
-);
+import { discoverProjects, projectFor, readProject, ToolRunner } from "@branchlight/tooling";
+import type { JobEvent } from "@branchlight/protocol";
+
+const engine = fileURLToPath(new URL("../../../vendor/choicescript", import.meta.url));
 test("discovery associates only scene directories and preserves other text", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "choice paths Ω "));
   try {
@@ -22,15 +16,8 @@ test("discovery associates only scene directories and preserves other text", asy
     await writeFile(path.join(root, "notes.txt"), "notes");
     const projects = await discoverProjects([root]);
     assert.equal(projects.length, 1);
-    assert(
-      projectFor(
-        projects,
-        pathToFileURL(path.join(root, "game/scenes/startup.txt")).href,
-      ),
-    );
-    assert(
-      !projectFor(projects, pathToFileURL(path.join(root, "notes.txt")).href),
-    );
+    assert(projectFor(projects, pathToFileURL(path.join(root, "game/scenes/startup.txt")).href));
+    assert(!projectFor(projects, pathToFileURL(path.join(root, "notes.txt")).href));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -47,19 +34,14 @@ test("official template, QuickTest, RandomTest, snapshot preview, export, cancel
     const fixture =
       '*title Test Game\n*author Test\n*create gender "male"\n*create implicit_control_flow true\nShe said "This is the end,\n*if gender = "male"\n  William."\n*else\n  Belle."\n*ending\n';
     await writeFile(path.join(game, "scenes/startup.txt"), fixture);
-    await writeFile(
-      path.join(game, "scenes/choicescript_stats.txt"),
-      "No stats.\n",
-    );
+    await writeFile(path.join(game, "scenes/choicescript_stats.txt"), "No stats.\n");
     const projects = await discoverProjects([game]),
       project = projects[0];
     assert(project);
     async function completed(id: string) {
       const start = Date.now();
       while (Date.now() - start < 30000) {
-        const done = events.find(
-          (e) => e.jobId === id && e.kind === "completed",
-        );
+        const done = events.find((e) => e.jobId === id && e.kind === "completed");
         if (done) return done;
         await new Promise((r) => setTimeout(r, 20));
       }
@@ -72,12 +54,7 @@ test("official template, QuickTest, RandomTest, snapshot preview, export, cancel
       );
     }
     await assert.rejects(
-      () =>
-        runner!.start(
-          { protocolVersion: 1, operation: "quicktest", trusted: false },
-          project,
-          [],
-        ),
+      () => runner!.start({ protocolVersion: 1, operation: "quicktest", trusted: false }, project, []),
       /Trust/,
     );
     for (const operation of ["quicktest", "randomtest"] as const) {
@@ -145,24 +122,17 @@ test("official template, QuickTest, RandomTest, snapshot preview, export, cancel
         [],
       );
       assert.equal((await completed(job.jobId)).exitCode, 0);
-      coverageRuns.push(
-        events.find((e) => e.jobId === job.jobId && e.kind === "coverage")
-          ?.coverage,
-      );
+      coverageRuns.push(events.find((e) => e.jobId === job.jobId && e.kind === "coverage")?.coverage);
     }
     assert(coverageRuns[0]);
     assert.deepEqual(coverageRuns[0], coverageRuns[1]);
-    const preview = await runner.start(
-      { protocolVersion: 1, operation: "run", trusted: true },
-      project,
-      [
-        {
-          uri: pathToFileURL(path.join(project.sceneDir, "startup.txt")).href,
-          text: fixture.replace("William", "Snapshot William"),
-          version: 1,
-        },
-      ],
-    );
+    const preview = await runner.start({ protocolVersion: 1, operation: "run", trusted: true }, project, [
+      {
+        uri: pathToFileURL(path.join(project.sceneDir, "startup.txt")).href,
+        text: fixture.replace("William", "Snapshot William"),
+        version: 1,
+      },
+    ]);
     assert(preview.url);
     assert.equal((await fetch(preview.url!)).status, 200);
     const scene = new URL("scenes/startup.txt", preview.url);
@@ -220,14 +190,9 @@ test("project snapshots deduplicate equivalent encoded file URIs", async () => {
     const original = pathToFileURL(file).href;
     const uri =
       process.platform === "win32"
-        ? original.replace(
-            /file:\/\/\/([A-Za-z]):/,
-            (_, drive) => `file:///${drive.toLowerCase()}%3A`,
-          )
+        ? original.replace(/file:\/\/\/([A-Za-z]):/, (_, drive) => `file:///${drive.toLowerCase()}%3A`)
         : original.replace("startup", "%73tartup");
-    const files = await readProject(project, [
-      { uri, version: 9, text: "Unsaved" },
-    ]);
+    const files = await readProject(project, [{ uri, version: 9, text: "Unsaved" }]);
     assert.equal(files.length, 1);
     assert.equal(files[0].text, "Unsaved");
     assert.equal(files[0].uri, uri);

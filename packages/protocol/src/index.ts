@@ -1,11 +1,5 @@
 export const PROTOCOL_VERSION = 1;
-export type Operation =
-  | "createProject"
-  | "run"
-  | "stop"
-  | "quicktest"
-  | "randomtest"
-  | "exportHtml";
+export type Operation = "createProject" | "run" | "stop" | "quicktest" | "randomtest" | "exportHtml";
 export interface Project {
   id: string;
   root: string;
@@ -15,7 +9,7 @@ export interface Project {
   randomtest?: { iterations?: number; seed?: number };
 }
 export interface JobRequest {
-  protocolVersion: 1;
+  protocolVersion: typeof PROTOCOL_VERSION;
   operation: Operation;
   projectId?: string;
   destination?: string;
@@ -26,17 +20,10 @@ export interface JobRequest {
   trusted?: boolean;
 }
 export interface JobEvent {
-  protocolVersion: 1;
+  protocolVersion: typeof PROTOCOL_VERSION;
   jobId: string;
   projectId: string;
-  kind:
-    | "started"
-    | "output"
-    | "diagnostic"
-    | "coverage"
-    | "preview"
-    | "completed"
-    | "stale";
+  kind: "started" | "output" | "diagnostic" | "coverage" | "preview" | "completed" | "stale";
   message?: string;
   uri?: string;
   line?: number;

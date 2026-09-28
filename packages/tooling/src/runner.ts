@@ -1,31 +1,23 @@
 import { URI } from "vscode-uri";
 import { finished as streamFinished } from "node:stream/promises";
-import {
-  mkdtemp,
-  cp,
-  mkdir,
-  rm,
-  readFile,
-  writeFile,
-  readdir,
-  stat,
-  realpath,
-} from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { createReadStream, createWriteStream } from "node:fs";
-import { spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type {
-  Project,
-  JobRequest,
-  JobResult,
-  JobEvent,
-  BufferSnapshot,
-} from "../../protocol/src/index.js";
+import {
+  type BufferSnapshot,
+  type JobEvent,
+  type JobRequest,
+  type JobResult,
+  type Project,
+  PROTOCOL_VERSION,
+} from "@branchlight/protocol";
 import { contains, exists, sameFileUri } from "./projects.js";
+
 type Job = {
   id: string;
   project: Project;
@@ -50,7 +42,7 @@ export class ToolRunner {
   ) {}
   event(job: Job, kind: JobEvent["kind"], rest: Partial<JobEvent> = {}) {
     this.emit({
-      protocolVersion: 1,
+      protocolVersion: PROTOCOL_VERSION,
       jobId: job.id,
       projectId: job.project.id,
       kind,
@@ -60,17 +52,12 @@ export class ToolRunner {
   }
   async createProject(destination: string) {
     if ((await exists(destination)) && (await readdir(destination)).length)
-      throw new Error(
-        "Choose an empty directory; existing files will not be overwritten.",
-      );
+      throw new Error("Choose an empty directory; existing files will not be overwritten.");
     await mkdir(destination, { recursive: true });
     await cp(path.join(this.engine, "web/mygame"), destination, {
       recursive: true,
     });
-    await cp(
-      path.join(this.engine, "LICENSE.txt"),
-      path.join(destination, "CHOICESCRIPT-LICENSE.txt"),
-    );
+    await cp(path.join(this.engine, "LICENSE.txt"), path.join(destination, "CHOICESCRIPT-LICENSE.txt"));
     await writeFile(
       path.join(destination, "choicescript.json"),
       JSON.stringify(
@@ -95,7 +82,9 @@ export class ToolRunner {
   async stage(project: Project, buffers: BufferSnapshot[]) {
     const dir = await mkdtemp(path.join(os.tmpdir(), "branchlight-"));
     try {
-      await cp(this.engine, dir, { recursive: true });
+      await cp(this.engine, dir, {
+        recursive: true,
+      });
       const game = path.join(dir, "web/mygame");
       await rm(path.join(game, "scenes"), { recursive: true, force: true });
       for (const e of await readdir(project.assetDir, {
@@ -121,10 +110,7 @@ export class ToolRunner {
         if (path.resolve(src) === path.resolve(project.sceneDir)) continue;
         await cp(src, path.join(game, e.name), {
           recursive: true,
-          filter: (source) =>
-            !source
-              .split(path.sep)
-              .some((x) => [".git", "node_modules", ".cache"].includes(x)),
+          filter: (source) => !source.split(path.sep).some((x) => [".git", "node_modules", ".cache"].includes(x)),
         });
       }
       await cp(project.sceneDir, path.join(game, "scenes"), {
@@ -133,18 +119,12 @@ export class ToolRunner {
       for (const buffer of buffers) {
         const file = fileURLToPath(buffer.uri);
         if (contains(project.sceneDir, file)) {
-          const dest = path.join(
-            game,
-            "scenes",
-            path.relative(project.sceneDir, file),
-          );
+          const dest = path.join(game, "scenes", path.relative(project.sceneDir, file));
           await mkdir(path.dirname(dest), { recursive: true });
           await writeFile(dest, buffer.text);
         }
       }
-      const generated = await this.capture(dir, "mygamegenerator.js", [
-        "mygame",
-      ]);
+      const generated = await this.capture(dir, "mygamegenerator.js", ["mygame"]);
       await writeFile(path.join(game, "mygame.js"), generated);
       return dir;
     } catch (error) {
@@ -164,20 +144,16 @@ export class ToolRunner {
       child.stderr.on("data", (b) => (err += b));
       child.on("error", reject);
       child.on("close", (code) =>
-        code === 0
-          ? resolve(out)
-          : reject(new Error(err || out || `Process exited ${code}`)),
+        code === 0 ? resolve(out) : reject(new Error(err || out || `Process exited ${code}`)),
       );
     });
   }
-  async start(
-    request: JobRequest,
-    project: Project,
-    buffers: BufferSnapshot[],
-  ): Promise<JobResult> {
+  async start(request: JobRequest, project: Project, buffers: BufferSnapshot[]): Promise<JobResult> {
     if (this.closing) throw new Error("Game tooling is shutting down.");
     const revision = this.revisions.get(project.id) ?? 0;
     const snapshot = buffers.map((buffer) => ({ ...buffer }));
+    // Store the queued start before yielding, so simultaneous callers share the same queue.
+    // noinspection ES6MissingAwait
     const result = (this.starts.get(project.id) ?? Promise.resolve()).then(() =>
       this.startNow({ ...request }, project, snapshot, revision),
     );
@@ -187,8 +163,7 @@ export class ToolRunner {
     );
     this.starts.set(project.id, settled);
     void settled.then(() => {
-      if (this.starts.get(project.id) === settled)
-        this.starts.delete(project.id);
+      if (this.starts.get(project.id) === settled) this.starts.delete(project.id);
     });
     return result;
   }
@@ -198,27 +173,25 @@ export class ToolRunner {
     buffers: BufferSnapshot[],
     revision: number,
   ): Promise<JobResult> {
-    if (
-      !["stop", "run", "quicktest", "randomtest", "exportHtml"].includes(
-        request.operation,
-      )
-    )
+    if (!["stop", "run", "quicktest", "randomtest", "exportHtml"].includes(request.operation))
       throw new Error("Unknown tooling operation.");
     if (!request.trusted && request.operation !== "stop")
       throw new Error("Trust this workspace before running game code.");
-    if (request.protocolVersion !== 1)
-      throw new Error("Unsupported tooling protocol version.");
+    if (request.protocolVersion !== PROTOCOL_VERSION) throw new Error("Unsupported tooling protocol version.");
     if (request.operation === "stop") {
       if (request.jobId) await this.stop(request.jobId);
-      else
-        for (const j of this.jobs.values())
-          if (j.project.id === project.id) await this.stop(j.id);
+      else for (const j of this.jobs.values()) if (j.project.id === project.id) await this.stop(j.id);
       return { jobId: request.jobId ?? "", projectId: project.id };
     }
+    const count = request.iterations ?? project.randomtest?.iterations ?? 1000,
+      seed = request.seed ?? project.randomtest?.seed ?? 0;
+    if (request.operation !== "run") {
+      if (!Number.isSafeInteger(count) || count < 1 || count > 10000000 || !Number.isSafeInteger(seed))
+        throw new Error("Iterations must be an integer between 1 and 10,000,000; seed must be an integer.");
+      if (request.operation === "exportHtml" && !request.destination) throw new Error("Choose an export destination.");
+    }
     if (request.operation === "run") {
-      for (const job of this.jobs.values())
-        if (job.project.id === project.id && job.server)
-          await this.stop(job.id);
+      for (const job of this.jobs.values()) if (job.project.id === project.id && job.server) await this.stop(job.id);
     }
     const stage = await this.stage(project, buffers),
       job: Job = {
@@ -231,28 +204,7 @@ export class ToolRunner {
     this.jobs.set(job.id, job);
     this.event(job, "started");
     try {
-      if (request.operation === "run") {
-        try {
-          return await this.preview(job);
-        } catch (e) {
-          await this.stop(job.id);
-          throw e;
-        }
-      }
-      const count =
-          request.iterations ?? project.randomtest?.iterations ?? 1000,
-        seed = request.seed ?? project.randomtest?.seed ?? 0;
-      if (
-        !Number.isSafeInteger(count) ||
-        count < 1 ||
-        count > 10000000 ||
-        !Number.isSafeInteger(seed)
-      ) {
-        await this.stop(job.id);
-        throw new Error(
-          "Iterations must be an integer between 1 and 10,000,000; seed must be an integer.",
-        );
-      }
+      if (request.operation === "run") return await this.preview(job);
       let script = "quicktest.js",
         args = ["mygame"];
       if (request.operation === "randomtest") {
@@ -268,10 +220,6 @@ export class ToolRunner {
         ];
       }
       if (request.operation === "exportHtml") {
-        if (!request.destination) {
-          await this.stop(job.id);
-          throw new Error("Choose an export destination.");
-        }
         script = "compile.js";
         args = ["export.html"];
       }
@@ -288,25 +236,16 @@ export class ToolRunner {
         });
       });
       const coverage: Record<string, number[]> = {};
-      let coverageScene = "";
       const handle = (message: string) => {
         this.event(job, "output", { message });
-        const match = /\b([\w-]+)(?:\.txt)?\s+line\s+(\d+)\s*:\s*(.*)/i.exec(
-          message,
-        );
+        const match = /\b([\w-]+)(?:\.txt)?\s+line\s+(\d+)\s*:\s*(.*)/i.exec(message);
         if (match) {
           sawError = true;
           this.event(job, "diagnostic", {
             uri:
               buffers.find((buffer) =>
-                sameFileUri(
-                  buffer.uri,
-                  pathToFileURL(path.join(project.sceneDir, match[1] + ".txt"))
-                    .href,
-                ),
-              )?.uri ??
-              pathToFileURL(path.join(project.sceneDir, match[1] + ".txt"))
-                .href,
+                sameFileUri(buffer.uri, pathToFileURL(path.join(project.sceneDir, match[1] + ".txt")).href),
+              )?.uri ?? pathToFileURL(path.join(project.sceneDir, match[1] + ".txt")).href,
             line: Math.max(0, Number(match[2]) - 1),
             message: match[3],
           });
@@ -352,11 +291,7 @@ export class ToolRunner {
           sawError = true;
         });
         try {
-          if (
-            request.operation === "exportHtml" &&
-            code === 0 &&
-            !job.cancelled
-          ) {
+          if (request.operation === "exportHtml" && code === 0 && !job.cancelled) {
             const dest = request.destination!;
             await mkdir(path.dirname(dest), { recursive: true });
             await cp(path.join(stage, "export.html"), dest, {
@@ -366,23 +301,15 @@ export class ToolRunner {
             for (const e of await readdir(path.join(stage, "web/mygame"), {
               withFileTypes: true,
             }))
-              if (
-                ![
-                  "scenes",
-                  "mygame.js",
-                  "index.html",
-                  "choicescript.json",
-                ].includes(e.name)
-              )
-                await cp(
-                  path.join(stage, "web/mygame", e.name),
-                  path.join(path.dirname(dest), e.name),
-                  { recursive: true, force: false, errorOnExist: true },
-                );
+              if (!["scenes", "mygame.js", "index.html", "choicescript.json"].includes(e.name))
+                await cp(path.join(stage, "web/mygame", e.name), path.join(path.dirname(dest), e.name), {
+                  recursive: true,
+                  force: false,
+                  errorOnExist: true,
+                });
             this.event(job, "output", { message: `Exported ${dest}` });
           }
-          if (Object.keys(coverage).length)
-            this.event(job, "coverage", { coverage });
+          if (Object.keys(coverage).length) this.event(job, "coverage", { coverage });
         } catch (e) {
           code = 1;
           this.event(job, "output", { message: String(e) });
@@ -390,8 +317,7 @@ export class ToolRunner {
           this.jobs.delete(job.id);
           await rm(stage, { recursive: true, force: true });
           this.results.set(job.id, job);
-          if (this.results.size > 50)
-            this.results.delete(this.results.keys().next().value!);
+          if (this.results.size > 50) this.results.delete(this.results.keys().next().value!);
           resolveCompletion();
           this.event(job, "completed", {
             exitCode: job.cancelled ? 130 : sawError ? 1 : code,
@@ -434,17 +360,13 @@ export class ToolRunner {
           res.writeHead(403).end();
           return;
         }
-        if ((await stat(file)).isDirectory())
-          file = path.join(file, "index.html");
+        if ((await stat(file)).isDirectory()) file = path.join(file, "index.html");
         file = await realpath(file);
         if (!contains(base, file)) {
           res.writeHead(403).end();
           return;
         }
-        res.setHeader(
-          "Content-Type",
-          types[path.extname(file)] ?? "application/octet-stream",
-        );
+        res.setHeader("Content-Type", types[path.extname(file)] ?? "application/octet-stream");
         res.setHeader("Cache-Control", "no-store");
         createReadStream(file)
           .on("error", () => res.destroy())
@@ -459,8 +381,7 @@ export class ToolRunner {
       server.listen(0, "127.0.0.1", () => resolve());
     });
     const address = server.address();
-    if (!address || typeof address === "string")
-      throw new Error("Preview failed to bind");
+    if (!address || typeof address === "string") throw new Error("Preview failed to bind");
     const url = `http://127.0.0.1:${address.port}/${token}/mygame/index.html`;
     this.event(job, "preview", { url });
     return { jobId: job.id, projectId: job.project.id, url };
@@ -471,8 +392,7 @@ export class ToolRunner {
       if (job.project.id === projectId && !job.stale) {
         job.stale = true;
         this.event(job, "stale", {
-          message:
-            "Source changed; restart preview or rerun tests to use the current snapshot.",
+          message: "Source changed; restart preview or rerun tests to use the current snapshot.",
         });
       }
   }

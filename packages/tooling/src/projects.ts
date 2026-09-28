@@ -1,18 +1,10 @@
 import { URI } from "vscode-uri";
-import { readdir, readFile, access, stat } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL, fileURLToPath } from "node:url";
-import type { Project, BufferSnapshot } from "../../protocol/src/index.js";
-const excluded = new Set([
-  ".git",
-  "node_modules",
-  "vendor",
-  "dist",
-  "build",
-  ".cache",
-  ".idea",
-  ".gradle",
-]);
+import { fileURLToPath, pathToFileURL } from "node:url";
+import type { BufferSnapshot, Project } from "@branchlight/protocol";
+
+const excluded = new Set([".git", "node_modules", "vendor", "dist", "build", ".cache", ".idea", ".gradle"]);
 export async function exists(file: string) {
   try {
     await access(file);
@@ -32,14 +24,10 @@ export async function discoverProjects(roots: string[]): Promise<Project[]> {
       return;
     }
     if (entries.some((e) => e.name === "choicescript.json")) {
-      const config = JSON.parse(
-        await readFile(path.join(dir, "choicescript.json"), "utf8"),
-      );
+      const config = JSON.parse(await readFile(path.join(dir, "choicescript.json"), "utf8"));
       config.scenes ??= "scenes";
       if (typeof config.scenes !== "string")
-        throw new Error(
-          `choicescript.json in ${dir}: scenes must be a relative directory.`,
-        );
+        throw new Error(`choicescript.json in ${dir}: scenes must be a relative directory.`);
       const scenes = path.resolve(dir, config.scenes);
       if (await exists(path.join(scenes, "startup.txt")))
         projects.set(scenes, {
@@ -67,37 +55,25 @@ export async function discoverProjects(roots: string[]): Promise<Project[]> {
       if (e.isDirectory() && !excluded.has(e.name) && !e.name.startsWith("."))
         await walk(path.join(dir, e.name), depth + 1);
   }
-  for (const root of roots)
-    await walk(root.startsWith("file:") ? fileURLToPath(root) : root, 0);
+  for (const root of roots) await walk(root.startsWith("file:") ? fileURLToPath(root) : root, 0);
   return [...projects.values()];
 }
 export function contains(directory: string, file: string) {
   const rel = path.relative(directory, file);
-  return (
-    rel === "" ||
-    (!rel.startsWith(".." + path.sep) && rel !== ".." && !path.isAbsolute(rel))
-  );
+  return rel === "" || (!rel.startsWith(".." + path.sep) && rel !== ".." && !path.isAbsolute(rel));
 }
 export function projectFor(projects: Project[], uri: string) {
   if (!uri.startsWith("file:")) return undefined;
   const file = fileURLToPath(uri);
-  return projects
-    .filter((p) => contains(p.sceneDir, file))
-    .sort((a, b) => b.sceneDir.length - a.sceneDir.length)[0];
+  return projects.filter((p) => contains(p.sceneDir, file)).sort((a, b) => b.sceneDir.length - a.sceneDir.length)[0];
 }
 export function sameFileUri(left: string, right: string) {
-  if (!left.startsWith("file:") || !right.startsWith("file:"))
-    return left === right;
+  if (!left.startsWith("file:") || !right.startsWith("file:")) return left === right;
   const a = path.resolve(fileURLToPath(left)),
     b = path.resolve(fileURLToPath(right));
-  return process.platform === "win32"
-    ? a.toLowerCase() === b.toLowerCase()
-    : a === b;
+  return process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
 }
-export async function readProject(
-  project: Project,
-  buffers: BufferSnapshot[] = [],
-) {
+export async function readProject(project: Project, buffers: BufferSnapshot[] = []) {
   const files: BufferSnapshot[] = [];
   async function walk(dir: string) {
     for (const e of await readdir(dir, { withFileTypes: true })) {
@@ -117,10 +93,6 @@ export async function readProject(
   }
   await walk(project.sceneDir);
   for (const b of buffers)
-    if (
-      projectFor([project], b.uri) &&
-      !files.some((f) => sameFileUri(f.uri, b.uri))
-    )
-      files.push(b);
+    if (projectFor([project], b.uri) && !files.some((f) => sameFileUri(f.uri, b.uri))) files.push(b);
   return files;
 }
