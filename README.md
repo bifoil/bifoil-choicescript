@@ -1,64 +1,61 @@
 # Branchlight
 
-An unofficial, independent personal project for authoring ChoiceScript games in VS Code and JetBrains IDEs. **Unaffiliated with Choice of Games or the upstream ChoiceScript project.**
+ChoiceScript authoring tools for VS Code and JetBrains IDEs.
 
-The shared TypeScript language server supplies syntax diagnostics, dialogue-aware semantic highlighting, inferred variable colors, completion, hover, navigation, references, rename, symbols, folding, and selection ranges. Editor adapters supply project creation, embedded preview, QuickTest, RandomTest, HTML export, formatting shortcuts, and word counts.
+Branchlight helps you write, navigate, preview, and test branching stories. Both editor plugins use the same language service, so dialogue, variables, and diagnostics are analyzed consistently across editors.
 
-## Install
+**An unofficial personal project by chinay, unaffiliated with Choice of Games or upstream ChoiceScript.**
 
-Download the installer for your platform and `SHA256SUMS.txt` from the private repository’s Releases page when a prerelease is available. See the [release notes](docs/release-notes.md) for features and limitations.
+[Get started](docs/support.md) · [User guide](docs/usage.md) · [Configuration](docs/configuration.md) · [Contributing](CONTRIBUTING.md)
 
-Build artifacts are placed in `dist/packages` (VSIX) and `editors/intellij/build/distributions` (JetBrains ZIP). Install a VSIX using VS Code's **Extensions: Install from VSIX** command. In a compatible JetBrains IDE, use **Settings → Plugins → Install Plugin from Disk**. Node.js is included in packaged plugins.
+## What it does
 
-Open an existing game directory containing `scenes/startup.txt`, or use **Branchlight → New Project**. Only detected scene `.txt` files are associated automatically; unrelated text files remain plain text. You can also select the ChoiceScript language explicitly. Multiple games in one workspace are supported.
+- **Understands dialogue across branches.** Narrative quotation is tracked through conditionals, scenes, and subroutines independently of strings in commands. An unfinished command string cannot consume the next line.
+- **Highlights what the code means.** Variables receive string, number, or boolean styling where their type can be inferred. Uncertain values keep neutral styling; colors follow your editor theme.
+- **Supports everyday editing.** Completion, hover documentation, definitions, references, rename, symbols, folding, selection ranges, snippets, and narrative word counts.
+- **Runs your game from the editor.** Create a project, open a preview, run official QuickTest or seeded RandomTest, inspect available coverage, and export HTML with companion assets.
 
-Run commands from the command palette/Tools menu. Running, testing, and exporting require a trusted project. Test logs are saved under `.branchlight/logs`. Preview and tests use snapshots including unsaved editor buffers; changing source marks running results stale. Restart preview to see changes. Export to a new directory to avoid overwriting companion assets.
+For example, these two branches each close the same opening dialogue quote:
 
-## Quotes
-
-Expression strings such as `*set name "Alex"` must close on their source line. Dialogue is analyzed separately and may cross newlines, conditionals, scene transitions, and subroutine calls. Each alternative inherits the same incoming dialogue state. Quotes in commands never toggle the surrounding dialogue state. Narrative warnings can be disabled separately from syntax diagnostics.
-
-When dynamic scene targets, generated string contents, or paths disagree, highlighting is conservative. Type colors are inferred at each reference, not permanent declarations of a variable's type. Unknown/mixed types retain the normal variable style. No game code runs during static analysis.
-
-## Project configuration
-
-`choicescript.json` is optional:
-
-```json
-{"scenes":"scenes","assets":".","randomtest":{"iterations":1000,"seed":0}}
+```choicescript
+*create gender "male"
+*create implicit_control_flow true
+She said "This is the end,
+*if gender = "male"
+    William."
+*else
+    Belle."
+She walked away.
 ```
 
-Paths are relative to the configuration file. Keep generated exports outside the game assets directory where possible.
+Both `William."` and `Belle."` receive dialogue styling. The command expression `gender = "male"` keeps its code styling, and `She walked away.` is ordinary narrative. See [language behavior](docs/specification.md) for the rules and limits of this analysis.
 
-## Build from a fresh checkout
+## Get started
 
-Install Git, Node.js 24 LTS, pnpm 12.6.0, and JDK 21 (development only).
+Branchlight is in private prerelease development. Repository access is required to download builds or open issues; it is not published to an editor marketplace.
 
-Clone with the pinned submodule, preserving upstream line endings on every OS:
+| Editor                           | Supported baseline | Installer                                |
+| -------------------------------- | ------------------ | ---------------------------------------- |
+| VS Code desktop                  | 1.109+             | A VSIX for your operating system and CPU |
+| IntelliJ IDEA, WebStorm, PyCharm | 2026.1.4           | The JetBrains plugin ZIP                 |
 
-```sh
-git -c core.autocrlf=false clone --recurse-submodules https://github.com/Chinay-Domitrix/branchlight.git
-cd branchlight
-```
+Packages include Node.js and the pinned ChoiceScript engine. You do not need a separate Node.js installation to use them. Windows, macOS, and Linux packages cover x64 and ARM64; Linux requires glibc. See [installation](docs/support.md) for download instructions and [JetBrains compatibility](docs/jetbrains-compatibility.md) for exact builds.
 
-For an existing checkout, run `git -c core.autocrlf=false submodule update --init --recursive` before building and after pulling changes to the engine pin.
+1. Install the plugin for your editor.
+2. Open a game folder containing `scenes/startup.txt`, or use **Branchlight: New Project** in VS Code / **Tools → Branchlight → New Project** in a JetBrains IDE.
+3. Open a scene and start writing. Branchlight recognizes scene files without claiming every `.txt` file in your workspace.
+4. Use **Run Game** to preview, then **Run QuickTest** or **Run RandomTest** to test. Execution requires a trusted workspace; editing assistance remains available without it.
 
-```sh
-pnpm install --frozen-lockfile
-pnpm check
-pnpm package:vscode                 # current OS/architecture
-pnpm package:vscode win32-x64       # other target
-pnpm package:intellij              # bundles all six Node runtimes
-cd editors/intellij
-./gradlew buildPlugin verifyPlugin
-```
+## Documentation
 
-Dependency build-script decisions are checked into `pnpm-workspace.yaml`: esbuild and the VS Code signing helper are allowed; keytar, used for Marketplace credential storage, is disabled. CI reads the pnpm version from `package.json`.
+- [User guide](docs/usage.md): editing, preview, testing your game, and export.
+- [Configuration](docs/configuration.md): project layouts, warnings, and colors.
+- [Troubleshooting](docs/troubleshooting.md): detection, installation, and tooling problems.
+- [Development guide](CONTRIBUTING.md): build from source and contribute a change.
+- [Documentation index](docs/README.md): architecture, APIs, compatibility, and release procedures.
 
-Runtime downloads are verified against `runtime-lock.json`. The official ChoiceScript engine is pinned as the `vendor/choicescript` Git submodule. Builds verify its commit and file checksums, then copy its sources without Git metadata into the plugins. Packaged installations require neither Git nor a separate engine checkout. `pnpm generate` regenerates conservative fallback grammar and IntelliJ command metadata. `pnpm test` exercises the shared analyzer and official game tools. `node scripts/extract-vsix.mjs` selects and verifies the packaged extension; then `pnpm exec node scripts/test-vscode.mjs` runs its VS Code extension-host smoke test.
+The [release notes](docs/release-notes.md) describe the current candidate and its remaining limitations. For a bug report, include a small reproducible example and your editor and plugin versions; see [reporting a problem](docs/troubleshooting.md#reporting-a-problem).
 
-Use `pnpm test:corpus "/path/to/game"` to run read-only analysis against local game sources. See [development testing](docs/testing.md) for command options and editor test instructions.
+## License
 
-See [architecture](docs/architecture.md), [supported features](docs/support.md), [development testing](docs/testing.md), and [dependency notices](THIRD_PARTY_NOTICES.md).
-
-The **Private prerelease** workflow accepts a new tag such as `v0.1.0-alpha.1`; run it after signing the intended source history. It publishes only prereleases in a private repository, with six VSIX files, one universal JetBrains ZIP, provenance and checksums.
+Original Branchlight code is [MIT licensed](LICENSE). The bundled ChoiceScript engine and other dependencies retain their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md). Branchlight's license does not replace the license for ChoiceScript or its project template.

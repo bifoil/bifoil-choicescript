@@ -1,23 +1,29 @@
 # Third-party notices
 
-Branchlight is an independent personal project. It is unaffiliated with Choice of Games or upstream ChoiceScript.
+Branchlight is an unofficial personal project by chinay, unaffiliated with Choice of Games or upstream ChoiceScript. Original Branchlight code is covered by the MIT license in `LICENSE`. Dependencies and upstream template material retain the licenses below; bundling them does not imply endorsement or change their terms.
 
-The original editor tooling uses the MIT license; see `LICENSE`.
+## ChoiceScript
 
-- **ChoiceScript:** https://github.com/dfabulich/choicescript, commit `60a6c3ee7393c9ee7e42650b8e1642ae38e3cb6a`. The
-  unmodified source is pinned as the `vendor/choicescript` Git submodule; its ChoiceScript License is in
-  `vendor/choicescript/LICENSE.txt`. Its source comments and notices are retained. The submodule commit and original
-  archive provenance are in `vendor/choicescript.lock.json`; per-file checksums are in `vendor/checksums.json`.
-- **Node.js:** Node 24 LTS binary archives from https://nodejs.org/dist. Exact versions and SHA-256 checksums are in
-  `runtime-lock.json`. Each packaged runtime includes `NODE-LICENSE` and `provenance.json`.
-- **JavaScript libraries:** Dependency versions are locked in `pnpm-lock.yaml`. They retain their respective licenses.
-  The packaging process includes dependency license notices.
-- **JetBrains platform and build tools:** Used through their respective SDK and build-tool distributions. The plugin
-  does not bundle a JetBrains IDE or JBR.
+- Upstream: [dfabulich/choicescript](https://github.com/dfabulich/choicescript).
+- Pinned revision: `60a6c3ee7393c9ee7e42650b8e1642ae38e3cb6a`.
+- License: ChoiceScript License 1.0, preserved as `vendor/choicescript/LICENSE.txt` in source and with the bundled engine in distributions.
 
-Bundling dependencies does not change their licenses or imply endorsement.
+The engine is an unmodified Git submodule at `vendor/choicescript`. Original source comments and notices are retained. `vendor/choicescript.lock.json` records the repository, revision, and original archive provenance; `vendor/checksums.json` records per-file hashes checked by the build.
 
-The resolved Gradle/JVM dependency versions and SHA-256 values from the Linux verification build are recorded in
-`docs/provenance/gradle-linux-x64.xml`. This is an inventory, not a cross-platform Gradle enforcement file: local IDE
-metadata and platform archives vary by build host. Node archives, the Gradle wrapper, the engine snapshot, and pnpm
-packages retain their portable checksum locks.
+New games use the pinned upstream template and include `CHOICESCRIPT-LICENSE.txt` and `UPSTREAM-TEMPLATE.md`. Branchlight's MIT license does not replace the license for that material.
+
+## Node.js
+
+Runtime archives come from the [official Node.js distribution service](https://nodejs.org/dist/). `runtime-lock.json` records the exact version, archive names, and SHA-256 hashes for each supported target.
+
+Each packaged runtime includes `NODE-LICENSE` and `provenance.json`, which identifies its source archive and records archive and executable hashes. Node.js and its bundled components retain their upstream license notices.
+
+## JavaScript dependencies
+
+`pnpm-lock.yaml` records resolved dependency versions and integrity information. Packaging collects dependency licenses and includes them with the server distribution. Each library remains subject to its own license.
+
+## JetBrains and JVM build dependencies
+
+The JetBrains platform, Kotlin, Gradle, Plugin Verifier, and other JVM dependencies are obtained through their respective distributions and repositories. The plugin does not bundle an IDE or JetBrains Runtime.
+
+`docs/provenance/gradle-linux-x64.xml` records resolved Gradle/JVM dependency versions and SHA-256 values from a Linux verification build. It is a dependency inventory, not a cross-platform enforcement lock: IDE metadata and platform archives can vary by host. Gradle wrapper and plugin versions are declared in the Gradle project files.

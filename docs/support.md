@@ -1,82 +1,63 @@
-# Installation and supported features
+# Install Branchlight
 
-Branchlight is an unofficial personal project, unaffiliated with Choice of Games or upstream ChoiceScript. Its
-independent identifiers are `chinay.branchlight` (VS Code) and `dev.chinay.branchlight` (JetBrains). It bundles the
-unchanged ChoiceScript snapshot identified in `vendor/choicescript.lock.json`, sourced from the pinned
-`vendor/choicescript` submodule during development.
+Packaged plugins include their own Node.js runtime and ChoiceScript engine. You need a supported editor, not a system Node.js installation. Building from source has separate [development requirements](../CONTRIBUTING.md#build-from-source).
 
-## Requirements
+## Choose a build
 
-VS Code desktop 1.109 or newer, or a JetBrains IDE with the built-in `com.intellij.modules.lsp` integration and platform
-build 261.26222 or newer. The declared validation matrix is IntelliJ IDEA, WebStorm and PyCharm 2026.1.4, whose
-product-specific build suffixes differ; see [exact builds](jetbrains-compatibility.md). IntelliJ IDEA 2026.1.4 remains
-the baseline. Other JetBrains products and later builds require their own verifier and launch checks; the module
-dependency prevents installation in products without native LSP support. Older Community editions, Android Studio,
-browser-only VS Code, debugging, and marketplace publication are outside this release.
+Branchlight is in private prerelease development and is not on an editor marketplace. With repository access, download an installer from a successful **Build and verify** run in [GitHub Actions](https://github.com/Chinay-Domitrix/branchlight/actions/workflows/ci.yml). Unzip the downloaded Actions artifact to get the installer inside.
 
-Six VSIX variants cover Windows, macOS, and Linux, each on x64 and ARM64. Choose the artifact matching the editor's OS
-and CPU. In WSL/SSH remote workspaces, choose the extension host's OS. The JetBrains ZIP includes all six runtimes and
-selects one on launch. Packaged plugins include Node.js. Linux binaries require an OS supported by the bundled
-official Node distribution (glibc, not Alpine/musl).
+- For VS Code, choose the `vscode-…` artifact for your operating system and CPU. The installer filename identifies its target, as listed below.
+- For JetBrains IDEs, choose `intellij-idea`. Its plugin ZIP is the distribution artifact; the WebStorm and PyCharm artifacts are compatibility builds of the same adapter.
+- When a private prerelease is published, its installers and checksum file are also available under [Releases](https://github.com/Chinay-Domitrix/branchlight/releases).
 
-## Replacing an earlier development build
+| System           | x64 VS Code installer         | ARM64 VS Code installer         |
+| ---------------- | ----------------------------- | ------------------------------- |
+| Windows          | `branchlight-win32-x64.vsix`  | `branchlight-win32-arm64.vsix`  |
+| macOS            | `branchlight-darwin-x64.vsix` | `branchlight-darwin-arm64.vsix` |
+| Linux with glibc | `branchlight-linux-x64.vsix`  | `branchlight-linux-arm64.vsix`  |
 
-Uninstall earlier development builds before installing this version of Branchlight. Its identifiers are
-`chinay.branchlight` and `dev.chinay.branchlight`; keeping an older build installed alongside it could start competing
-language clients. The quote-warning setting is `branchlight.quoteWarnings`, and saved logs use `.branchlight/logs`.
+The distribution JetBrains ZIP includes all six runtimes. Alpine Linux and other musl-based environments are outside the packaged runtime targets.
 
-## Editing
+For a WSL or SSH workspace, use a VSIX matching the machine that runs the extension host. A Windows desktop connected to a Linux extension host needs the Linux build in that host.
 
-Open a game root containing `scenes/startup.txt`, an engine checkout with `web/mygame/scenes/startup.txt`, or a folder
-containing several games. `choicescript.json` can override `scenes`, `assets`, and RandomTest defaults. A scene
-directory must contain `startup.txt`. Unrelated `.txt` files stay plain text; explicit ChoiceScript language selection
-is also supported.
+## VS Code
 
-Both adapters use the same server for semantic tokens, syntax and dialogue diagnostics, completion, hover, definitions,
-references, rename, symbols, folding, selection ranges, and narrative word count. Rename changes resolved source
-references; it deliberately leaves prose and dynamic string destinations alone. Live templates/snippets, indentation,
-comments, bold, and italic are editor commands. Labels and variables are case-insensitive.
+Requires VS Code desktop **1.109 or later**.
 
-Narrative quotes propagate independently of expression strings. Missing command-string quotes produce errors local to
-the physical line. Branches, jumps, scene changes, and subroutine summaries carry narrative state. Mixed incoming states
-receive neutral styling. Variable types are inferred at references, including static array elements and resolved
-indirect values. Loops, recursion, generated text, and unknown destinations can reduce precision; uncertain values are
-neutral. Branch feasibility is conservative rather than a full runtime simulation. QuickTest and RandomTest remain the
-authority for engine-specific runtime restrictions and uncommon command forms.
+1. Open the Command Palette and run **Extensions: Install from VSIX**.
+2. Select the downloaded `.vsix` for your host and reload if prompted.
+3. Open the folder containing your game and then a scene file.
 
-To customize VS Code colors, use `editor.semanticTokenColorCustomizations` with selectors such as
-`dialogue:choicescript`, `stringVariable:choicescript`, `numberVariable:choicescript`, and
-`booleanVariable:choicescript`. Default colors follow the active theme. JetBrains exposes the same categories under
-**Editor → Color Scheme → Branchlight**. Toggle narrative warnings through `branchlight.quoteWarnings` or the JetBrains
-Tools menu. Syntax diagnostics remain active.
+The extension identifier is `chinay.branchlight`. Disable older development extensions for ChoiceScript if they provide duplicate diagnostics or language clients.
 
-## Game tools
+Browser-only VS Code and virtual workspaces are outside the first release.
 
-Use **Branchlight** in the VS Code command palette or JetBrains Tools menu. New Project copies the pinned upstream
-template into an empty directory and adds its license/provenance. Run Game starts a local snapshot preview; Run again
-restarts it. Stop terminates owned preview/test jobs. Both editors offer browser fallback for the embedded preview.
-Execution requires editor workspace trust; editing features work without trust.
+## JetBrains IDEs
 
-QuickTest and seeded RandomTest run the official programs in disposable staging directories. Progress is cancellable,
-errors point to scene lines, and logs are saved under `.branchlight/logs`. Coverage is reported when the upstream runner
-provides it: VS Code marks visited lines and JetBrains prints per-scene counts. Completed results and active previews
-are marked stale after edits. Export HTML runs the official compiler and copies required companion assets. Choose a new
-destination: existing files are preserved, and collisions are reported.
+The declared product baselines are **IntelliJ IDEA, WebStorm, and PyCharm 2026.1.4**. Check the [exact compatibility matrix](jetbrains-compatibility.md) before installing in another build. Branchlight requires the IDE's built-in LSP module; older Community editions and Android Studio are outside support.
 
-## Development and validation
+1. Open **Settings → Plugins**.
+2. Use the gear menu's **Install Plugin from Disk** action and select the plugin ZIP inside the downloaded Actions artifact, or the ZIP from a release.
+3. Restart if prompted and open your game folder.
 
-Use Git, Node 24, pnpm 12.6.0, and JDK 21. Initialize the pinned engine with
-`git -c core.autocrlf=false submodule update --init --recursive`. Builds use repository sources and pinned dependencies.
-Python is not a build requirement. If using Python for maintenance, use `uv`.
+The plugin identifier is `dev.chinay.branchlight`. Commands are under **Tools → Branchlight**, and run output appears in the **Branchlight** tool window.
 
-`pnpm check` verifies the submodule revision and vendored hashes, builds, typechecks, and runs regressions.
-`pnpm package:vscode <target>` creates a self-contained VSIX. `pnpm package:intellij` prepares bundled resources; then
-`editors/intellij/gradlew -p editors/intellij test buildPlugin verifyPlugin` checks and packages the adapter. The Gradle
-wrapper and Plugin Verifier versions are pinned. Use `--write-verification-metadata sha256` when intentionally updating
-Gradle dependencies.
+## Open or create a game
 
-`scripts/smoke-bundle.cjs` runs against the selected bundled Node executable and exercises the packaged server and game
-tools. `scripts/test-vscode.mjs` starts a real VS Code extension host. On headless Linux, use
-`xvfb-run -a node scripts/test-vscode.mjs`. The native adapter includes a platform integration test launching its
-bundled server. CI tests extracted VSIX packages on Linux, Windows and macOS, each on x64/ARM64, and native integration
-in the three declared JetBrains products. See [development testing](testing.md) for commands and manual editor checks.
+These layouts are discovered automatically:
+
+```text
+my-game/
+  scenes/
+    startup.txt
+    choicescript_stats.txt
+    chapter-one.txt
+```
+
+Existing engine layouts such as `web/mygame/scenes/startup.txt` work too. A workspace may contain several games. Only text files inside detected scene directories receive automatic ChoiceScript association.
+
+For another layout, add [choicescript.json](configuration.md#project-layout). For a standalone scene, explicitly select the ChoiceScript language/file type in your editor. Prefer explicit per-file selection over a global `*.txt` association.
+
+To start a game, use **New Project**, choose a parent folder and a new folder name, then open the created folder. The command uses the bundled upstream template and preserves its license notices. The destination must be absent or empty.
+
+Continue with the [user guide](usage.md) to preview, test, and export. If a scene stays plain text or the server does not start, see [troubleshooting](troubleshooting.md).

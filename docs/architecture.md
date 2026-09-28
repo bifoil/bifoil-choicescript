@@ -1,49 +1,57 @@
 # Architecture
 
-Original code lives in four TypeScript packages and two editor adapters. The engine in `vendor/choicescript` is an
-unmodified Git submodule with separate licensing. Its Git revision and per-file checksums are verified before builds.
-Builds use repository sources and pinned dependencies, and omit Git metadata from bundled and staged engine copies.
+Branchlight has one TypeScript language service and game-tooling implementation, with adapters for VS Code and JetBrains IDEs. Editor-specific code handles integration and presentation; syntax and analysis do not depend on either editor's APIs.
 
-`core` parses physical lines into an indentation tree. Expression tokenization has a physical-line recovery boundary.
-Narrative quotation uses an independent abstract state propagated through a control-flow graph. Conditional alternatives
-inherit the same input; joins union possible quote states. Command literal quotes never toggle narrative state. Calls
-use context-indexed summaries and subscribers; recursive summaries converge through a worklist rather than an unbounded
-call stack. Abstract variable values retain constants only when incoming paths agree. Mixed types and unknown generated
-text lose precision conservatively.
+## Components
 
-The shared source model uses JavaScript UTF-16 offsets, matching LSP. Semantic spans are split at overlay boundaries so
-expression tokens inside prose never overlap dialogue tokens. Native fallback lexers do not attempt cross-line narrative
-quotation.
+```mermaid
+flowchart TD
+    VS[VS Code adapter] -->|LSP and tooling requests| Server[Language server]
+    JB[JetBrains native LSP adapter] -->|LSP and tooling requests| Server
+    Server --> Worker[Analysis worker]
+    Worker --> Core[Parser and shared analysis]
+    Server --> Tooling[Project discovery and game jobs]
+    Tooling --> Stage[Staged game and buffer snapshot]
+    Stage --> Runtime[Bundled Node and pinned ChoiceScript tools]
+```
 
-`server` snapshots project files plus open buffers, sends analysis to a worker, terminates superseded workers, and
-publishes only the current revision. Editor actions use protocol version 1. Heavy game operations run in subprocesses
-rather than the analysis worker.
+| Component         | Source                      | Responsibility                                                                     |
+| ----------------- | --------------------------- | ---------------------------------------------------------------------------------- |
+| Language core     | `packages/core/src`         | Syntax trees, symbols, control flow, diagnostics, semantic spans, editing features |
+| Language server   | `packages/server/src`       | LSP transport, workspace state, snapshots, analysis scheduling                     |
+| Shared protocol   | `packages/protocol/src`     | Versioned game-tool contracts                                                      |
+| Game tooling      | `packages/tooling/src`      | Discovery, staging, preview, tests, export, process ownership                      |
+| VS Code adapter   | `editors/vscode/src`        | Client lifecycle, commands, associations, webview, theme mapping                   |
+| JetBrains adapter | `editors/intellij/src/main` | Native LSP, language substitution, actions, JCEF, color settings                   |
 
-`tooling` discovers game roots and copies the bundled engine, game assets, and buffer snapshots to a disposable staging
-directory. Preview serves only that staged web root on loopback. Test logs are persisted under the game root. Test
-diagnostics are mapped back to scene URIs; snapshot results are marked stale after edits. Compilation uses the official
-compiler and preserves companion assets.
+## Parsing and analysis
 
-The VS Code client handles file association, commands, webview preview, settings, and semantic theme mappings. The
-Kotlin client uses the native JetBrains LSP API, a project-aware language substitutor, color settings, live templates,
-and a JCEF tool window. Packaged clients use checksum-verified Node runtimes. The IntelliJ plugin extracts its verified
-resources into the IDE cache.
+The parser builds an indentation tree from physical lines. Expression tokenization recovers at line boundaries, while narrative quotation uses a separate abstract state propagated through a control-flow graph. This separation prevents an incomplete command string from corrupting later prose.
 
-## Protocol
+Conditional alternatives share an incoming state. Joins combine reachable states; dialogue styling requires agreement. Calls use context-indexed summaries and subscribers, with a worklist that converges across loops and recursion. Abstract variable values preserve constants when paths agree and become less precise when assignments or dynamic operations require it.
 
-Standard LSP handles editing features. `choicescript/projects` returns detected projects. `choicescript/job` accepts the
-versioned `JobRequest` type and returns a job handle; `choicescript/jobEvent` streams state, logs, diagnostics,
-coverage, and completion. `choicescript/projectsChanged` updates project discovery. `choicescript/wordCount` reports
-narrative word count. TypeScript contracts live in `packages/protocol`; Kotlin DTOs and contract tests track the same
-public fields.
+The source model uses UTF-16 offsets. Semantic spans are split at overlay boundaries so expression and markup tokens take precedence over narrative without overlapping. Shared command metadata also generates conservative editor fallbacks. Those fallbacks do not implement cross-line dialogue analysis.
 
-## Deliberate boundaries
+See [language behavior](specification.md) for the user-visible contract. The analyzer does not run game code to discover values; official runtime tests complement static analysis.
 
-The analyzer does not execute game scripts to infer behavior. Unknown indirect targets and values are conservative.
-Engine correctness is checked with differential fixtures and the official test runners, not a claim that static analysis
-predicts every runtime failure. Dialogue warnings are an editing aid, not an additional rule of ChoiceScript syntax.
-Preview refresh is explicit to avoid discarding game progress during typing.
+## Snapshots and cancellation
 
-The pinned upstream compiler's VM-loaded `mygamegenerator.js` expects `rootDir` to be global. The tooling supplies a
-staging-only Node preload defining `global.rootDir = 'web/'`; no vendored source is patched. An integration test
-exercises this compatibility bridge.
+The server combines project files with open document buffers into versioned snapshots. Analysis runs in a worker. Superseding work terminates an obsolete worker, and only results for the current revision are published.
+
+Project membership and dependency changes invalidate analysis. The adapters receive the same diagnostics and semantic classifications; each maps them to its editor's UI and theme system.
+
+## Game jobs
+
+The tooling layer copies the pinned engine, relevant game assets, and scene buffers into a disposable staging directory. It excludes engine Git metadata. Official QuickTest, RandomTest, and compilation run as child processes using the bundled Node executable, independently of the analysis worker.
+
+Preview serves the staged web root over loopback with a per-run URL token. It preserves the current playthrough until an explicit restart. Job events carry output, mapped scene locations, coverage where available, staleness, and completion. Logs survive under the game root; owned staging directories and processes are cleaned up when jobs stop.
+
+The pinned compiler's VM-loaded generator expects a global `rootDir`. Export supplies it through a staging-only Node preload. The upstream source remains unchanged; an integration test covers this compatibility bridge.
+
+The [protocol reference](protocol.md) documents requests and events. Trust decisions originate in the editor; the server/tooling layer also checks execution requests. Language assistance remains available without execution trust.
+
+## Packaging boundaries
+
+The engine is an unmodified Git submodule checked against its recorded revision and per-file hashes before a build. Node archive versions and hashes are recorded in `runtime-lock.json`. Each VSIX contains its target runtime; the distribution JetBrains ZIP contains all six. The native adapter verifies and extracts its bundled resources into the IDE cache.
+
+The IDE SDK and JetBrains Runtime are build/test dependencies, not contents of the plugin. Dependency licenses and provenance accompany packaged outputs. See [third-party notices](../THIRD_PARTY_NOTICES.md) and [packaging](releasing.md).

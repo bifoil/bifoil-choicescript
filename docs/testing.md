@@ -1,33 +1,35 @@
-# Development testing
+# Test a Branchlight change
 
-Install the development dependencies described in [the build instructions](../README.md#build-from-a-fresh-checkout).
+This guide is for plugin development. To test a story from the editor, use the [game testing guide](usage.md#quicktest-and-randomtest). Install source dependencies using [Contributing](../CONTRIBUTING.md#build-from-source) before running the commands below, all from the repository root.
 
-## Shared language service and game tools
+## Shared checks
 
 ```sh
 pnpm check
 ```
 
-This verifies the pinned engine checksums, builds the project, checks TypeScript types, and runs the regression and
-integration suites. Tests use synthetic scenes and the pinned interpreter to cover parsing, dialogue flow, variable
-types, project discovery, LSP requests, and game-tool jobs.
+This verifies the pinned engine, builds the bundles, checks TypeScript types, and runs regression and integration tests. Coverage includes parsing and recovery, dialogue flow, variable types, project discovery, real LSP requests, and official game-tool jobs.
 
-To analyze additional local scene files without executing game code:
+For a targeted investigation, `pnpm typecheck` and `pnpm test` are separate commands. Run `pnpm build` before tests that exercise built bundles.
+
+Add small original regressions alongside the affected package tests. Analysis changes should cover both the result and source ranges, especially around malformed strings, branch joins, indirect references, CRLF, Unicode, and edits. Keep sample scenes under package tests or `fixtures/`; documentation is not a corpus or a store of test results.
+
+## Analyze local scenes
+
+The corpus command performs read-only analysis without executing game code or copying sources into this repository:
 
 ```sh
 pnpm test:corpus "/path/to/game" "/path/to/scene-fragments"
 pnpm test:corpus --details "/path/to/game"
 ```
 
-The command reads the selected directories and prints JSON summaries. `--details` adds relative source locations and
-diagnostic messages. It creates no game files or staging copies. A directory without a detected project is treated as
-explicitly selected scene fragments; unrelated text files are not associated automatically.
+It prints JSON summaries; `--details` adds relative locations and diagnostic messages. A directory without a discovered project is treated as explicitly selected scene fragments.
 
-Each directory runs in a separate process with a 1 GiB V8 heap limit and a 60-second timeout. Errors, invalid
-semantic-token ranges, truncated analysis, and worker failures produce a nonzero exit status. Narrative warnings alone
-do not fail a run.
+Each directory runs in a separate process with a 1 GiB V8 heap limit and a 60-second timeout. Analysis errors, invalid token ranges, truncated analysis, and worker failures produce a nonzero exit status. Narrative warnings alone do not fail the run. Keep local sources and generated reports outside public documentation and committed fixtures.
 
-## Packaged VS Code extension
+## Packaged VS Code checks
+
+After shared checks pass:
 
 ```sh
 pnpm package:vscode
@@ -36,37 +38,44 @@ node scripts/test-bundle.mjs
 node scripts/test-vscode.mjs
 ```
 
-The extension-host test uses the extracted VSIX, an isolated editor profile, and a temporary game. Use
-`xvfb-run -a node scripts/test-vscode.mjs` on headless Linux. `BRANCHLIGHT_EXTENSION_PATH` selects an extracted
-extension, and `BRANCHLIGHT_VSCODE_EXECUTABLE` selects an editor installation. Diagnostic output is written to
-`dist/test-results/editor`.
-
-## JetBrains adapter
+Extraction verifies the package target and bundled runtime checksums. The tests use the extracted VSIX, an isolated editor profile, and a temporary game. On headless Linux, replace the last command with:
 
 ```sh
-pnpm package:intellij
+xvfb-run -a node scripts/test-vscode.mjs
+```
+
+`BRANCHLIGHT_EXTENSION_PATH` selects an extracted extension directory. `BRANCHLIGHT_VSCODE_EXECUTABLE` selects an existing editor executable instead of the default downloaded test installation. Editor diagnostics go to `dist/test-results/editor`.
+
+These checks exercise packaged code, so rebuild and repackage after changing the implementation.
+
+## JetBrains checks
+
+For a single-host development check, after building the shared bundles:
+
+```sh
+pnpm package:intellij --current
 bash editors/intellij/gradlew -p editors/intellij test buildPlugin verifyPlugin
 ```
 
-Packaging prepares the bundled server and runtimes required by native integration tests. Select another supported
-product with `-PplatformProduct=webstorm` or `-PplatformProduct=pycharm`; IDEA is the default.
-See [platform compatibility](jetbrains-compatibility.md) for the supported baselines.
+Use `editors\intellij\gradlew.bat` on Windows without Bash. IDEA is the default product; select another baseline with `-PplatformProduct=webstorm` or `-PplatformProduct=pycharm`. SDK downloads are large, so start with the product affected by your change.
 
-## Manual editor checks
+Release checks prepare all runtimes with `pnpm package:intellij` and run all three products. Native tests and Plugin Verifier serve different purposes: tests exercise adapter behavior, while the verifier checks platform API compatibility. See [the compatibility matrix](jetbrains-compatibility.md) and [API maintenance notes](jetbrains-api-notes.md).
 
-Install the built plugin and open the synthetic dialogue fixture in `fixtures/dialogue`. Exercise both runtime branch
-outcomes and check:
+## Manual acceptance
 
-- Dialogue and variable colors in light and dark themes.
-- Completion, navigation, rename, indentation, comments, and formatting actions.
-- Embedded preview, advancing choices, browser fallback, restart, and stop.
-- Unsaved edits, stale results, test cancellation, failure links, and coverage display.
-- Export to a new destination, protection of existing files, and cleanup after editor shutdown.
+Install the packaged plugins and open `fixtures/dialogue`. Check both runtime outcomes of the dialogue example in both editors, then exercise:
 
-## Programmatic VS Code commands
+- Dialogue and variable styles in light and dark themes, including ordinary prose after a branch closes a quote.
+- Completion, hover, navigation, references, rename, folding, selections, indentation, comments, and markup actions.
+- File association inside a game without changing unrelated text files.
+- Embedded preview, advancing choices, browser fallback, explicit restart, and stop.
+- Unsaved buffers, stale results, cancellation, clickable failure locations, and each editor's coverage presentation.
+- Export to a fresh directory, collision handling, companion assets, and cleanup after shutdown.
 
-Tool commands accept an optional object with `projectId`, `destination`, `iterations`, `seed`, and `jobId`. Create
-Project also accepts `openCreatedProject: false`. Missing interactive choices prompt normally. Arguments cannot override
-workspace trust, the operation, or protocol version. Commands return their `JobResult`; test/export commands finish
-after job completion. The extension API exposes `projects()` and `onJobEvent` for integrations. Word Count returns the
-count as well as displaying it.
+Include spaces and Unicode in project paths. Static classifications can agree while a theme or UI action still behaves poorly, so automated tests do not replace these checks.
+
+## CI and reporting
+
+[Build and verify](../.github/workflows/ci.yml) runs six operating-system/architecture jobs for VS Code packaging and editor smoke tests, plus native tests and Plugin Verifier for IDEA, WebStorm, and PyCharm. Diagnostic artifacts are uploaded even on failures when reports exist.
+
+In a pull request, record the commands and platforms actually checked, and explain anything left unverified. Keep detailed local output in ignored `.branchlight/development/`. A release must also account for outstanding [manual acceptance](release-notes.md#known-limitations).
