@@ -1,12 +1,12 @@
 import { runTests } from "@vscode/test-electron";
-import { mkdir, mkdtemp, writeFile, cp, rm } from "node:fs/promises";
-import path from "node:path";
+import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
+import path from "node:path";
 import { installedExtension } from "./installed-extension.mjs";
+
 // vscode-test-electron 2.5.2 invokes cmd.exe on Windows; it does not quote
 // caller-provided paths. Preserve each path as one argument, including spaces.
-const launchPath = (value) =>
-  process.platform === "win32" ? `"${value}"` : value;
+const launchPath = (value) => (process.platform === "win32" ? `"${value}"` : value);
 const profile = await mkdtemp(path.join(os.tmpdir(), "branchlight-editor-"));
 const reports = path.resolve("dist/test-results/editor");
 await mkdir(reports, { recursive: true });
@@ -17,9 +17,7 @@ try {
     version: "1.109.0",
     vscodeExecutablePath: process.env.BRANCHLIGHT_VSCODE_EXECUTABLE,
     extensionDevelopmentPath: launchPath(await installedExtension()),
-    extensionTestsPath: launchPath(
-      path.resolve("editors/vscode/test/smoke.cjs"),
-    ),
+    extensionTestsPath: launchPath(path.resolve("editors/vscode/test/smoke.cjs")),
     extensionTestsEnv: { BRANCHLIGHT_TEST_REPORTS: reports },
     launchArgs: [
       launchPath(game),
@@ -44,10 +42,7 @@ try {
     }),
   );
 } catch (error) {
-  await writeFile(
-    path.join(reports, "failure.txt"),
-    String(error.stack ?? error),
-  );
+  await writeFile(path.join(reports, "failure.txt"), String(error.stack ?? error));
   throw error;
 } finally {
   await cp(path.join(profile, "logs"), path.join(reports, "logs"), {

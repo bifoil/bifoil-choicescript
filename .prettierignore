@@ -2,11 +2,24 @@ vendor/
 pnpm-lock.yaml
 node_modules/
 dist/
-.cache/
 .gradle/
 **/build/
 editors/vscode/server/
-**/runtime/
 **/bundle/
 editors/vscode/README.md
 editors/vscode/LICENSE
+.idea/
+.intellijPlatform/
+inspections/
+docs/provenance/
+
+# Additional generated files and local tooling (also excluded from Git).
+/.codex/
+.branchlight/
+.choicescript-tools/
+.vscode-test/
+.kotlin/
+fixtures/dialogue/.vscode/
+*.vsix
+*.log
+.DS_Store

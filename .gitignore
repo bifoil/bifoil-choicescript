@@ -20,3 +20,7 @@ fixtures/dialogue/.vscode/
 
 # Ignore output from pre-branding development builds.
 .choicescript-tools/
+
+# Local tooling settings and exported inspection reports.
+/.codex/
+/inspections/

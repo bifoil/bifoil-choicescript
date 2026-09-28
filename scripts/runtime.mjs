@@ -1,16 +1,10 @@
-import {
-  readFile,
-  writeFile,
-  mkdir,
-  cp,
-  chmod,
-  access,
-} from "node:fs/promises";
-import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
-import path from "node:path";
 import { unzipSync } from "fflate";
-const lock = JSON.parse(await readFile("runtime-lock.json", "utf8"));
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { chmod, cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+const lock = JSON.parse(await readFile("runtime-lock.json", { encoding: "utf8" }));
 export async function provision(target) {
   const archive = lock.archives[target];
   if (!archive) throw new Error(`Unsupported platform ${target}`);
@@ -21,16 +15,12 @@ export async function provision(target) {
   try {
     bytes = await readFile(file);
   } catch {
-    const response = await fetch(
-      `https://nodejs.org/dist/${lock.version}/${archive.file}`,
-    );
-    if (!response.ok)
-      throw new Error(`Runtime download failed: ${response.status}`);
+    const response = await fetch(`https://nodejs.org/dist/${lock.version}/${archive.file}`);
+    if (!response.ok) throw new Error(`Runtime download failed: ${response.status}`);
     bytes = Buffer.from(await response.arrayBuffer());
     await writeFile(file, bytes);
   }
-  if (createHash("sha256").update(bytes).digest("hex") !== archive.sha256)
-    throw new Error("Runtime checksum mismatch");
+  if (createHash("sha256").update(bytes).digest("hex") !== archive.sha256) throw new Error("Runtime checksum mismatch");
   const prefix = archive.file.replace(/\.(tar\.xz|zip)$/, "");
   const extracted = path.join(dir, prefix),
     out = path.resolve("dist/runtime", target);
@@ -44,14 +34,7 @@ export async function provision(target) {
     await writeFile(path.join(out, binary), files[prefix + "/node.exe"]);
     await writeFile(path.join(out, "NODE-LICENSE"), files[prefix + "/LICENSE"]);
   } else {
-    execFileSync("tar", [
-      "-xf",
-      file,
-      "-C",
-      dir,
-      prefix + "/bin/node",
-      prefix + "/LICENSE",
-    ]);
+    execFileSync("tar", ["-xf", file, "-C", dir, prefix + "/bin/node", prefix + "/LICENSE"]);
     await cp(path.join(extracted, "bin/node"), path.join(out, binary));
     await cp(path.join(extracted, "LICENSE"), path.join(out, "NODE-LICENSE"));
   }

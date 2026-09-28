@@ -1,1 +1,4 @@
-{}
+{
+  "plugins": ["@prettier/plugin-xml"],
+  "printWidth": 120
+}

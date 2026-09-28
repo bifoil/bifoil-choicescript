@@ -1,8 +1,9 @@
-import { mkdir, readFile, writeFile, readdir } from "node:fs/promises";
-import { createHash } from "node:crypto";
-import path from "node:path";
 import { zipSync } from "fflate";
+import { createHash } from "node:crypto";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { provision } from "./runtime.mjs";
+
 const base = "editors/intellij/src/main/resources/bundle";
 await mkdir(base, { recursive: true });
 async function zipDir(source, name) {
@@ -11,8 +12,7 @@ async function zipDir(source, name) {
     for (const file of await readdir(dir, { withFileTypes: true })) {
       const rel = prefix + file.name;
       if (file.isDirectory()) await walk(path.join(dir, file.name), rel + "/");
-      else
-        files[rel] = new Uint8Array(await readFile(path.join(dir, file.name)));
+      else files[rel] = new Uint8Array(await readFile(path.join(dir, file.name)));
     }
   }
   await walk(source);
@@ -21,11 +21,9 @@ async function zipDir(source, name) {
   return createHash("sha256").update(buffer).digest("hex");
 }
 const serverOnly = process.argv.includes("--server-only");
-const manifest = serverOnly
-  ? JSON.parse(await readFile(path.join(base, "manifest.json"), "utf8"))
-  : {};
+const manifest = serverOnly ? JSON.parse(await readFile(path.join(base, "manifest.json"), { encoding: "utf8" })) : {};
 manifest["server.zip"] = await zipDir("dist/server", "server.zip");
-const lock = JSON.parse(await readFile("runtime-lock.json", "utf8"));
+const lock = JSON.parse(await readFile("runtime-lock.json", { encoding: "utf8" }));
 for (const target of serverOnly
   ? []
   : process.argv.includes("--current")
@@ -34,10 +32,5 @@ for (const target of serverOnly
   const dir = await provision(target);
   manifest[`node-${target}.zip`] = await zipDir(dir, `node-${target}.zip`);
 }
-await writeFile(
-  path.join(base, "manifest.json"),
-  JSON.stringify(manifest, null, 2),
-);
-console.log(
-  "Prepared verified IntelliJ runtime resources. Run editors/intellij/gradlew buildPlugin verifyPlugin.",
-);
+await writeFile(path.join(base, "manifest.json"), JSON.stringify(manifest, null, 2));
+console.log("Prepared verified IntelliJ runtime resources. Run editors/intellij/gradlew buildPlugin verifyPlugin.");

@@ -223,6 +223,9 @@
     "test:editor": "node ../../scripts/test-vscode.mjs"
   },
   "private": true,
+  "devDependencies": {
+    "@branchlight/protocol": "workspace:*"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/Chinay-Domitrix/branchlight.git",

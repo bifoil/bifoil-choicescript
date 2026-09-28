@@ -1,7 +1,6 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-const commands = JSON.parse(
-  await readFile("packages/core/src/commands.json", "utf8"),
-);
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+
+const commands = JSON.parse(await readFile("packages/core/src/commands.json", {encoding:"utf8"}));
 const grammar = {
   name: "ChoiceScript",
   scopeName: "source.choicescript",
@@ -28,10 +27,7 @@ const grammar = {
   ],
 };
 await mkdir("editors/vscode/syntaxes", { recursive: true });
-await writeFile(
-  "editors/vscode/syntaxes/choicescript.tmLanguage.json",
-  JSON.stringify(grammar, null, 2) + "\n",
-);
+await writeFile("editors/vscode/syntaxes/choicescript.tmLanguage.json", JSON.stringify(grammar, null, 2) + "\n");
 await mkdir("editors/intellij/src/main/resources/choicescript", {
   recursive: true,
 });

@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
-const lock = JSON.parse(await readFile("runtime-lock.json", "utf8"));
+import { readFile, writeFile } from "node:fs/promises";
+
+const lock = JSON.parse(await readFile("runtime-lock.json", { encoding: "utf8" }));
 const hashes = [];
 for (const target of Object.keys(lock.archives)) {
   console.log("Packaging VS Code: " + target);

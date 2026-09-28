@@ -8,11 +8,7 @@ const assert = require("node:assert/strict");
 const root = path.resolve(__dirname, "..");
 const server = spawn(
   process.execPath,
-  [
-    process.env.BRANCHLIGHT_SERVER_PATH ||
-      path.join(root, "dist/server/server.cjs"),
-    "--stdio",
-  ],
+  [process.env.BRANCHLIGHT_SERVER_PATH || path.join(root, "dist/server/server.cjs"), "--stdio"],
   { stdio: ["pipe", "pipe", "inherit"] },
 );
 const pending = new Map(),
@@ -28,10 +24,7 @@ function send(message) {
 function request(method, params) {
   const id = ++serial;
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error("Timeout: " + method)),
-      30000,
-    );
+    const timer = setTimeout(() => reject(new Error("Timeout: " + method)), 30000);
     pending.set(id, {
       resolve: (v) => {
         clearTimeout(timer);
@@ -50,18 +43,14 @@ server.stdout.on("data", (chunk) => {
   while (true) {
     const end = buffer.indexOf("\r\n\r\n");
     if (end < 0) return;
-    const len = Number(
-      /Content-Length: (\d+)/i.exec(buffer.subarray(0, end).toString())[1],
-    );
+    const len = Number(/Content-Length: (\d+)/i.exec(buffer.subarray(0, end).toString())[1]);
     if (buffer.length < end + 4 + len) return;
     const message = JSON.parse(buffer.subarray(end + 4, end + 4 + len));
     buffer = buffer.subarray(end + 4 + len);
     if (message.method) {
       if (message.id !== undefined) send({ id: message.id, result: null });
-      if (message.method === "choicescript/jobEvent")
-        events.push(message.params);
-      if (message.method === "textDocument/publishDiagnostics")
-        diagnostics.push(message.params);
+      if (message.method === "choicescript/jobEvent") events.push(message.params);
+      if (message.method === "textDocument/publishDiagnostics") diagnostics.push(message.params);
     } else {
       const p = pending.get(message.id);
       if (p) {
@@ -86,8 +75,8 @@ async function waitFor(get) {
     await cp(path.join(root, "fixtures/dialogue"), folder, { recursive: true });
     const file = path.join(folder, "scenes/startup.txt"),
       uri = pathToFileURL(file).href;
-    const fixture = await readFile(file, "utf8");
-    const init = await request("initialize", {
+    const fixture = await readFile(file, { encoding: "utf8" });
+    await request("initialize", {
       processId: process.pid,
       capabilities: {},
       workspaceFolders: [{ uri: pathToFileURL(folder).href, name: "dialogue" }],
@@ -100,7 +89,7 @@ async function waitFor(get) {
           uri,
           languageId: "choicescript",
           version: 1,
-          text: await readFile(file, "utf8"),
+          text: await readFile(file, { encoding: "utf8" }),
         },
       },
     });
@@ -109,11 +98,7 @@ async function waitFor(get) {
       textDocument: { uri },
     });
     assert(tokens.data.length);
-    assert(
-      !diagnostics
-        .flatMap((d) => d.diagnostics)
-        .some((d) => d.code.startsWith("quote-")),
-    );
+    assert(!diagnostics.flatMap((d) => d.diagnostics).some((d) => d.code.startsWith("quote-")));
     const [project] = await request("choicescript/projects");
     assert(project);
     for (const operation of ["quicktest", "randomtest", "exportHtml"]) {
@@ -126,16 +111,10 @@ async function waitFor(get) {
         iterations: 2,
         destination: path.join(temporary, "game.html"),
       });
-      const done = await waitFor(() =>
-        events.find((e) => e.jobId === job.jobId && e.kind === "completed"),
-      );
-      assert.equal(
-        done.exitCode,
-        0,
-        JSON.stringify(events.filter((e) => e.jobId === job.jobId)),
-      );
+      const done = await waitFor(() => events.find((e) => e.jobId === job.jobId && e.kind === "completed"));
+      assert.equal(done.exitCode, 0, JSON.stringify(events.filter((e) => e.jobId === job.jobId)));
     }
-    const original = await readFile(path.join(temporary, "game.html"), "utf8");
+    const original = await readFile(path.join(temporary, "game.html"), { encoding: "utf8" });
     const collision = await request("choicescript/job", {
       protocolVersion: 1,
       operation: "exportHtml",
@@ -144,19 +123,10 @@ async function waitFor(get) {
       destination: path.join(temporary, "game.html"),
     });
     assert.equal(
-      (
-        await waitFor(() =>
-          events.find(
-            (e) => e.jobId === collision.jobId && e.kind === "completed",
-          ),
-        )
-      ).exitCode,
+      (await waitFor(() => events.find((e) => e.jobId === collision.jobId && e.kind === "completed"))).exitCode,
       1,
     );
-    assert.equal(
-      await readFile(path.join(temporary, "game.html"), "utf8"),
-      original,
-    );
+    assert.equal(await readFile(path.join(temporary, "game.html"), { encoding: "utf8" }), original);
     send({
       method: "textDocument/didChange",
       params: {
@@ -175,31 +145,16 @@ async function waitFor(get) {
       trusted: true,
     });
     assert.equal(
-      (
-        await waitFor(() =>
-          events.find(
-            (e) => e.jobId === failure.jobId && e.kind === "completed",
-          ),
-        )
-      ).exitCode,
+      (await waitFor(() => events.find((e) => e.jobId === failure.jobId && e.kind === "completed"))).exitCode,
       1,
     );
-    assert(
-      events.some(
-        (e) =>
-          e.jobId === failure.jobId && e.kind === "diagnostic" && e.line === 2,
-      ),
-    );
-    assert(
-      (await readFile(failure.output, "utf8")).includes("missing_variable"),
-    );
+    assert(events.some((e) => e.jobId === failure.jobId && e.kind === "diagnostic" && e.line === 2));
+    assert((await readFile(failure.output, { encoding: "utf8" })).includes("missing_variable"));
     send({
       method: "textDocument/didChange",
       params: {
         textDocument: { uri, version: 3 },
-        contentChanges: [
-          { text: fixture.replace("William", "Snapshot William") },
-        ],
+        contentChanges: [{ text: fixture.replace("William", "Snapshot William") }],
       },
     });
     const cancel = await request("choicescript/job", {
@@ -216,13 +171,7 @@ async function waitFor(get) {
       jobId: cancel.jobId,
     });
     assert.equal(
-      (
-        await waitFor(() =>
-          events.find(
-            (e) => e.jobId === cancel.jobId && e.kind === "completed",
-          ),
-        )
-      ).exitCode,
+      (await waitFor(() => events.find((e) => e.jobId === cancel.jobId && e.kind === "completed"))).exitCode,
       130,
     );
     const preview = await request("choicescript/job", {
@@ -232,11 +181,7 @@ async function waitFor(get) {
       trusted: true,
     });
     assert.equal((await fetch(preview.url)).status, 200);
-    assert(
-      (
-        await (await fetch(new URL("scenes/startup.txt", preview.url))).text()
-      ).includes("Snapshot William"),
-    );
+    assert((await (await fetch(new URL("scenes/startup.txt", preview.url))).text()).includes("Snapshot William"));
     send({
       method: "textDocument/didChange",
       params: {
@@ -244,11 +189,7 @@ async function waitFor(get) {
         contentChanges: [{ text: fixture }],
       },
     });
-    await waitFor(() =>
-      events.find(
-        (e) => e.jobId === preview.jobId && e.kind === "stale" && e.stale,
-      ),
-    );
+    await waitFor(() => events.find((e) => e.jobId === preview.jobId && e.kind === "stale" && e.stale));
     const restarted = await request("choicescript/job", {
       protocolVersion: 1,
       operation: "run",
@@ -261,13 +202,7 @@ async function waitFor(get) {
     await assert.rejects(fetch(restarted.url));
     send({ method: "exit" });
     console.log(
-      "Bundled runtime smoke passed on " +
-        process.platform +
-        " " +
-        process.arch +
-        " (" +
-        process.version +
-        ").",
+      "Bundled runtime smoke passed on " + process.platform + " " + process.arch + " (" + process.version + ").",
     );
   } finally {
     server.kill();

@@ -1,25 +1,21 @@
-import { createRequire, builtinModules } from "node:module";
 import { build } from "esbuild";
-import { mkdir, cp, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir } from "node:fs/promises";
+import { builtinModules, createRequire } from "node:module";
+
 await import("./generate.mjs");
 const { writeDependencyNotices } = await import("./notices.mjs");
 const builds = [];
 await mkdir("dist/server", { recursive: true });
+/** @type {import("esbuild").Plugin} */
 const resolver = {
   name: "local-node-resolution",
   setup(build) {
     build.onResolve({ filter: /^[^./]/ }, (args) => {
-      if (
-        args.path === "vscode" ||
-        args.path.startsWith("node:") ||
-        builtinModules.includes(args.path)
-      )
+      if (args.path === "vscode" || args.path.startsWith("node:") || builtinModules.includes(args.path))
         return { path: args.path, external: true };
       try {
         return {
-          path: createRequire(
-            args.importer || new URL("../package.json", import.meta.url),
-          ).resolve(args.path),
+          path: createRequire(args.importer || import.meta.url).resolve(args.path),
         };
       } catch {
         return undefined;

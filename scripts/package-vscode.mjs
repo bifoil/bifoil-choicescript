@@ -1,7 +1,8 @@
+import { createVSIX } from "@vscode/vsce";
 import { cp, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
-import { createVSIX } from "@vscode/vsce";
 import { provision } from "./runtime.mjs";
+
 const target = process.argv[2] ?? `${process.platform}-${process.arch}`;
 const runtime = await provision(target);
 await rm("editors/vscode/runtime", { recursive: true, force: true });
