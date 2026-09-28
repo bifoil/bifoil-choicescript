@@ -3,7 +3,7 @@
   "displayName": "Branchlight",
   "description": "Independent ChoiceScript authoring tools. Unaffiliated with Choice of Games or upstream ChoiceScript.",
   "version": "0.1.0",
-  "publisher": "chira-independent",
+  "publisher": "chinay",
   "license": "MIT",
   "engines": {
     "vscode": "^1.109.0"

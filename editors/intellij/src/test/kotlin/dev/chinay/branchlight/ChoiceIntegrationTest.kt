@@ -1,4 +1,4 @@
-package dev.chira.branchlight
+package dev.chinay.branchlight
 
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import org.eclipse.lsp4j.*

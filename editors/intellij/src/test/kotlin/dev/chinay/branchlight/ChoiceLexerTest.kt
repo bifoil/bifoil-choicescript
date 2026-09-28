@@ -1,4 +1,4 @@
-package dev.chira.branchlight
+package dev.chinay.branchlight
 import org.junit.Assert.*
 import org.junit.Test
 class ChoiceLexerTest {

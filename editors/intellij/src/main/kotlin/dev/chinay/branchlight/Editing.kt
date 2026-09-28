@@ -1,4 +1,4 @@
-package dev.chira.branchlight
+package dev.chinay.branchlight
 
 import com.intellij.lang.Commenter
 import com.intellij.openapi.actionSystem.AnAction

@@ -2,7 +2,7 @@ const vscode = require("vscode");
 const assert = require("node:assert/strict");
 exports.run = async () => {
   const extension = vscode.extensions.getExtension(
-    "chira-independent.branchlight",
+    "chinay.branchlight",
   );
   assert(extension);
   const api = await extension.activate();

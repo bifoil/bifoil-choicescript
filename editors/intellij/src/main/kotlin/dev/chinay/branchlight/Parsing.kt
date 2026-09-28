@@ -1,4 +1,4 @@
-package dev.chira.branchlight
+package dev.chinay.branchlight
 
 import com.intellij.lang.ASTNode
 import com.intellij.lang.ParserDefinition

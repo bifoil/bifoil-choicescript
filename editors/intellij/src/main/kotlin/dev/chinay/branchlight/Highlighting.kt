@@ -1,4 +1,4 @@
-package dev.chira.branchlight
+package dev.chinay.branchlight
 
 import com.intellij.lexer.LexerBase
 import com.intellij.openapi.editor.DefaultLanguageHighlighterColors as C

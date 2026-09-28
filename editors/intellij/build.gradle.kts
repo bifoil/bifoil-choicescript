@@ -2,7 +2,7 @@ plugins {
     kotlin("jvm") version "2.2.20"
     id("org.jetbrains.intellij.platform") version "2.19.0"
 }
-group = "dev.chira.branchlight"
+group = "dev.chinay.branchlight"
 version = "0.1.0"
 repositories { mavenCentral(); intellijPlatform { defaultRepositories() } }
 dependencies {

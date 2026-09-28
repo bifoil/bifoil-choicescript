@@ -1,6 +1,6 @@
 # Installation and supported features
 
-Branchlight is an unofficial personal project, unaffiliated with Choice of Games or upstream ChoiceScript. Its independent identifiers are `chira-independent.branchlight` (VS Code) and `dev.chira.branchlight` (JetBrains). It bundles the unchanged ChoiceScript snapshot identified in `vendor/choicescript.lock.json`.
+Branchlight is an unofficial personal project, unaffiliated with Choice of Games or upstream ChoiceScript. Its independent identifiers are `chinay.branchlight` (VS Code) and `dev.chinay.branchlight` (JetBrains). It bundles the unchanged ChoiceScript snapshot identified in `vendor/choicescript.lock.json`.
 
 ## Requirements
 
@@ -10,7 +10,7 @@ Six VSIX variants cover Windows, macOS, and Linux, each on x64 and ARM64. Choose
 
 ## Replacing an earlier development build
 
-Uninstall any pre-branding development extension with ID `chira-independent.choicescript-tools-unofficial` or `dev.chira.choicescripttools` before installing Branchlight. The new identifiers are `chira-independent.branchlight` and `dev.chira.branchlight`; keeping both installed would start competing language clients. The quote-warning setting is now `branchlight.quoteWarnings`, and saved logs use `.branchlight/logs`.
+Uninstall earlier development builds before installing this version of Branchlight. Its identifiers are `chinay.branchlight` and `dev.chinay.branchlight`; keeping an older build installed alongside it could start competing language clients. The quote-warning setting is `branchlight.quoteWarnings`, and saved logs use `.branchlight/logs`.
 
 ## Editing
 

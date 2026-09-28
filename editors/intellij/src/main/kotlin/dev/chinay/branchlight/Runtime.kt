@@ -1,4 +1,4 @@
-package dev.chira.branchlight
+package dev.chinay.branchlight
 
 import com.google.gson.JsonParser
 import com.intellij.openapi.application.PathManager
