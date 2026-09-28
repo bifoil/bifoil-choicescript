@@ -1,9 +1,9 @@
+// VS Code supplies this module inside its extension host.
+// noinspection NpmUsedModulesInstalled
 const vscode = require("vscode");
 const assert = require("node:assert/strict");
 exports.run = async () => {
-  const extension = vscode.extensions.getExtension(
-    "chinay.branchlight",
-  );
+  const extension = vscode.extensions.getExtension("chinay.branchlight");
   assert(extension);
   const api = await extension.activate();
   const events = [];
@@ -20,41 +20,27 @@ exports.run = async () => {
   const uri = vscode.Uri.joinPath(folder, "scenes", "startup.txt");
   const document = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(document);
-  for (let i = 0; i < 100 && document.languageId !== "choicescript"; i++)
-    await new Promise((r) => setTimeout(r, 100));
+  for (let i = 0; i < 100 && document.languageId !== "choicescript"; i++) await new Promise((r) => setTimeout(r, 100));
   assert.equal(document.languageId, "choicescript");
   const config = vscode.workspace.getConfiguration("workbench");
   const previous = config.inspect("colorTheme")?.workspaceValue;
   try {
     for (const theme of ["Default Dark Modern", "Default Light Modern"]) {
-      await config.update(
-        "colorTheme",
-        theme,
-        vscode.ConfigurationTarget.Workspace,
-      );
+      await config.update("colorTheme", theme, vscode.ConfigurationTarget.Workspace);
       let tokens;
       for (let i = 0; i < 100; i++) {
-        tokens = await vscode.commands.executeCommand(
-          "vscode.provideDocumentSemanticTokens",
-          uri,
-        );
+        tokens = await vscode.commands.executeCommand("vscode.provideDocumentSemanticTokens", uri);
         if (tokens?.data.length) break;
         await new Promise((r) => setTimeout(r, 100));
       }
       assert(tokens?.data.length);
-      const legend = await vscode.commands.executeCommand(
-        "vscode.provideDocumentSemanticTokensLegend",
-        uri,
-      );
+      const legend = await vscode.commands.executeCommand("vscode.provideDocumentSemanticTokensLegend", uri);
       assert(legend);
       let line = 0,
         column = 0;
       const spans = [];
       for (let i = 0; i < tokens.data.length; i += 5) {
-        column =
-          tokens.data[i] === 0
-            ? column + tokens.data[i + 1]
-            : tokens.data[i + 1];
+        column = tokens.data[i] === 0 ? column + tokens.data[i + 1] : tokens.data[i + 1];
         line += tokens.data[i];
         spans.push({
           line,
@@ -63,27 +49,16 @@ exports.run = async () => {
           kind: legend.tokenTypes[tokens.data[i + 3]],
         });
       }
-      const at = (line, column) =>
-        spans.find(
-          (s) => s.line === line && column >= s.start && column < s.end,
-        )?.kind;
+      const at = (line, column) => spans.find((s) => s.line === line && column >= s.start && column < s.end)?.kind;
       assert.equal(at(4, 10), "dialogue");
       assert.equal(at(5, 15), "string");
       assert.equal(at(6, 4), "dialogue");
       assert.equal(at(8, 4), "dialogue");
       assert.equal(at(9, 0), "narrative");
-      assert(
-        !vscode.languages
-          .getDiagnostics(uri)
-          .some((d) => String(d.code).startsWith("quote-")),
-      );
+      assert(!vscode.languages.getDiagnostics(uri).some((d) => String(d.code).startsWith("quote-")));
     }
   } finally {
-    await config.update(
-      "colorTheme",
-      previous,
-      vscode.ConfigurationTarget.Workspace,
-    );
+    await config.update("colorTheme", previous, vscode.ConfigurationTarget.Workspace);
   }
   const definitions = await vscode.commands.executeCommand(
     "vscode.executeDefinitionProvider",
@@ -107,9 +82,7 @@ exports.run = async () => {
   const editor = await vscode.window.showTextDocument(document);
   const original = document.getText();
   const setText = async (text) => {
-    await editor.edit((edit) =>
-      edit.replace(new vscode.Range(0, 0, document.lineCount, 0), text),
-    );
+    await editor.edit((edit) => edit.replace(new vscode.Range(0, 0, document.lineCount, 0), text));
     editor.selection = new vscode.Selection(0, 0, 0, 0);
   };
   try {
@@ -117,12 +90,7 @@ exports.run = async () => {
     editor.selection = new vscode.Selection(0, 0, 0, 5);
     await vscode.commands.executeCommand("branchlight.bold");
     assert.equal(document.getText(), "[b]Hello[/b]");
-    editor.selection = new vscode.Selection(
-      0,
-      0,
-      0,
-      document.lineAt(0).text.length,
-    );
+    editor.selection = new vscode.Selection(0, 0, 0, document.lineAt(0).text.length);
     await vscode.commands.executeCommand("branchlight.italic");
     assert.equal(document.getText(), "[i][b]Hello[/b][/i]");
     editor.selection = new vscode.Selection(0, 0, 0, 0);
@@ -138,23 +106,16 @@ exports.run = async () => {
     const fs = require("node:fs/promises"),
       path = require("node:path");
     const snippets = JSON.parse(
-      await fs.readFile(
-        path.join(extension.extensionPath, "snippets.json"),
-        "utf8",
-      ),
+      await fs.readFile(path.join(extension.extensionPath, "snippets.json"), { encoding: "utf8" }),
     );
     const snippet = Object.values(snippets).find((s) => s.prefix === "choice");
     assert(snippet);
     await setText("");
-    await editor.insertSnippet(
-      new vscode.SnippetString(snippet.body.join("\n")),
-    );
+    await editor.insertSnippet(new vscode.SnippetString(snippet.body.join("\n")));
     assert(document.getText().includes("*choice"));
     await vscode.commands.executeCommand("leaveSnippet");
     await setText(original.replace("William", "Unsaved William"));
-    await waitFor(
-      () => !vscode.languages.getDiagnostics(uri).some((d) => d.severity === 0),
-    );
+    await waitFor(() => !vscode.languages.getDiagnostics(uri).some((d) => d.severity === 0));
     const project = api.projects()[0];
     assert(project);
     const options = { projectId: project.id };
@@ -167,10 +128,7 @@ exports.run = async () => {
             ...extra,
           }),
           new Promise((_, reject) => {
-            timer = setTimeout(
-              () => reject(new Error(`Command timed out: ${name}`)),
-              60000,
-            );
+            timer = setTimeout(() => reject(new Error(`Command timed out: ${name}`)), 60000);
           }),
         ]);
       } finally {
@@ -178,36 +136,18 @@ exports.run = async () => {
       }
     };
     await waitFor(
-      async () =>
-        (
-          await vscode.commands.executeCommand(
-            "vscode.provideDocumentSemanticTokens",
-            uri,
-          )
-        )?.data.length,
+      async () => (await vscode.commands.executeCommand("vscode.provideDocumentSemanticTokens", uri))?.data.length,
     );
     const words = await command("wordCount");
     assert(words > 0);
     const preview = await command("run");
     assert(preview?.url);
-    assert(
-      (
-        await (await fetch(new URL("scenes/startup.txt", preview.url))).text()
-      ).includes("Unsaved William"),
-    );
-    await waitFor(() =>
-      vscode.window.tabGroups.all
-        .flatMap((g) => g.tabs)
-        .some((t) => t.label === "Game Preview"),
-    );
+    assert((await (await fetch(new URL("scenes/startup.txt", preview.url))).text()).includes("Unsaved William"));
+    await waitFor(() => vscode.window.tabGroups.all.flatMap((g) => g.tabs).some((t) => t.label === "Game Preview"));
     await vscode.window.showTextDocument(document);
-    await editor.edit((edit) =>
-      edit.insert(new vscode.Position(9, 0), "Changed. "),
-    );
+    await editor.edit((edit) => edit.insert(new vscode.Position(9, 0), "Changed. "));
     await waitFor(() =>
-      vscode.window.tabGroups.all
-        .flatMap((g) => g.tabs)
-        .some((t) => t.label.includes("source changed")),
+      vscode.window.tabGroups.all.flatMap((g) => g.tabs).some((t) => t.label.includes("source changed")),
     );
     const restarted = await command("run");
     assert(restarted.url !== preview.url);
@@ -218,51 +158,26 @@ exports.run = async () => {
     for (const operation of ["quicktest", "randomtest"]) {
       const job = await command(operation, { iterations: 2, seed: 42 });
       assert(job?.output);
-      assert.equal(
-        events.find((e) => e.jobId === job.jobId && e.kind === "completed")
-          .exitCode,
-        0,
-      );
+      assert.equal(events.find((e) => e.jobId === job.jobId && e.kind === "completed").exitCode, 0);
       assert((await fs.readFile(job.output, "utf8")).includes("PASSED"));
-      if (operation === "randomtest")
-        assert(
-          events.some((e) => e.jobId === job.jobId && e.kind === "coverage"),
-        );
+      if (operation === "randomtest") assert(events.some((e) => e.jobId === job.jobId && e.kind === "coverage"));
     }
     const pending = command("randomtest", { iterations: 10000000, seed: 0 });
-    const previous = new Set(
-      events.filter((e) => e.kind === "started").map((e) => e.jobId),
-    );
-    const started = await waitFor(() =>
-      events.find((e) => e.kind === "started" && !previous.has(e.jobId)),
-    );
+    const previous = new Set(events.filter((e) => e.kind === "started").map((e) => e.jobId));
+    const started = await waitFor(() => events.find((e) => e.kind === "started" && !previous.has(e.jobId)));
     await command("stop", { jobId: started.jobId });
     await pending;
-    assert.equal(
-      events.find((e) => e.jobId === started.jobId && e.kind === "completed")
-        .exitCode,
-      130,
-    );
+    assert.equal(events.find((e) => e.jobId === started.jobId && e.kind === "completed").exitCode, 130);
     const destination = path.join(folder.fsPath, "export/game.html");
     const exported = await command("exportHtml", { destination });
-    assert.equal(
-      events.find((e) => e.jobId === exported.jobId && e.kind === "completed")
-        .exitCode,
-      0,
-    );
-    assert(
-      (await fs.readFile(destination, "utf8")).includes("Unsaved William"),
-    );
+    assert.equal(events.find((e) => e.jobId === exported.jobId && e.kind === "completed").exitCode, 0);
+    assert((await fs.readFile(destination, "utf8")).includes("Unsaved William"));
     const created = path.join(folder.fsPath, "created game Ω");
     await command("createProject", {
       destination: created,
       openCreatedProject: false,
     });
-    assert(
-      (
-        await fs.readFile(path.join(created, "UPSTREAM-TEMPLATE.md"), "utf8")
-      ).includes("60a6c3e"),
-    );
+    assert((await fs.readFile(path.join(created, "UPSTREAM-TEMPLATE.md"), "utf8")).includes("60a6c3e"));
     if (process.env.BRANCHLIGHT_TEST_REPORTS)
       await fs.writeFile(
         path.join(process.env.BRANCHLIGHT_TEST_REPORTS, "workflows.json"),
@@ -280,13 +195,9 @@ exports.run = async () => {
   } finally {
     await vscode.window.showTextDocument(document);
     await setText(original);
-    await vscode.commands.executeCommand(
-      "workbench.action.revertAndCloseActiveEditor",
-    );
+    await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
     subscription.dispose();
   }
-  const notes = await vscode.workspace.openTextDocument(
-    vscode.Uri.joinPath(folder, "notes.txt"),
-  );
+  const notes = await vscode.workspace.openTextDocument(vscode.Uri.joinPath(folder, "notes.txt"));
   assert.equal(notes.languageId, "plaintext");
 };

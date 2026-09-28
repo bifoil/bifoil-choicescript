@@ -1,5 +1,6 @@
 import { parentPort } from "node:worker_threads";
-import { analyzeProject } from "../../core/src/index.js";
+import { analyzeProject } from "@branchlight/core";
+
 parentPort!.on("message", ({ documents, options }) => {
   try {
     parentPort!.postMessage({ analysis: analyzeProject(documents, options) });

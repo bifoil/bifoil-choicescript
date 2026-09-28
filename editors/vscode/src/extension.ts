@@ -2,13 +2,15 @@ import * as vscode from "vscode";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { LanguageClient, TransportKind } from "vscode-languageclient/node";
-import type {
-  Project,
-  JobEvent,
-  JobRequest,
-  JobResult,
-  Operation,
-} from "../../../packages/protocol/src/index.js";
+import {
+  type JobEvent,
+  type JobRequest,
+  type JobResult,
+  type Operation,
+  type Project,
+  PROTOCOL_VERSION,
+} from "@branchlight/protocol";
+
 export interface ToolOptions {
   projectId?: string;
   destination?: string;
@@ -18,39 +20,29 @@ export interface ToolOptions {
   openCreatedProject?: boolean;
 }
 let client: LanguageClient | undefined;
+// VS Code invokes this exported entry point by name.
+// noinspection JSUnusedGlobalSymbols
 export async function activate(context: vscode.ExtensionContext) {
   const output = vscode.window.createOutputChannel("Branchlight"),
     coverage = vscode.window.createTextEditorDecorationType({
       isWholeLine: true,
-      backgroundColor: new vscode.ThemeColor(
-        "diffEditor.insertedTextBackground",
-      ),
+      backgroundColor: new vscode.ThemeColor("diffEditor.insertedTextBackground"),
     });
   context.subscriptions.push(output, coverage);
   const events = new vscode.EventEmitter<JobEvent>();
   context.subscriptions.push(events);
   const completed = new Set<string>();
-  const pendingJobs = new Map<
-    string,
-    { resolve: () => void; progress: vscode.Progress<{ message?: string }> }
-  >();
+  const pendingJobs = new Map<string, { resolve: () => void; progress: vscode.Progress<{ message?: string }> }>();
   let projects: Project[] = [],
     panels = new Map<string, vscode.WebviewPanel>();
   const bundle = context.asAbsolutePath("server"),
-    runtime = context.asAbsolutePath(
-      path.join("runtime", process.platform === "win32" ? "node.exe" : "node"),
-    );
+    runtime = context.asAbsolutePath(path.join("runtime", process.platform === "win32" ? "node.exe" : "node"));
   client = new LanguageClient(
     "branchlight",
     "Branchlight",
     {
       command: existsSync(runtime) ? runtime : process.execPath,
-      args: [
-        path.join(bundle, "server.cjs"),
-        "--stdio",
-        "--bundle-root",
-        bundle,
-      ],
+      args: [path.join(bundle, "server.cjs"), "--stdio", "--bundle-root", bundle],
       transport: TransportKind.stdio,
       options: {
         env: {
@@ -67,12 +59,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
   const inside = (root: string, file: string) => {
     const rel = path.relative(root, file);
-    return (
-      rel === "" ||
-      (!rel.startsWith(".." + path.sep) &&
-        rel !== ".." &&
-        !path.isAbsolute(rel))
-    );
+    return rel === "" || (!rel.startsWith(".." + path.sep) && rel !== ".." && !path.isAbsolute(rel));
   };
   const associate = async (doc: vscode.TextDocument) => {
     if (
@@ -95,22 +82,14 @@ export async function activate(context: vscode.ExtensionContext) {
       pendingJobs.get(event.jobId)?.resolve();
       pendingJobs.delete(event.jobId);
     }
-    if (event.message)
-      pendingJobs
-        .get(event.jobId)
-        ?.progress.report({ message: event.message.slice(0, 160) });
+    if (event.message) pendingJobs.get(event.jobId)?.progress.report({ message: event.message.slice(0, 160) });
     if (event.message) output.appendLine(`[${event.kind}] ${event.message}`);
     if (event.kind === "diagnostic" && event.uri)
-      output.appendLine(
-        `${vscode.Uri.parse(event.uri).fsPath}:${(event.line ?? 0) + 1}: ${event.message}`,
-      );
+      output.appendLine(`${vscode.Uri.parse(event.uri).fsPath}:${(event.line ?? 0) + 1}: ${event.message}`);
     if (event.kind === "completed" && event.exitCode && event.exitCode !== 130)
-      void vscode.window.showErrorMessage(
-        "Branchlight operation failed. See Branchlight output.",
-      );
+      void vscode.window.showErrorMessage("Branchlight operation failed. See Branchlight output.");
     if (event.kind === "stale") {
-      for (const editor of vscode.window.visibleTextEditors)
-        editor.setDecorations(coverage, []);
+      for (const editor of vscode.window.visibleTextEditors) editor.setDecorations(coverage, []);
       const panel = panels.get(event.jobId);
       if (panel) panel.title = "Game Preview — source changed";
     }
@@ -120,23 +99,17 @@ export async function activate(context: vscode.ExtensionContext) {
         editor.setDecorations(
           coverage,
           (event.coverage[scene] ?? []).flatMap((count, line) =>
-            count > 0 && line < editor.document.lineCount
-              ? [editor.document.lineAt(line).range]
-              : [],
+            count > 0 && line < editor.document.lineCount ? [editor.document.lineAt(line).range] : [],
           ),
         );
       }
   });
   await client.start();
   await update(await client.sendRequest<Project[]>("choicescript/projects"));
-  context.subscriptions.push(
-    vscode.workspace.onDidOpenTextDocument((doc) => void associate(doc)),
-  );
+  context.subscriptions.push(vscode.workspace.onDidOpenTextDocument((doc) => void associate(doc)));
   async function selectProject() {
     const uri = vscode.window.activeTextEditor?.document.uri,
-      active = uri
-        ? projects.find((p) => inside(p.sceneDir, uri.fsPath))
-        : undefined;
+      active = uri ? projects.find((p) => inside(p.sceneDir, uri.fsPath)) : undefined;
     if (active) return active;
     if (projects.length === 1) return projects[0];
     const selected = await vscode.window.showQuickPick(
@@ -151,7 +124,7 @@ export async function activate(context: vscode.ExtensionContext) {
       return;
     }
     const request: JobRequest = {
-      protocolVersion: 1,
+      protocolVersion: PROTOCOL_VERSION,
       operation,
       trusted: vscode.workspace.isTrusted,
       destination: options.destination,
@@ -172,42 +145,30 @@ export async function activate(context: vscode.ExtensionContext) {
           prompt: "New project folder name",
           value: "my-choice-game",
           validateInput: (s) =>
-            /^[\w -]+$/.test(s)
-              ? undefined
-              : "Use letters, digits, spaces, dashes, or underscores.",
+            /^[\w -]+$/.test(s) ? undefined : "Use letters, digits, spaces, dashes, or underscores.",
         });
         if (!name) return;
         request.destination = path.join(parent[0].fsPath, name);
       }
     } else {
-      const project = options.projectId
-        ? projects.find((p) => p.id === options.projectId)
-        : await selectProject();
+      const project = options.projectId ? projects.find((p) => p.id === options.projectId) : await selectProject();
       if (!project) {
-        void vscode.window.showInformationMessage(
-          "Open a folder containing a ChoiceScript scenes/startup.txt file.",
-        );
+        void vscode.window.showInformationMessage("Open a folder containing a ChoiceScript scenes/startup.txt file.");
         return;
       }
       request.projectId = project.id;
-      if (
-        operation === "randomtest" &&
-        (options.iterations === undefined || options.seed === undefined)
-      ) {
+      if (operation === "randomtest" && (options.iterations === undefined || options.seed === undefined)) {
         const iterations = await vscode.window.showInputBox({
           prompt: "RandomTest iterations",
           value: String(project.randomtest?.iterations ?? 1000),
           validateInput: (v) =>
-            /^\d+$/.test(v) && Number(v) > 0 && Number(v) <= 10000000
-              ? undefined
-              : "Enter 1–10,000,000.",
+            /^\d+$/.test(v) && Number(v) > 0 && Number(v) <= 10000000 ? undefined : "Enter 1–10,000,000.",
         });
         if (!iterations) return;
         const seed = await vscode.window.showInputBox({
           prompt: "RandomTest seed",
           value: String(project.randomtest?.seed ?? 0),
-          validateInput: (v) =>
-            /^-?\d+$/.test(v) ? undefined : "Enter an integer.",
+          validateInput: (v) => (/^-?\d+$/.test(v) ? undefined : "Enter an integer."),
         });
         if (seed === undefined) return;
         request.iterations = Number(iterations);
@@ -216,9 +177,7 @@ export async function activate(context: vscode.ExtensionContext) {
       if (operation === "exportHtml" && !request.destination) {
         const dest = await vscode.window.showSaveDialog({
           filters: { HTML: ["html"] },
-          defaultUri: vscode.Uri.file(
-            path.join(project.root, "export", "game.html"),
-          ),
+          defaultUri: vscode.Uri.file(path.join(project.root, "export", "game.html")),
         });
         if (!dest) return;
         request.destination = dest.fsPath;
@@ -244,10 +203,7 @@ export async function activate(context: vscode.ExtensionContext) {
           cancellable: true,
         },
         async (progress, cancellation) => {
-          const started = await client!.sendRequest<JobResult>(
-            "choicescript/job",
-            request,
-          );
+          const started = await client!.sendRequest<JobResult>("choicescript/job", request);
           const cancel = () =>
             void client?.sendRequest("choicescript/job", {
               ...request,
@@ -258,9 +214,7 @@ export async function activate(context: vscode.ExtensionContext) {
           try {
             if (cancellation.isCancellationRequested) cancel();
             if (!completed.has(started.jobId))
-              await new Promise<void>((resolve) =>
-                pendingJobs.set(started.jobId, { resolve, progress }),
-              );
+              await new Promise<void>((resolve) => pendingJobs.set(started.jobId, { resolve, progress }));
             return started;
           } finally {
             subscription.dispose();
@@ -268,25 +222,19 @@ export async function activate(context: vscode.ExtensionContext) {
           }
         },
       );
-    } else
-      result = await client!.sendRequest<JobResult>(
-        "choicescript/job",
-        request,
-      );
+    } else result = await client!.sendRequest<JobResult>("choicescript/job", request);
     if (result.url) {
-      const panel = vscode.window.createWebviewPanel(
-        "choicescriptGame",
-        "Game Preview",
-        vscode.ViewColumn.Beside,
-        { enableScripts: true, retainContextWhenHidden: true },
-      );
+      const panel = vscode.window.createWebviewPanel("choicescriptGame", "Game Preview", vscode.ViewColumn.Beside, {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+      });
       panels.set(result.jobId, panel);
       const escaped = result.url.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-      panel.webview.html = `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src http://127.0.0.1:*; style-src 'unsafe-inline'"><style>html,body,iframe{width:100%;height:100%;border:0;margin:0}a{position:fixed;right:12px;top:8px;background:white;padding:4px;color:#222}</style></head><body><iframe src="${escaped}" title="ChoiceScript game"></iframe><a href="${escaped}">Open in browser</a></body></html>`;
+      panel.webview.html = `<!doctype html><html lang="en"><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src http://127.0.0.1:*; style-src 'unsafe-inline'"><style>html,body,iframe{width:100%;height:100%;border:0;margin:0}a{position:fixed;right:12px;top:8px;background:white;padding:4px;color:#222}</style></head><body><iframe src="${escaped}" title="ChoiceScript game"></iframe><a href="${escaped}">Open in browser</a></body></html>`;
       panel.onDidDispose(() => {
         panels.delete(result.jobId);
         void client?.sendRequest("choicescript/job", {
-          protocolVersion: 1,
+          protocolVersion: PROTOCOL_VERSION,
           operation: "stop",
           projectId: result.projectId,
           jobId: result.jobId,
@@ -294,33 +242,14 @@ export async function activate(context: vscode.ExtensionContext) {
         });
       });
     }
-    if (
-      operation === "createProject" &&
-      request.destination &&
-      options.openCreatedProject !== false
-    )
-      await vscode.commands.executeCommand(
-        "vscode.openFolder",
-        vscode.Uri.file(request.destination),
-        true,
-      );
+    if (operation === "createProject" && request.destination && options.openCreatedProject !== false)
+      await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(request.destination), true);
     return result;
   }
-  for (const operation of [
-    "createProject",
-    "run",
-    "stop",
-    "quicktest",
-    "randomtest",
-    "exportHtml",
-  ] as Operation[])
+  for (const operation of ["createProject", "run", "stop", "quicktest", "randomtest", "exportHtml"] as Operation[])
     context.subscriptions.push(
-      vscode.commands.registerCommand(
-        "branchlight." + operation,
-        (options?: ToolOptions) =>
-          job(operation, options).catch((e) =>
-            vscode.window.showErrorMessage(String(e)),
-          ),
+      vscode.commands.registerCommand("branchlight." + operation, (options?: ToolOptions) =>
+        job(operation, options).catch((e) => vscode.window.showErrorMessage(String(e))),
       ),
     );
   for (const [name, tag] of [
@@ -333,10 +262,7 @@ export async function activate(context: vscode.ExtensionContext) {
         if (editor)
           return editor.edit((edit) => {
             for (const selection of editor.selections)
-              edit.replace(
-                selection,
-                `[${tag}]${editor.document.getText(selection)}[/${tag}]`,
-              );
+              edit.replace(selection, `[${tag}]${editor.document.getText(selection)}[/${tag}]`);
           });
       }),
     );
@@ -344,13 +270,8 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("branchlight.wordCount", async () => {
       const uri = vscode.window.activeTextEditor?.document.uri;
       if (uri) {
-        const count = await client!.sendRequest<number>(
-          "choicescript/wordCount",
-          { uri: uri.toString() },
-        );
-        void vscode.window.showInformationMessage(
-          `Narrative word count: ${count}`,
-        );
+        const count = await client!.sendRequest<number>("choicescript/wordCount", { uri: uri.toString() });
+        void vscode.window.showInformationMessage(`Narrative word count: ${count}`);
         return count;
       }
     }),
@@ -370,6 +291,8 @@ export async function activate(context: vscode.ExtensionContext) {
   });
   return { onJobEvent: events.event, projects: () => [...projects] };
 }
+// VS Code invokes this exported entry point by name.
+// noinspection JSUnusedGlobalSymbols
 export async function deactivate() {
   await client?.stop();
 }

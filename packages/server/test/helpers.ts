@@ -1,11 +1,8 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import {
-  createMessageConnection,
-  StreamMessageReader,
-  StreamMessageWriter,
-} from "vscode-languageserver/node.js";
+import { createMessageConnection, StreamMessageReader, StreamMessageWriter } from "vscode-languageserver/node.js";
 import { pathToFileURL } from "node:url";
+
 export async function waitFor<T>(
   read: () => T | Promise<T>,
   accept: (value: T) => boolean = (v) => !!v,
@@ -19,7 +16,7 @@ export async function waitFor<T>(
   }
   throw new Error("Timed out waiting for observable LSP state");
 }
-export async function startServer(roots: string[]) {
+export async function startServer(roots: string[], options: { legacyRootUri?: boolean } = {}) {
   const child = spawn(process.execPath, ["dist/server/server.cjs", "--stdio"], {
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -27,26 +24,20 @@ export async function startServer(roots: string[]) {
   const events: any[] = [];
   let errors = "";
   child.stderr.on("data", (b) => (errors += b));
-  const rpc = createMessageConnection(
-    new StreamMessageReader(child.stdout),
-    new StreamMessageWriter(child.stdin),
-  );
+  const rpc = createMessageConnection(new StreamMessageReader(child.stdout), new StreamMessageWriter(child.stdin));
   rpc.onRequest("client/registerCapability", () => null);
   rpc.onRequest("workspace/semanticTokens/refresh", () => null);
-  rpc.onNotification("textDocument/publishDiagnostics", (p) =>
-    diagnostics.push(p),
-  );
+  rpc.onNotification("textDocument/publishDiagnostics", (p) => diagnostics.push(p));
   rpc.onNotification("choicescript/jobEvent", (p) => events.push(p));
   rpc.listen();
   const initialized: any = await rpc.sendRequest("initialize", {
     processId: process.pid,
     capabilities: { workspace: { semanticTokens: { refreshSupport: true } } },
-    workspaceFolders: roots.map((root) => ({
-      uri: pathToFileURL(root).href,
-      name: root,
-    })),
+    ...(options.legacyRootUri
+      ? { rootUri: roots.length ? pathToFileURL(roots[0]).href : null }
+      : { workspaceFolders: roots.map((root) => ({ uri: pathToFileURL(root).href, name: root })) }),
   });
-  rpc.sendNotification("initialized", {});
+  await rpc.sendNotification("initialized", {});
   return {
     rpc,
     child,
@@ -67,7 +58,7 @@ export async function startServer(roots: string[]) {
     async close() {
       try {
         await rpc.sendRequest("shutdown");
-        rpc.sendNotification("exit");
+        await rpc.sendNotification("exit");
         const timer = setTimeout(() => child.kill("SIGKILL"), 3000);
         timer.unref();
         if (child.exitCode === null) await once(child, "exit");
@@ -76,17 +67,11 @@ export async function startServer(roots: string[]) {
         rpc.dispose();
         if (child.exitCode === null) child.kill();
       }
-      if (child.exitCode)
-        throw new Error(errors || `Server exited ${child.exitCode}`);
+      if (child.exitCode) throw new Error(errors || `Server exited ${child.exitCode}`);
     },
   };
 }
-export function classification(
-  tokens: any,
-  legend: any,
-  line: number,
-  column: number,
-) {
+export function classification(tokens: any, legend: any, line: number, column: number) {
   let row = 0,
     col = 0;
   for (let i = 0; i < tokens.data.length; i += 5) {

@@ -1,44 +1,33 @@
 import {
   createConnection,
+  DidChangeWatchedFilesNotification,
+  ErrorCodes,
   ProposedFeatures,
+  ResponseError,
   TextDocuments,
   TextDocumentSyncKind,
-  DidChangeWatchedFilesNotification,
-  ResponseError,
-  ErrorCodes,
 } from "vscode-languageserver/node.js";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { Worker } from "node:worker_threads";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   type Analysis,
-  tokenTypes,
-  tokenModifiers,
-  encodeTokens,
-  definition,
-  references,
-  prepareRename,
-  rename,
-  hover,
   completions,
+  definition,
   documentSymbols,
+  encodeTokens,
   folding,
+  hover,
+  prepareRename,
+  references,
+  rename,
   selections,
-} from "../../core/src/index.js";
-import {
-  discoverProjects,
-  projectFor,
-  sameFileUri,
-  readProject,
-  ToolRunner,
-} from "../../tooling/src/index.js";
-import {
-  type Project,
-  type JobRequest,
-  type BufferSnapshot,
-  commands,
-} from "../../protocol/src/index.js";
+  tokenModifiers,
+  tokenTypes,
+} from "@branchlight/core";
+import { discoverProjects, projectFor, readProject, sameFileUri, ToolRunner } from "@branchlight/tooling";
+import { type BufferSnapshot, commands, type JobRequest, type Project, PROTOCOL_VERSION } from "@branchlight/protocol";
+
 const connection = createConnection(ProposedFeatures.all),
   documents = new TextDocuments(TextDocument);
 const arg = process.argv.indexOf("--bundle-root"),
@@ -57,11 +46,10 @@ const snapshots = (): BufferSnapshot[] =>
     .all()
     .filter((d) => d.uri.startsWith("file:"))
     .map((d) => ({ uri: d.uri, text: d.getText(), version: d.version }));
-const runner = new ToolRunner(
-  path.join(bundle, "vendor", "choicescript"),
-  (event) => {
-    connection.sendNotification("choicescript/jobEvent", event);
-    if (event.kind === "diagnostic" && event.uri)
+const runner = new ToolRunner(path.join(bundle, "vendor", "choicescript"), (event) => {
+  publish(connection.sendNotification("choicescript/jobEvent", event));
+  if (event.kind === "diagnostic" && event.uri)
+    publish(
       connection.sendDiagnostics({
         uri: event.uri,
         diagnostics: [
@@ -76,24 +64,24 @@ const runner = new ToolRunner(
             },
           },
         ],
-      });
-  },
-);
+      }),
+    );
+});
+function publish(promise: Promise<unknown>) {
+  void promise.catch((error) => {
+    if (!disposed) console.error("Could not send language-server update:", error);
+  });
+}
 function analysisUri(a: Analysis | undefined, uri: string) {
   if (!a || a.documents.has(uri)) return uri;
-  return (
-    [...a.documents.keys()].find((candidate) => sameFileUri(candidate, uri)) ??
-    uri
-  );
+  return [...a.documents.keys()].find((candidate) => sameFileUri(candidate, uri)) ?? uri;
 }
 function get(uri: string) {
   const id = projectFor(projects, uri)?.id ?? uri;
   if (analysisVersions.get(id) !== revision) return undefined;
   const a = analyses.get(id),
     open = documents.get(uri);
-  return open && a?.documents.get(analysisUri(a, uri))?.version !== open.version
-    ? undefined
-    : a;
+  return open && a?.documents.get(analysisUri(a, uri))?.version !== open.version ? undefined : a;
 }
 let discoveryRevision = 0;
 async function refreshProjects() {
@@ -102,7 +90,7 @@ async function refreshProjects() {
     const found = await discoverProjects([...roots]);
     if (discovery !== discoveryRevision || disposed) return;
     projects = found;
-    connection.sendNotification("choicescript/projectsChanged", projects);
+    await connection.sendNotification("choicescript/projectsChanged", projects);
   } catch (error) {
     connection.window.showErrorMessage(String(error));
   }
@@ -124,16 +112,12 @@ async function analyze(version: number) {
         documents: await readProject(project, open),
       });
     for (const doc of open)
-      if (
-        !projectFor(projects, doc.uri) &&
-        documents.get(doc.uri)?.languageId === "choicescript"
-      )
+      if (!projectFor(projects, doc.uri) && documents.get(doc.uri)?.languageId === "choicescript")
         jobs.push({ id: doc.uri, documents: [doc] });
     if (version !== revision || disposed) return;
     for (const [id, previous] of analyses)
       if (!jobs.some((job) => job.id === id)) {
-        for (const uri of previous.documents.keys())
-          connection.sendDiagnostics({ uri, diagnostics: [] });
+        for (const uri of previous.documents.keys()) await connection.sendDiagnostics({ uri, diagnostics: [] });
         analyses.delete(id);
         analysisVersions.delete(id);
       }
@@ -143,45 +127,38 @@ async function analyze(version: number) {
           new Promise<void>((resolve) => {
             const worker = new Worker(path.join(bundle, "analysis-worker.cjs"));
             workers.add(worker);
-            worker.once(
-              "message",
-              ({
-                analysis,
-                error,
-              }: {
-                analysis?: Analysis;
-                error?: string;
-              }) => {
-                if (version === revision && !disposed) {
-                  if (error) connection.console.error(error);
-                  if (analysis) {
-                    for (const oldUri of analyses
-                      .get(job.id)
-                      ?.documents.keys() ?? [])
-                      if (!analysis.documents.has(oldUri))
+            worker.once("message", ({ analysis, error }: { analysis?: Analysis; error?: string }) => {
+              if (version === revision && !disposed) {
+                if (error) connection.console.error(error);
+                if (analysis) {
+                  for (const oldUri of analyses.get(job.id)?.documents.keys() ?? [])
+                    if (!analysis.documents.has(oldUri))
+                      publish(
                         connection.sendDiagnostics({
                           uri: oldUri,
                           diagnostics: [],
-                        });
-                    analyses.set(job.id, analysis);
-                    analysisVersions.set(job.id, version);
-                    for (const [uri, diagnostics] of analysis.diagnostics)
+                        }),
+                      );
+                  analyses.set(job.id, analysis);
+                  analysisVersions.set(job.id, version);
+                  for (const [uri, diagnostics] of analysis.diagnostics)
+                    publish(
                       connection.sendDiagnostics({
                         uri,
                         version: documents.get(uri)?.version,
                         diagnostics,
-                      });
-                    if (analysis.truncated)
-                      connection.window.showWarningMessage(
-                        "ChoiceScript analysis reached its work limit; some results are incomplete.",
-                      );
-                  }
+                      }),
+                    );
+                  if (analysis.truncated)
+                    connection.window.showWarningMessage(
+                      "ChoiceScript analysis reached its work limit; some results are incomplete.",
+                    );
                 }
-                void worker.terminate();
-                workers.delete(worker);
-                resolve();
-              },
-            );
+              }
+              void worker.terminate();
+              workers.delete(worker);
+              resolve();
+            });
             worker.once("error", (error) => {
               connection.console.error(error.message);
               workers.delete(worker);
@@ -198,7 +175,7 @@ async function analyze(version: number) {
           }),
       ),
     );
-    if (version === revision) connection.languages.semanticTokens.refresh();
+    if (version === revision && !disposed) connection.languages.semanticTokens.refresh();
   } catch (error) {
     connection.console.error(String(error));
   }
@@ -206,7 +183,11 @@ async function analyze(version: number) {
 connection.onInitialize((params) => {
   quoteWarnings = params.initializationOptions?.quoteWarnings ?? true;
   roots = (params.workspaceFolders ?? []).map((f) => f.uri);
-  if (!roots.length && params.rootUri) roots = [params.rootUri];
+  if (!roots.length) {
+    // Read the legacy wire shape for clients that omit workspaceFolders.
+    const legacyParams: { rootUri?: string | null } = params;
+    if (legacyParams.rootUri) roots = [legacyParams.rootUri];
+  }
   return {
     serverInfo: { name: "Branchlight (Unofficial)", version: "0.1.0" },
     capabilities: {
@@ -236,10 +217,7 @@ connection.onInitialized(async () => {
   schedule();
   try {
     await connection.client.register(DidChangeWatchedFilesNotification.type, {
-      watchers: [
-        { globPattern: "**/*.txt" },
-        { globPattern: "**/choicescript.json" },
-      ],
+      watchers: [{ globPattern: "**/*.txt" }, { globPattern: "**/choicescript.json" }],
     });
   } catch {}
 });
@@ -257,11 +235,7 @@ connection.onDidChangeWatchedFiles(async () => {
 });
 connection.onNotification(
   "workspace/didChangeWorkspaceFolders",
-  async ({
-    event,
-  }: {
-    event: { removed: { uri: string }[]; added: { uri: string }[] };
-  }) => {
+  async ({ event }: { event: { removed: { uri: string }[]; added: { uri: string }[] } }) => {
     roots = roots.filter((r) => !event.removed.some((f) => f.uri === r));
     roots.push(...event.added.map((f) => f.uri));
     schedule();
@@ -275,9 +249,7 @@ connection.onDidChangeConfiguration((e) => {
 });
 connection.onCompletion((p) => {
   const a = get(p.textDocument.uri);
-  return a
-    ? completions(a, analysisUri(a, p.textDocument.uri), p.position)
-    : [];
+  return a ? completions(a, analysisUri(a, p.textDocument.uri), p.position) : [];
 });
 connection.onHover((p) => {
   const a = get(p.textDocument.uri);
@@ -285,9 +257,7 @@ connection.onHover((p) => {
 });
 connection.onDefinition((p) => {
   const a = get(p.textDocument.uri);
-  return a
-    ? definition(a, analysisUri(a, p.textDocument.uri), p.position)
-    : null;
+  return a ? definition(a, analysisUri(a, p.textDocument.uri), p.position) : null;
 });
 connection.onReferences((p) => {
   const a = get(p.textDocument.uri);
@@ -295,16 +265,12 @@ connection.onReferences((p) => {
 });
 connection.onPrepareRename((p) => {
   const a = get(p.textDocument.uri);
-  return a
-    ? prepareRename(a, analysisUri(a, p.textDocument.uri), p.position)
-    : null;
+  return a ? prepareRename(a, analysisUri(a, p.textDocument.uri), p.position) : null;
 });
 connection.onRenameRequest((p) => {
   const a = get(p.textDocument.uri);
   try {
-    return a
-      ? rename(a, analysisUri(a, p.textDocument.uri), p.position, p.newName)
-      : null;
+    return a ? rename(a, analysisUri(a, p.textDocument.uri), p.position, p.newName) : null;
   } catch (e) {
     throw new ResponseError(ErrorCodes.InvalidParams, String(e));
   }
@@ -332,9 +298,7 @@ connection.onFoldingRanges((p) => {
 });
 connection.onSelectionRanges((p) => {
   const a = get(p.textDocument.uri);
-  return a
-    ? selections(a, analysisUri(a, p.textDocument.uri), p.positions)
-    : [];
+  return a ? selections(a, analysisUri(a, p.textDocument.uri), p.positions) : [];
 });
 connection.languages.semanticTokens.on((p) => {
   const a = get(p.textDocument.uri);
@@ -346,16 +310,10 @@ connection.onRequest("choicescript/wordCount", (p: { uri: string }) => {
   return a?.wordCounts.get(analysisUri(a, p.uri)) ?? 0;
 });
 async function execute(request: JobRequest) {
-  if (!request || request.protocolVersion !== 1)
-    throw new ResponseError(
-      ErrorCodes.InvalidParams,
-      "Expected protocolVersion 1.",
-    );
+  if (!request || request.protocolVersion !== PROTOCOL_VERSION)
+    throw new ResponseError(ErrorCodes.InvalidParams, `Expected protocolVersion ${PROTOCOL_VERSION}.`);
   if (!request.trusted && request.operation !== "stop")
-    throw new ResponseError(
-      ErrorCodes.InvalidRequest,
-      "Trust the workspace before running game code.",
-    );
+    throw new ResponseError(ErrorCodes.InvalidRequest, "Trust the workspace before running game code.");
   if (request.operation === "createProject") {
     if (!request.destination) throw new Error("Choose a destination.");
     const result = await runner.createProject(request.destination);
@@ -366,11 +324,7 @@ async function execute(request: JobRequest) {
   }
   const project = projects.find((p) => p.id === request.projectId);
   if (!project) throw new Error("Select a detected ChoiceScript project.");
-  return runner.start(
-    request,
-    project,
-    await readProject(project, snapshots()),
-  );
+  return runner.start(request, project, await readProject(project, snapshots()));
 }
 connection.onExecuteCommand((p) => execute(p.arguments?.[0]));
 connection.onRequest("choicescript/job", execute);

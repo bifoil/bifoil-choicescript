@@ -3,18 +3,9 @@
     "lineComment": "*comment"
   },
   "brackets": [
-    [
-      "(",
-      ")"
-    ],
-    [
-      "{",
-      "}"
-    ],
-    [
-      "[",
-      "]"
-    ]
+    ["(", ")"],
+    ["{", "}"],
+    ["[", "]"]
   ],
   "autoClosingPairs": [
     {
@@ -31,22 +22,10 @@
     }
   ],
   "surroundingPairs": [
-    [
-      "(",
-      ")"
-    ],
-    [
-      "{",
-      "}"
-    ],
-    [
-      "[",
-      "]"
-    ],
-    [
-      "\"",
-      "\""
-    ]
+    ["(", ")"],
+    ["{", "}"],
+    ["[", "]"],
+    ["\"", "\""]
   ],
   "indentationRules": {
     "increaseIndentPattern": "^\\s*(?:\\*(?:if|elseif|elsif|else|choice|fake_choice|scene_list|stat_chart|achievement)\\b.*|#.*)$",
