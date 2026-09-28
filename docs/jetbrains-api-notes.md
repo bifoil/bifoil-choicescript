@@ -1,9 +1,20 @@
 # IntelliJ API maintenance
 
-Verified against IntelliJ IDEA 2026.1.4, build 261.26222.65, with Plugin Verifier 1.410 on 2026-09-27. Native theme tests cover both light/dark schemes and combined bold/italic styles.
+The adapter targets the platform baselines in [JetBrains compatibility](jetbrains-compatibility.md). Native LSP
+integration is an experimental JetBrains API; run native tests and Plugin Verifier when changing platform dependencies.
 
-The game picker now uses `ChooseElementsDialog` in single-selection mode instead of deprecated `Messages.showChooseDialog`. Semantic styles create keys with a fallback key and assign derived attributes through the active editor scheme, avoiding the deprecated text-attributes constructor overload. The base colors still follow the user's scheme.
+The game picker uses `ChooseElementsDialog` in single-selection mode. Semantic styles create keys with a fallback key
+and assign derived attributes through the active editor scheme, preserving theme colors and bold/italic modifiers.
 
-Kotlin's `JvmDefaultMode.NO_COMPATIBILITY` uses JVM interface defaults directly. This removes synthetic `ChoiceToolWindow` bridges for `isApplicable`, `isDoNotActivateOnStart`, `getAnchor`, `getIcon` and `manage`; the plugin does not implement or call those methods. Platform defaults remain in effect. This plugin does not support older platforms requiring those compatibility bridges.
+Kotlin's `JvmDefaultMode.NO_COMPATIBILITY` uses JVM interface defaults directly. Platform defaults supply the
+`ToolWindowFactory` methods that the plugin does not override. Older platforms requiring Kotlin compatibility bridges
+are outside the supported baseline.
 
-After these changes Plugin Verifier reports Compatible with no deprecated or experimental usages in the plugin bytecode on the baseline. The native LSP integration is still an experimental JetBrains API by contract, even when a particular verifier report contains no experimental-usage warnings. Keep compatibility verification mandatory for each advertised product/build; do not suppress future warnings or incompatibilities.
+Action labels and live-template descriptions use `messages.BranchlightBundle`. The narrative-warning toggle declares EDT
+updates because it reads settings shared with UI actions. Keep nonconstant parser state outside extension companion
+objects.
+
+The `ContentManager.setSelectedContent` and `EditorColorsManager.setGlobalScheme` calls must remain method calls with
+the current Kotlin 2.2.20 and 2026.1.4 API combination; property assignments do not compile. Their
+`UsePropertyAccessSyntax` suppressions are scoped to those calls or the relevant test method. LSP4J invokes the
+notification callbacks through reflection, so the callbacks have method-scoped `unused` suppressions.

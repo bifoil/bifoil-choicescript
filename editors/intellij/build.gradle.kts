@@ -1,22 +1,45 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
+
 plugins {
-    kotlin("jvm") version "2.2.20"
-    id("org.jetbrains.intellij.platform") version "2.19.0"
+	kotlin("jvm") version "2.2.20"
+	id("org.jetbrains.intellij.platform") version "2.19.0"
 }
 group = "dev.chinay.branchlight"
 version = "0.1.0"
-repositories { mavenCentral(); intellijPlatform { defaultRepositories() } }
+repositories {
+	mavenCentral()
+	intellijPlatform { defaultRepositories() }
+}
 dependencies {
-    intellijPlatform { when (providers.gradleProperty("platformProduct").getOrElse("idea")) {
-        "idea" -> intellijIdea("2026.1.4")
-        "webstorm" -> webstorm("2026.1.4")
-        "pycharm" -> pycharm("2026.1.4")
-        else -> error("Unsupported platformProduct; choose idea, webstorm or pycharm")
-    }; testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform); pluginVerifier("1.410") }
-    testImplementation("junit:junit:4.13.2")
+	intellijPlatform {
+		when (providers.gradleProperty("platformProduct").getOrElse("idea")) {
+			"idea" -> intellijIdea("2026.1.4")
+			"webstorm" -> webstorm("2026.1.4")
+			"pycharm" -> pycharm("2026.1.4")
+			else -> error("Unsupported platformProduct; choose idea, webstorm or pycharm")
+		}
+		testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
+		pluginVerifier("1.410")
+	}
+	testImplementation("junit:junit:4.13.2")
 }
-kotlin { jvmToolchain(21); compilerOptions { jvmDefault.set(org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode.NO_COMPATIBILITY) } }
+kotlin {
+	jvmToolchain(21)
+	compilerOptions {
+		jvmDefault.set(JvmDefaultMode.NO_COMPATIBILITY)
+	}
+}
 intellijPlatform {
-    pluginConfiguration { name = "Branchlight"; ideaVersion { sinceBuild = "261.26222" } }
-    pluginVerification { ides { current() } }
+	pluginConfiguration {
+		name = "Branchlight"
+		ideaVersion {
+			sinceBuild = "261.26222"
+		}
+	}
+	pluginVerification {
+		ides {
+			current()
+		}
+	}
 }
-tasks.test { useJUnit() }
+tasks.test(Test::useJUnit)

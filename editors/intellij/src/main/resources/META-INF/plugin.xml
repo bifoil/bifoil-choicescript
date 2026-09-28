@@ -1,37 +1,51 @@
 <idea-plugin>
-  <id>dev.chinay.branchlight</id>
-  <name>Branchlight</name>
-  <vendor>Independent personal project</vendor>
-  <description><![CDATA[Independent ChoiceScript editing, dialogue-aware highlighting, navigation, preview, testing, and HTML export. Unaffiliated with Choice of Games or upstream ChoiceScript.]]></description>
-  <depends>com.intellij.modules.platform</depends>
-  <depends>com.intellij.modules.lsp</depends>
-  <extensions defaultExtensionNs="com.intellij">
-    <platform.lsp.integrationProvider implementation="dev.chinay.branchlight.ChoiceIntegration"/>
-    <lang.substitutor language="TEXT" implementationClass="dev.chinay.branchlight.ChoiceSubstitutor"/>
-    <fileType name="ChoiceScript" implementationClass="dev.chinay.branchlight.ChoiceFileType" fieldName="INSTANCE" language="ChoiceScript"/>
-    <lang.syntaxHighlighterFactory language="ChoiceScript" implementationClass="dev.chinay.branchlight.ChoiceHighlighterFactory"/>
-    <colorSettingsPage implementation="dev.chinay.branchlight.ChoiceColorsPage"/>
-    <lang.parserDefinition language="ChoiceScript" implementationClass="dev.chinay.branchlight.ChoiceParserDefinition"/>
-    <lang.commenter language="ChoiceScript" implementationClass="dev.chinay.branchlight.ChoiceCommenter"/>
-    <enterHandlerDelegate implementation="dev.chinay.branchlight.ChoiceEnterHandler"/>
-    <liveTemplateContext contextId="CHOICESCRIPT" implementation="dev.chinay.branchlight.ChoiceTemplateContext"/>
-    <defaultLiveTemplates file="/liveTemplates/ChoiceScript"/>
-    <toolWindow id="Branchlight" anchor="bottom" factoryClass="dev.chinay.branchlight.ChoiceToolWindow"/>
-  </extensions>
-  <actions>
-    <group id="Branchlight.Actions" text="Branchlight" popup="true">
-      <add-to-group group-id="ToolsMenu" anchor="last"/>
-      <action id="Branchlight.New" class="dev.chinay.branchlight.NewProjectAction" text="New Project"/>
-      <action id="Branchlight.Run" class="dev.chinay.branchlight.RunAction" text="Run Game"/>
-      <action id="Branchlight.Stop" class="dev.chinay.branchlight.StopAction" text="Stop Game or Tests"/>
-      <action id="Branchlight.QuickTest" class="dev.chinay.branchlight.QuickTestAction" text="Run QuickTest"/>
-      <action id="Branchlight.RandomTest" class="dev.chinay.branchlight.RandomTestAction" text="Run RandomTest"/>
-      <action id="Branchlight.Export" class="dev.chinay.branchlight.ExportAction" text="Export HTML"/>
-      <action id="Branchlight.Words" class="dev.chinay.branchlight.WordCountAction" text="Show Narrative Word Count"/>
-      <action id="Branchlight.Bold" class="dev.chinay.branchlight.BoldAction" text="Bold Selection"/>
-      <action id="Branchlight.Italic" class="dev.chinay.branchlight.ItalicAction" text="Italicize Selection"/>
-      <action id="Branchlight.QuoteWarnings" class="dev.chinay.branchlight.QuoteWarningsAction" text="Narrative Quote Warnings"/>
-      <action id="Branchlight.About" class="dev.chinay.branchlight.AboutAction" text="About"/>
-    </group>
-  </actions>
+	<id>dev.chinay.branchlight</id>
+	<name>Branchlight</name>
+	<vendor>Independent personal project</vendor>
+	<resource-bundle>messages.BranchlightBundle</resource-bundle>
+	<description>
+		<![CDATA[
+		<p>Write ChoiceScript games with dialogue highlighting and code navigation.</p>
+		<p>Preview games, run tests, and export HTML.</p>
+		<p>An unofficial personal project, unaffiliated with Choice of Games or upstream ChoiceScript.</p>
+		]]></description>
+	<depends>com.intellij.modules.platform</depends>
+	<depends>com.intellij.modules.lsp</depends>
+	<extensions defaultExtensionNs="com.intellij">
+		<platform.lsp.integrationProvider implementation="dev.chinay.branchlight.ChoiceIntegration" />
+		<lang.substitutor language="TEXT" implementationClass="dev.chinay.branchlight.ChoiceSubstitutor" />
+		<fileType
+      name="ChoiceScript"
+      implementationClass="dev.chinay.branchlight.ChoiceFileType"
+      fieldName="INSTANCE"
+      language="ChoiceScript"
+    />
+		<lang.syntaxHighlighterFactory
+      language="ChoiceScript"
+      implementationClass="dev.chinay.branchlight.ChoiceHighlighterFactory"
+    />
+		<colorSettingsPage implementation="dev.chinay.branchlight.ChoiceColorsPage" />
+		<lang.parserDefinition language="ChoiceScript" implementationClass="dev.chinay.branchlight.ChoiceParserDefinition" />
+		<lang.commenter language="ChoiceScript" implementationClass="dev.chinay.branchlight.ChoiceCommenter" />
+		<enterHandlerDelegate implementation="dev.chinay.branchlight.ChoiceEnterHandler" />
+		<liveTemplateContext contextId="CHOICESCRIPT" implementation="dev.chinay.branchlight.ChoiceTemplateContext" />
+		<defaultLiveTemplates file="/liveTemplates/ChoiceScript" />
+		<toolWindow id="Branchlight" anchor="bottom" factoryClass="dev.chinay.branchlight.ChoiceToolWindow" />
+	</extensions>
+	<actions>
+		<group id="Branchlight.Actions" popup="true">
+			<add-to-group group-id="ToolsMenu" anchor="last" />
+			<action id="Branchlight.New" class="dev.chinay.branchlight.NewProjectAction" />
+			<action id="Branchlight.Run" class="dev.chinay.branchlight.RunAction" />
+			<action id="Branchlight.Stop" class="dev.chinay.branchlight.StopAction" />
+			<action id="Branchlight.QuickTest" class="dev.chinay.branchlight.QuickTestAction" />
+			<action id="Branchlight.RandomTest" class="dev.chinay.branchlight.RandomTestAction" />
+			<action id="Branchlight.Export" class="dev.chinay.branchlight.ExportAction" />
+			<action id="Branchlight.Words" class="dev.chinay.branchlight.WordCountAction" />
+			<action id="Branchlight.Bold" class="dev.chinay.branchlight.BoldAction" />
+			<action id="Branchlight.Italic" class="dev.chinay.branchlight.ItalicAction" />
+			<action id="Branchlight.QuoteWarnings" class="dev.chinay.branchlight.QuoteWarningsAction" />
+			<action id="Branchlight.About" class="dev.chinay.branchlight.AboutAction" />
+		</group>
+	</actions>
 </idea-plugin>
