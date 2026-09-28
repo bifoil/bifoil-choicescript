@@ -133,6 +133,8 @@ test("official template, QuickTest, RandomTest, snapshot preview, export, cancel
         version: 1,
       },
     ]);
+    const stage = runner.jobs.get(preview.jobId)!.stage;
+    await assert.rejects(readFile(path.join(stage, ".git")), { code: "ENOENT" });
     assert(preview.url);
     assert.equal((await fetch(preview.url!)).status, 200);
     const scene = new URL("scenes/startup.txt", preview.url);

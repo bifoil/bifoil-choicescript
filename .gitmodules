@@ -1,0 +1,4 @@
+[submodule "vendor/choicescript"]
+	path = vendor/choicescript
+	url = https://github.com/dfabulich/choicescript.git
+	shallow = true

@@ -15,7 +15,11 @@ jobs:
         os: [ubuntu-24.04, ubuntu-24.04-arm, windows-2025, windows-11-arm, macos-15, macos-15-intel]
     runs-on: ${{ matrix.os }}
     steps:
+      - name: Preserve upstream line endings
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: {node-version: 24.21.0, cache: pnpm}
@@ -52,7 +56,11 @@ jobs:
           test "$RUNNER_ENVIRONMENT" = github-hosted
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet
           df -h /
+      - name: Preserve upstream line endings
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: {node-version: 24.21.0, cache: pnpm}

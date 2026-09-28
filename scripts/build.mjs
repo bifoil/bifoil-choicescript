@@ -1,7 +1,9 @@
 import { build } from "esbuild";
 import { cp, mkdir } from "node:fs/promises";
 import { builtinModules, createRequire } from "node:module";
+import path from "node:path";
 
+await import("./check-engine.mjs");
 await import("./generate.mjs");
 const { writeDependencyNotices } = await import("./notices.mjs");
 const builds = [];
@@ -47,7 +49,10 @@ builds.push(
     outfile: "dist/server/analysis-worker.cjs",
   }),
 );
-await cp("vendor", "dist/server/vendor", { recursive: true });
+await cp("vendor", "dist/server/vendor", {
+  recursive: true,
+  filter: (source) => path.basename(source) !== ".git",
+});
 builds.push(
   await build({
     ...common,

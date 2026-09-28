@@ -1,5 +1,6 @@
 {
   "repository": "https://github.com/dfabulich/choicescript",
+  "submodule": "vendor/choicescript",
   "commit": "60a6c3ee7393c9ee7e42650b8e1642ae38e3cb6a",
   "archiveSha256": "7ce9fcc1b20d945b590a6fa6b46a033c1e56aeb071b79ddabfe840574f51e47d",
   "license": "ChoiceScript License 1.0"

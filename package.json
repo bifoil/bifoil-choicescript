@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test --test-isolation=none packages/core/test/*.test.ts packages/tooling/test/*.test.ts packages/server/test/*.test.ts",
     "test:corpus": "node --import tsx scripts/test-corpus.mjs",
-    "check": "node scripts/check-engine.mjs && pnpm build && pnpm typecheck && pnpm test",
+    "check": "pnpm build && pnpm typecheck && pnpm test",
     "generate": "node scripts/generate.mjs",
     "runtime": "node scripts/runtime.mjs",
     "package:vscode": "node scripts/package-vscode.mjs",

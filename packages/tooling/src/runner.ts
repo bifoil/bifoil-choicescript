@@ -84,6 +84,7 @@ export class ToolRunner {
     try {
       await cp(this.engine, dir, {
         recursive: true,
+        filter: (source) => path.basename(source) !== ".git",
       });
       const game = path.join(dir, "web/mygame");
       await rm(path.join(game, "scenes"), { recursive: true, force: true });
