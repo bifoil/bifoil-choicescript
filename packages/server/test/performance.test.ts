@@ -20,8 +20,10 @@ test("current editor interactions finish within one second across six large game
   let server: Awaited<ReturnType<typeof startServer>> | undefined;
 
   const timed = async <T>(name: string, action: () => Promise<T>): Promise<T> => {
-    const start = performance.now(),
-      result = await action();
+    const start = performance.now();
+    const result = await action().catch((cause: unknown) => {
+      throw new Error(name + " failed after " + Math.round(performance.now() - start) + " ms", { cause });
+    });
 
     assert(performance.now() - start < interactionDeadlineMs, name + " exceeded one second");
 

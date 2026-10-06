@@ -70,6 +70,7 @@ Each status record contains:
 | `limited`   | The current snapshot reached its analysis work limit                            |
 
 `indexed === scenes` is not equivalent to `complete`. Counts can be partial while indexing.
+Startup scenes are always analyzed from full source and do not need a cached projection.
 `failures` is not a universal process-health counter; a worker-level crash need not appear as a failed file.
 This read-only request does not authorize game execution.
 

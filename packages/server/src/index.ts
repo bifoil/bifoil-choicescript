@@ -438,8 +438,13 @@ function createWorker(id: string) {
  * per-file failures, so cached/failed counts alone are not a complete health signal.
  */
 async function indexScenes(index: SceneIndex, version: number) {
+  // Startup is always loaded in full during analysis. Projecting it again retires
+  // the warm worker and invalidates a ready snapshot without adding any context.
   const sources = (await index.inventory()).filter(
-    (source) => !index.cached.has(source.uri) && !index.failed.has(source.uri),
+    (source) =>
+      path.basename(source.file).toLowerCase() !== "startup.txt" &&
+      !index.cached.has(source.uri) &&
+      !index.failed.has(source.uri),
   );
 
   if (!sources.length || version !== revision || disposed) return;
