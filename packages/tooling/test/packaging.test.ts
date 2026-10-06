@@ -61,9 +61,10 @@ async function withFixture(run: (directory: string, output: string) => Promise<v
   }
 }
 
-const pack = (directory: string, output: string) =>
+const pack = (directory: string, output: string, env: NodeJS.ProcessEnv = process.env) =>
   execute(process.execPath, ["-e", packageScript, directory, output], {
     cwd: root,
+    env,
     encoding: "utf8",
     windowsHide: true,
     timeout: 30_000,
@@ -103,16 +104,30 @@ test("official VSIX packaging preserves runtime files, Unicode paths, and develo
   });
 });
 
-test("official VSIX packaging rejects environment files and synthetic private keys", async () => {
-  await withFixture(async (directory, output) => {
-    await writeFile(path.join(directory, ".env"), "FIXTURE_VALUE=placeholder\n");
-    await assert.rejects(pack(directory, output), { code: 1, stderr: /\.env.*should not be packaged/ });
-    await assert.rejects(readFile(output), { code: "ENOENT" });
-    await rm(path.join(directory, ".env"));
+for (const githubActions of [false, true]) {
+  test(`official VSIX packaging rejects secrets with ${githubActions ? "GitHub Actions" : "local"} logging`, async () => {
+    await withFixture(async (directory, output) => {
+      const env = { ...process.env, GITHUB_ACTIONS: githubActions ? "true" : "" };
+      const rejected = async (message: RegExp) => {
+        await assert.rejects(
+          pack(directory, output, env),
+          (error: Error & { code?: number; stdout?: string; stderr?: string }) => {
+            assert.equal(error.code, 1);
+            // VSCE emits GitHub Actions annotations to stdout and ordinary errors to stderr.
+            assert.match([error.stdout, error.stderr].join("\n"), message);
+            return true;
+          },
+        );
+        await assert.rejects(readFile(output), { code: "ENOENT" });
+      };
 
-    const fakeKey = ["-----BEGIN PRIVATE KEY-----", "A".repeat(72), "-----END PRIVATE KEY-----", ""].join("\n");
-    await writeFile(path.join(directory, "credentials.txt"), fakeKey);
-    await assert.rejects(pack(directory, output), { code: 1, stderr: /contains sensitive information/ });
-    await assert.rejects(readFile(output), { code: "ENOENT" });
+      await writeFile(path.join(directory, ".env"), "FIXTURE_VALUE=placeholder\n");
+      await rejected(/\.env.*should not be packaged/);
+      await rm(path.join(directory, ".env"));
+
+      const fakeKey = ["-----BEGIN PRIVATE KEY-----", "A".repeat(72), "-----END PRIVATE KEY-----", ""].join("\n");
+      await writeFile(path.join(directory, "credentials.txt"), fakeKey);
+      await rejected(/contains sensitive information/);
+    });
   });
-});
+}
