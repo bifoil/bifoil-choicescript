@@ -1,17 +1,24 @@
 # Packaging and releases
 
-This guide is for maintainers building installers. For installing an existing build, see [installation](support.md). Run commands from a fresh repository checkout with its pinned engine submodule and [development dependencies](../CONTRIBUTING.md#build-from-source).
+This guide is for maintainers. For installation, see [support](support.md).
+Building an artifact, validating it, and publishing it are separate operations. The repository is a private prerelease;
+ordinary development work does not authorize publication or changing visibility.
 
-## Build a package
+## Prepare the source
 
-Packaging consumes the shared build output; build and check it first:
+Use the declared [development toolchain](development.md). Check the intended source revision and working tree before
+building, initialize the pinned submodule, then run:
 
 ```sh
+git -c core.autocrlf=false submodule update --init --recursive
 pnpm install --frozen-lockfile
 pnpm check
 ```
 
-### VS Code
+Preserve upstream line endings. Do not package around an unexplained engine checksum mismatch.
+Package scripts consume the shared build outputs, so rebuild after source edits.
+
+## VS Code packages
 
 Build for the current host:
 
@@ -19,59 +26,139 @@ Build for the current host:
 pnpm package:vscode
 ```
 
-Or select a target explicitly:
+Or select a target:
 
 ```sh
 pnpm package:vscode linux-arm64
 ```
 
-Targets are `win32-x64`, `win32-arm64`, `darwin-x64`, `darwin-arm64`, `linux-x64`, and `linux-arm64`. Installers go to `dist/packages/bifoil-choicescript-<target>.vsix`. Each contains the target's Node runtime, server, engine, and notices. Cross-packaging an installer is not a substitute for testing it on its target host.
+| Target         | Host                |
+| -------------- | ------------------- |
+| `win32-x64`    | Windows x64         |
+| `win32-arm64`  | Windows ARM64       |
+| `darwin-x64`   | macOS Intel         |
+| `darwin-arm64` | macOS Apple silicon |
+| `linux-x64`    | glibc Linux x64     |
+| `linux-arm64`  | glibc Linux ARM64   |
 
-### JetBrains
+Output is `dist/packages/bifoil-choicescript-<target>.vsix`.
+Each package includes its Node runtime, language server, worker, selected engine files, notices, and the extension.
+The build generates the distribution README from the root README.
 
-Prepare all six runtimes, then build and verify the distribution:
+Cross-packaging does not validate execution on another host.
+Use [extracted-package and editor tests](testing.md#packaged-vs-code-checks)
+on the matching host. Do not run parallel package commands that mutate the same adapter runtime directory.
+
+## JetBrains package
+
+Prepare the universal resource bundle:
 
 ```sh
 pnpm package:intellij
 bash editors/intellij/gradlew -p editors/intellij test buildPlugin verifyPlugin
 ```
 
-Use `editors\intellij\gradlew.bat` on Windows without Bash. The IDEA-built ZIP under `editors/intellij/build/distributions/` is the distribution artifact. The other declared products also require [compatibility checks](jetbrains-compatibility.md).
+On Windows without Bash:
 
-`pnpm package:intellij` prepares resources; it does not run Gradle or create the installable plugin ZIP. `--current` prepares only the host runtime for development and must not be used for a universal release. `--server-only` refreshes an already prepared bundle's server resources without provisioning runtimes again.
+```powershell
+pnpm package:intellij
+editors/intellij/gradlew.bat -p editors/intellij test buildPlugin verifyPlugin
+```
 
-### All targets
+`pnpm package:intellij` prepares server/runtime archives and a manifest under
+`editors/intellij/src/main/resources/bundle`. It does **not** run Gradle or produce the installable ZIP.
+Gradle writes the plugin ZIP under `editors/intellij/build/distributions`.
 
-`pnpm package:all` builds the shared code, creates all six VSIX packages, and prepares the universal IntelliJ resource bundle. You must still run Gradle to create and verify the JetBrains ZIP. It is an artifact-building convenience, not the complete release acceptance gate.
+| Preparation option | Meaning                                                             |
+| ------------------ | ------------------------------------------------------------------- |
+| No option          | Prepare all six runtimes for a universal distribution               |
+| `--current`        | Prepare only the host runtime for local development                 |
+| `--server-only`    | Refresh server resources using an already prepared runtime manifest |
 
-## Provenance and licenses
+A `--current` ZIP is not universal. `--server-only` cannot turn a host-only manifest into a universal one.
+Use the IDEA-built ZIP as the distribution artifact and validate the same adapter source with
+`-PplatformProduct=webstorm` and `-PplatformProduct=pycharm` too.
+See [compatibility](jetbrains-compatibility.md).
 
-Before packaging, engine revision and file hashes must match `vendor/choicescript.lock.json` and `vendor/checksums.json`. Runtime downloads are checked against `runtime-lock.json`; packaged runtime metadata records archive and binary hashes. JavaScript dependency versions are locked in `pnpm-lock.yaml`.
+## All-target preparation
 
-Preserve the engine license, Node license, and dependency notices in each distribution. The Linux Gradle dependency inventory in `docs/provenance/gradle-linux-x64.xml` is supplementary provenance, not a portable enforcement lock. See [third-party notices](../THIRD_PARTY_NOTICES.md).
+`pnpm package:all` builds shared code, creates all six VSIX files, and prepares the universal IntelliJ resource bundle.
+Gradle is still required to build/verify the JetBrains ZIP.
+This command may download substantial runtime data; prefer host-only work while iterating.
 
-## Publish a private prerelease
+`pnpm runtime <target>` provisions an individual runtime. `pnpm runtime --all` provisions every locked target.
+Archives are cached and verified before use. Changing the runtime pin requires matching archive hashes and provenance,
+not just editing a version label.
 
-The [Private prerelease workflow](../.github/workflows/release.yml) is manually dispatched with a new prerelease tag such as `v0.1.0-alpha.1`. It rejects a public repository or a tag without a prerelease suffix.
+## Provenance and package contents
 
-Before dispatching it:
+| Source of truth                                     | Records                                                  |
+| --------------------------------------------------- | -------------------------------------------------------- |
+| [Engine lock](../vendor/choicescript.lock.json)     | Upstream URL, exact submodule commit, archive provenance |
+| [Engine checksums](../vendor/checksums.json)        | Per-file expected hashes                                 |
+| [Runtime inventory](../vendor/runtime-files.json)   | Unmodified engine files selected for shipping            |
+| [Node lock](../runtime-lock.json)                   | Exact Node archive names and SHA-256 values              |
+| [pnpm lock](../pnpm-lock.yaml)                      | JavaScript dependency versions/integrity                 |
+| [Gradle inventory](provenance/gradle-linux-x64.xml) | One environment's resolved JVM dependencies and hashes   |
 
-1. Choose the intended source revision and check that package/plugin versions and [release notes](release-notes.md) describe it.
-2. Complete the relevant [manual acceptance checks](testing.md#manual-acceptance), or explicitly retain outstanding limitations in the prerelease notes.
-3. Review the engine/runtime pins and third-party notices.
+The Gradle inventory is supplementary provenance, not a portable enforcement lock.
+Each packaged Node runtime includes `NODE-LICENSE` and `provenance.json` with archive/executable hashes.
+Retain the engine license and dependency notices. Source maps and unselected upstream development files are not part of
+the intended server distribution.
 
-The workflow calls **Build and verify**. All six VS Code platform jobs and all three JetBrains product jobs must pass before publication. It collects six VSIX files and the IDEA-built universal ZIP, then creates:
+Inspect actual archive contents when validating a packaging change. A provenance file's presence alone does not prove
+that the listed binaries match those running.
 
-- `release-manifest.json`, with the source commit, version, target platforms, artifact sizes and hashes, and validation run.
-- `SHA256SUMS.txt`, covering the packages and accompanying release files.
+## Candidate gates
+
+Before calling an artifact validated:
+
+1. Record the exact source revision, dependency pins, package target, and hash.
+2. Run relevant source tests, extracted-bundle tests, native adapter tests, and Plugin Verifier.
+3. Exercise installed-plugin behavior in the declared editors, including the minimum VS Code version.
+4. Check manual light/dark presentation, project detection, both dialogue outcomes, tools, cancellation, assets, and
+   cleanup.
+5. Measure useful native-editor latency and combined runtime RSS on required large-game workloads.
+6. Record all failures/unverified dimensions in candidate notes.
+
+Current [known limitations](known-limitations.md) remain release-acceptance gaps. Do not erase them because an installer
+build or static review passed. Marketplace publication is outside the first release.
+
+## Private prerelease workflow
+
+The [Private prerelease workflow](../.github/workflows/release.yml) is manually dispatched with a prerelease tag such as
+`v0.1.0-alpha.1`. It checks that the repository is private and the tag matches its prerelease naming pattern.
+
+**It does not check that the tag is unused.** Before dispatch, verify that the intended tag is absent or explicitly
+resolve its existing target. An existing tag can point to a different commit from the newly built assets despite
+`--target` being passed to release creation. Do not publish mismatched tag, manifest, and package revisions.
+
+Also check that package/plugin versions and [candidate notes](release-notes.md) describe the intended revision and its
+remaining limitations. Creating a tag/release requires explicit maintainer authorization.
+
+The workflow calls [Build and verify](../.github/workflows/ci.yml); all six VS Code platform jobs and three JetBrains
+product jobs must pass before its publication job proceeds.
+It collects six VSIX files and the IDEA-built ZIP, then creates:
+
+- `release-manifest.json` with revision, version, targets, artifact sizes/hashes, and validation run.
+- `SHA256SUMS.txt` covering the release contents.
 - Release notes, license notices, engine/runtime pins, and dependency provenance.
 
-The workflow creates the private prerelease, downloads its assets again, and verifies them. A failure after creation can leave a release present; inspect its assets and workflow result before retrying. A successful build alone does not mean a prerelease was published.
+It creates the private prerelease, downloads assets again, compares checksums, and verifies the downloaded manifest.
+A late failure can leave a partially created release. Inspect the remote release and workflow before retrying;
+do not silently overwrite, retag, or delete a published release.
 
-To recheck a downloaded release directory locally, with repository dependencies installed:
+To validate a downloaded release directory locally:
 
 ```sh
 node scripts/verify-release.mjs "/path/to/downloaded-release"
 ```
 
-Marketplace publication is outside the first release. Runtime binaries and generated installers belong in build/release artifacts, not Git history.
+This checks the release files against their recorded inventory; it is not a substitute for native execution or trusting
+the source of the manifest.
+
+## Storage and retention
+
+Keep installers and runtime binaries in build/release artifacts, not Git history.
+Reuse runtime/SDK caches. Remove only obsolete, task-owned extraction/report directories after their processes exit.
+Keep the minimal evidence needed to identify and reproduce a failed candidate.

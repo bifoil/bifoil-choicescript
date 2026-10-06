@@ -1,10 +1,11 @@
-# Configure Bifoil ChoiceScript
+# Configuration reference
 
-Most games need no configuration. A scene directory containing `startup.txt` is detected automatically, including inside an existing engine checkout. Project configuration controls paths and test defaults; editor settings control presentation.
+Project configuration controls file paths and RandomTest defaults. Editor settings control presentation.
+Most conventional `scenes/startup.txt` projects need no configuration file.
 
-## Project layout
+## Project configuration
 
-Place an optional `choicescript.json` in the game root:
+Place strict JSON in `choicescript.json` at the game root:
 
 ```json
 {
@@ -17,28 +18,51 @@ Place an optional `choicescript.json` in the game root:
 }
 ```
 
-| Key                     | Default    | Meaning                                                                 |
-| ----------------------- | ---------- | ----------------------------------------------------------------------- |
-| `scenes`                | `"scenes"` | Directory containing `startup.txt` and scene `.txt` files               |
-| `assets`                | `"."`      | Game asset directory copied into the staged game for preview and export |
-| `randomtest.iterations` | `1000`     | Initial iteration value in the RandomTest dialog                        |
-| `randomtest.seed`       | `0`        | Initial seed value in the RandomTest dialog                             |
+| Key                     | Type    | Default    | Meaning                                          |
+| ----------------------- | ------- | ---------- | ------------------------------------------------ |
+| `scenes`                | String  | `"scenes"` | Relative directory containing `startup.txt`      |
+| `assets`                | String  | `"."`      | Relative root of game assets copied into staging |
+| `randomtest`            | Object  | Omitted    | Optional test defaults                           |
+| `randomtest.iterations` | Integer | `1000`     | Initial iteration count and runner fallback      |
+| `randomtest.seed`       | Integer | `0`        | Initial random seed and runner fallback          |
 
-Use paths relative to the configuration file. For example, an engine checkout can use `"scenes": "web/mygame/scenes"` and `"assets": "web/mygame"`. Keep `assets` focused on the game's assets rather than a parent directory containing unrelated projects.
+Paths resolve relative to the config file. Absolute paths are rejected. Parent-relative paths are accepted, but external
+scene roots may not receive all editor file-watch events. Use a dedicated asset directory if the root contains notes or
+other material you do not intend to distribute.
 
-The configured scenes directory must contain `startup.txt`. Bifoil ChoiceScript treats a configured root as one game and stops descending into it to discover more games; put a separate configuration in each game folder rather than one configuration above several games.
+For an engine checkout:
 
-Without configuration, a directory named `scenes` uses its parent as the game root and asset directory. Other directories containing `startup.txt` use that directory as their root. Discovery scans workspace folders up to eight directory levels and skips hidden and common dependency/build directories. Open a game nearer its root or configure it explicitly if it is nested more deeply.
+```json
+{
+  "scenes": "web/mygame/scenes",
+  "assets": "web/mygame"
+}
+```
 
-## RandomTest defaults
+The configuration must be an object, without JSON comments or trailing commas. Unknown keys are currently ignored,
+not validated as supported features. There is no published config schema in the repository. Invalid known fields
+produce diagnostics; a valid config pointing to a nonexistent startup file simply fails to identify a project.
 
-The values in `choicescript.json` prefill the editor dialogs; changing a value for one run does not rewrite the file. Iterations must be an integer from 1 to 10,000,000. The shared runner accepts safe-integer seeds, while the JetBrains dialog accepts signed 32-bit integers; stay in that range when sharing settings between editors.
+The bundled runner requires scenes directly in the scene directory. See [discovery rules](projects.md) before
+configuring
+multiple games beneath one workspace.
+
+## RandomTest defaults and ranges
+
+Iterations must be from **1 to 10,000,000**, inclusive. A seed must be a safe integer from **−9,007,199,254,740,991 to
+9,007,199,254,740,991**, inclusive.
+`seed + iterations - 1` must also fit that safe-integer range.
+
+Editor inputs accept decimal integers, with an optional minus sign for seeds. They reject fractions, exponent notation,
+leading/trailing spaces, and a leading plus sign. Changing dialog values affects that run; it does not rewrite
+`choicescript.json`. Defaults apply to the runner too, not just the dialog.
+
+These upper bounds validate arguments; they are not a promise that a game can complete that many iterations within a
+particular resource or time budget.
 
 ## Narrative warnings
 
-Narrative quote warnings are enabled by default. They flag inconsistent quotation across known paths and provably unclosed dialogue. They are separate from expression syntax diagnostics.
-
-In VS Code settings:
+Warnings are on by default and separate from syntax errors. To disable them in VS Code:
 
 ```json
 {
@@ -46,33 +70,68 @@ In VS Code settings:
 }
 ```
 
-In JetBrains IDEs, toggle **Tools → Bifoil ChoiceScript → Narrative Quote Warnings**. This setting is stored per project. Disabling warnings does not disable dialogue highlighting or expression syntax diagnostics.
+In JetBrains, toggle **Tools → Bifoil ChoiceScript → Narrative Quote Warnings**. The choice is stored per project.
 
-## Colors and semantic highlighting
+Disabling warnings does not disable semantic dialogue styling or relax expression-string syntax. An unknown dialogue
+state is not itself an error, regardless of the warning setting.
 
-Colors derive from the active editor theme. The shared analyzer emits these categories:
+## VS Code editing defaults
 
-| Content                                  | Semantic token types                                  |
-| ---------------------------------------- | ----------------------------------------------------- |
-| Commands, comments, operators, functions | `keyword`, `comment`, `operator`, `function`          |
-| Literal values                           | `string`, `number`, `boolean`                         |
-| Variables with known types               | `stringVariable`, `numberVariable`, `booleanVariable` |
-| Mixed or unknown variables               | `variable`                                            |
-| Scene and label references               | `label`                                               |
-| Prose and dialogue                       | `narrative`, `dialogue`                               |
-| Text formatting and substitutions        | `markup`, `interpolation`                             |
+The extension contributes these language-specific defaults:
 
-Modifiers include `declaration`, `readonly`, `bold`, and `italic`. A token's classification is shared; the resulting color depends on each editor's theme.
+```json
+{
+  "[choicescript]": {
+    "editor.semanticHighlighting.enabled": true,
+    "editor.quickSuggestions": {
+      "other": false,
+      "comments": false,
+      "strings": false
+    },
+    "editor.insertSpaces": true,
+    "editor.tabSize": 2
+  }
+}
+```
 
-### VS Code
+You can override them through normal VS Code settings. Explicit completion works with quick suggestions disabled.
+Avoid a global `*.txt` association; [project-aware association](projects.md#which-text-files-become-choicescript) is
+narrower.
 
-Semantic highlighting is enabled by default for ChoiceScript. Customize token styles with `editor.semanticTokenColorCustomizations`; for example, this adds italics to dialogue without fixing its foreground color:
+## Colors and semantic tokens
+
+Colors inherit from the editor theme. Token categories are shared, while each editor maps them to its native scheme.
+
+| Category                                              | Meaning                                             |
+| ----------------------------------------------------- | --------------------------------------------------- |
+| `keyword`, `comment`                                  | Commands and comments                               |
+| `string`, `number`, `boolean`                         | Expression literals                                 |
+| `operator`, `function`                                | Expression operations and recognized functions      |
+| `variable`                                            | A neutral, mixed, or unknown variable               |
+| `stringVariable`, `numberVariable`, `booleanVariable` | A variable with one inferred type at this reference |
+| `label`                                               | Label and scene-reference styling                   |
+| `dialogue`, `narrative`                               | Known quoted dialogue and ordinary narrative        |
+| `markup`, `interpolation`                             | Narrative markup and substitution delimiters        |
+
+Modifiers are `declaration`, `readonly`, `bold`, and `italic`. They describe spans; not every theme renders every
+modifier.
+Typed-variable categories inherit variable behavior with fallback scope mappings for their value types.
+Dialogue has string-like fallback styling.
+
+To customize colors for a dark theme in VS Code:
 
 ```json
 {
   "editor.semanticTokenColorCustomizations": {
     "rules": {
-      "dialogue:choicescript": {
+      "dialogue:choicescript": "#CE9178",
+      "stringVariable:choicescript": "#CE9178",
+      "numberVariable:choicescript": "#B5CEA8",
+      "booleanVariable:choicescript": "#569CD6",
+      "*.bold:choicescript": {
+        "bold": true
+      },
+      "*.italic:choicescript": {
         "italic": true
       }
     }
@@ -80,14 +139,28 @@ Semantic highlighting is enabled by default for ChoiceScript. Customize token st
 }
 ```
 
-For theme-specific foreground rules and selectors, see the [VS Code semantic highlighting guide](https://code.visualstudio.com/api/language-extensions/semantic-highlight-guide). Check custom colors in both light and dark themes.
+These are example colors, not required defaults; check contrast against your own theme. In JetBrains use **Settings →
+Editor → Color Scheme → Bifoil ChoiceScript**, including its executed-line coverage category.
+Test both light and dark schemes when overriding styles.
 
-Bifoil ChoiceScript defaults to spaces with a two-space indent. Automatic quick suggestions are disabled for ChoiceScript; invoke completion manually or override the `[choicescript]` editor settings if you prefer automatic suggestions.
+## Command identifiers
 
-### JetBrains IDEs
+These IDs are useful for user-defined keybindings and adapter tests. They are distinct from the server's
+`bifoil.choicescript.server.*` commands described in the [protocol](protocol.md).
 
-Open **Settings → Editor → Color Scheme → Bifoil ChoiceScript** to customize token categories. Styles inherit from the active scheme, including bold and italic formatting.
+| Action         | VS Code command                     | JetBrains action                   |
+| -------------- | ----------------------------------- | ---------------------------------- |
+| New Project    | `bifoil.choicescript.createProject` | `BifoilChoiceScript.New`           |
+| Run Game       | `bifoil.choicescript.run`           | `BifoilChoiceScript.Run`           |
+| Stop           | `bifoil.choicescript.stop`          | `BifoilChoiceScript.Stop`          |
+| QuickTest      | `bifoil.choicescript.quicktest`     | `BifoilChoiceScript.QuickTest`     |
+| RandomTest     | `bifoil.choicescript.randomtest`    | `BifoilChoiceScript.RandomTest`    |
+| Export         | `bifoil.choicescript.exportHtml`    | `BifoilChoiceScript.Export`        |
+| Word count     | `bifoil.choicescript.wordCount`     | `BifoilChoiceScript.Words`         |
+| Bold           | `bifoil.choicescript.bold`          | `BifoilChoiceScript.Bold`          |
+| Italic         | `bifoil.choicescript.italic`        | `BifoilChoiceScript.Italic`        |
+| Quote warnings | Setting above                       | `BifoilChoiceScript.QuoteWarnings` |
+| About          | `bifoil.choicescript.about`         | `BifoilChoiceScript.About`         |
 
-## File associations
-
-Automatic association applies to `.txt` files within discovered scene directories. Other text files retain their existing language. Use the editor's explicit language/file-type selection for a standalone scene; a global `*.txt` association would apply ChoiceScript rules to unrelated documents.
+There are no supported user settings for a custom engine executable, Node heap size, worker count, automatic preview
+reload, or a performance-limit override. Changing project JSON does not configure those internals.

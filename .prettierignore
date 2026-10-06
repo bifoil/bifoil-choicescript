@@ -22,6 +22,5 @@ docs/provenance/
 .vscode-test/
 .kotlin/
 fixtures/dialogue/.vscode/
-*.vsix
 *.log
 .DS_Store

@@ -5,7 +5,7 @@
  * It does not create installers, run Gradle, or establish installed-editor acceptance.
  */
 import { build } from "esbuild";
-import { cp, mkdir, readFile, rm } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { builtinModules, createRequire } from "node:module";
 import path from "node:path";
 
@@ -94,6 +94,15 @@ await cp("LICENSE", "dist/server/LICENSE");
 await rm("editors/vscode/server", { recursive: true, force: true });
 await cp("dist/server", "editors/vscode/server", { recursive: true });
 
-await cp("README.md", "editors/vscode/README.md");
+// Root-relative documentation links must also resolve in the generated extension directory.
+const documentationRoot = "https://github.com/bifoil/bifoil-choicescript/blob/main/";
+const readme = await readFile("README.md", { encoding: "utf8" });
+await writeFile(
+  "editors/vscode/README.md",
+  readme.replace(
+    /]\((?![a-z][\w+.-]*:|#|\/)([^\s)]+)\)/gi,
+    (_, target) => "](" + new URL(target, documentationRoot).href + ")",
+  ),
+);
 await cp("LICENSE", "editors/vscode/LICENSE");
 console.log("Built shared server, analysis worker, and VS Code client.");

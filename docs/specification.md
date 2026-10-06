@@ -1,24 +1,79 @@
 # Language behavior
 
-Bifoil ChoiceScript's shared analyzer supplies the same classifications and diagnostics to both editors. It follows the pinned ChoiceScript interpreter and recovers from incomplete input while you write. This guide describes the editor's behavior; narrative quote warnings do not add rules to ChoiceScript itself.
+This page describes Bifoil ChoiceScript's analysis model, not a replacement specification for the ChoiceScript runtime.
+The source of runtime behavior is the pinned [upstream interpreter](../vendor/choicescript/web/scene.js) and its tests.
+The editor supports incomplete source files and recovers from errors; successful highlighting does not prove a game is valid.
 
-## Commands, expressions, and prose
+See [diagnostics](diagnostics.md) for messages, [configuration](configuration.md) for colors and warnings, and
+[known limitations](known-limitations.md) for current deviations and gaps.
 
-The parser distinguishes commands, expressions, narrative lines, choice options, and indentation-based blocks. Arrays, indirect references, interpolation, multireplace, and Fairmath are analyzed using the pinned engine's syntax.
+## Source structure and recovery
 
-Expression strings end at a closing quote or recover at the physical end of their line. An unterminated string produces a local diagnostic. Parsing resumes on the next line without carrying the expression's string state into another command or into prose.
+The parser distinguishes commands, expressions, prose, choice options, comments, metadata, and command-specific blocks.
+Indentation builds the block structure. Command names, including `*comment`, are case-insensitive.
+Directives do not have trailing colons.
 
-All source positions use UTF-16 offsets, matching LSP and JavaScript strings. This applies to tokens, diagnostics, and navigation, including CRLF input and characters outside the Basic Multilingual Plane.
+A malformed expression remains local to its physical line. The parser keeps enough structure to continue recognizing
+later commands, prose, and branches. Mixed indentation, orphan alternatives, and missing blocks receive their own
+diagnostics rather than silently changing subsequent text into a string.
 
-## Dialogue follows control flow
+All ranges use **zero-based UTF-16 positions with exclusive ends**, matching LSP and JavaScript strings. A supplementary
+Unicode character occupies two UTF-16 code units even though it is one Unicode code point. CRLF is one line break;
+columns describe content on that line.
 
-Narrative double quotes have their own state. That state can continue across paragraphs, commands, resolvable jumps, scene transitions, and subroutine calls. Straight and curly double quotes are supported under English dialogue conventions; apostrophes are punctuation. Repeated opening quotes at continued-dialogue paragraphs are recognized.
+## Expressions
 
-A string inside a command or interpolation does not open or close the surrounding dialogue. Entering a command, reaching a newline, or starting an alternative does not reset narrative quotation.
+Quoted expression values use straight double quotes:
 
-### Conditional branches
+```choicescript
+*create name "William"
+*create courage 50
+*create has_key false
+*set courage %+ 10
+*set name (name & " the Bold")
+```
 
-Every alternative begins with the quote state that reached the conditional. A sibling branch never inherits another sibling's ending state.
+The analyzer handles literals, variable references, operators, recognized built-in functions, arrays, indirect
+references, and command-specific argument forms. It tracks available values and coercions conservatively.
+Expression grouping follows the pinned interpreter's rules; do not assume JavaScript operator precedence.
+
+`%+` and `%-` are Fairmath operators, distinct from ordinary addition and subtraction.
+Arrays and indirect references can create or resolve names that are not written literally at every use.
+For example, a known string target in `*setref` can resolve to a variable, while an unknown string target may not.
+
+```choicescript
+*create score 10
+*temp target "score"
+*setref target +5
+Your score is ${score}.
+```
+
+Interpolations such as `${name}` and multireplace expressions such as `@{has_key open|locked}` embed expression syntax
+inside prose. Substitutions must close on the same physical line. Their delimiters and expressions retain code styling
+inside dialogue. Display modifiers and escaped quotes are handled as part of their respective syntax.
+
+Function-name and special-identifier edge cases remain; the implementation is not a complete proof of interpreter
+equivalence. See [rename and language limits](known-limitations.md#language-analysis-and-rename).
+
+## Expression strings and narrative dialogue are independent
+
+An expression string must close on its own physical line:
+
+```choicescript
+*set name "William
+The road continues.
+```
+
+The first line receives `expression-string`. The next line is prose. Recovery resets the expression lexer only;
+it does not close, open, or reset any narrative dialogue surrounding that command.
+
+Curly double quotes may be narrative punctuation, but they are not expression-string delimiters.
+Apostrophes and curly apostrophes in prose are punctuation, not dialogue delimiters.
+
+## Dialogue across branches
+
+Narrative quotes may remain open across lines, paragraphs, commands, scene transitions, and subroutine calls.
+The quote state follows reachable control flow rather than the source file's linear order.
 
 ```choicescript
 *create gender "male"
@@ -31,44 +86,65 @@ She said "This is the end,
 She walked away.
 ```
 
-The expected classifications are:
+| Span                      | Expected classification                             |
+| ------------------------- | --------------------------------------------------- |
+| `She said `               | Narrative                                           |
+| `"This is the end,`       | Dialogue                                            |
+| `*if` and `*else`         | Commands                                            |
+| `gender`, `=`, `"male"`   | Typed variable, operator, expression string         |
+| `William."` and `Belle."` | Dialogue, independently closing the inherited quote |
+| `She walked away.`        | Narrative                                           |
 
-| Text                                    | Classification                                    |
-| --------------------------------------- | ------------------------------------------------- |
-| `She said `                             | Ordinary narrative                                |
-| `"This is the end,`                     | Dialogue                                          |
-| `*if`, `gender`, `=`, `"male"`, `*else` | Their respective command/expression categories    |
-| `William."` and `Belle."`               | Dialogue; each closes its inherited opening quote |
-| `She walked away.`                      | Ordinary narrative                                |
+This example has no unmatched-dialogue warning. The explicit `implicit_control_flow` setting lets execution continue after a conditional
+branch at runtime. It does not change the syntax and is not an editor setting.
 
-There are no unmatched-dialogue warnings for this example. `implicit_control_flow` permits the branches to fall through to the following narrative. Directives do not use trailing colons.
+Every alternative begins with the state reaching the conditional. It never starts from its previous sibling's ending
+state. At the join, only reachable continuation paths contribute. A missing `*else` contributes the path that skips the
+conditional. A branch that jumps or terminates does not automatically fall through to its sibling.
 
-At a join, Bifoil ChoiceScript merges reachable continuation states. If all paths close the quote, following text is outside dialogue. If known paths disagree, uncertain text receives neutral styling and narrative warnings can identify the inconsistency. Without an `*else`, the path that skips the conditional also participates in the merge.
+If reachable paths disagree about quotation, following ambiguous text receives neutral styling and may receive a
+`quote-branch` warning. A quote opened in every reachable branch can remain open after the join and close later.
+Nested alternatives and `*elseif` use the same rule.
 
-### Jumps, calls, and uncertainty
+## Paragraphs, calls, and uncertainty
 
-Resolvable destinations propagate quotation across labels, scenes, and subroutine calls. Loops and recursive calls are analyzed to a fixed point rather than treated as a single linear pass. Scene transitions do not automatically close dialogue.
+The default convention is English straight and curly double-quoted dialogue. A repeated opening quote at a continued
+dialogue paragraph is recognized rather than blindly interpreted as a closing quote.
 
-Dynamic destinations and generated text can make the state unknown. Bifoil ChoiceScript styles text as dialogue only when the incoming states agree. Unknown state alone is not evidence of a quote error. Consequently, some dialogue can remain neutrally styled when the analyzer cannot prove how execution reaches it.
+Resolvable `*goto`, scene transitions, and subroutine calls carry dialogue state across boundaries.
+Interprocedural summaries and fixed-point iteration handle loops and recursive calls, subject to finite analysis
+budgets. Entering another scene does not automatically reset the quote state.
 
-Narrative warnings report provable problems, not every opening quote at the end of a line. You can [disable those warnings](configuration.md#narrative-warnings) independently of syntax diagnostics and highlighting.
+Generated narrative and dynamic destinations can make the state unknown. Dialogue styling is applied only when the
+incoming states establish it. Unknown state alone is not a definite quote error. Neutral text can therefore mean
+insufficient evidence rather than ordinary narration proven on every path.
 
-## Variable types and navigation
+Warnings are separate from runtime syntax errors. An open quote at a newline or before a command is not, by itself,
+a warning. A provably unfinished resolved story path can produce `quote-unclosed`. Disable these warnings independently
+through [configuration](configuration.md#narrative-warnings).
 
-Type inference uses assignments and control flow at each reference. Known strings, numbers, and booleans receive their respective variable styles. Reassignment can change the style later in a scene; branch merges, arrays, scope, indirect references, and coercions affect the inferred value.
+## Types, scopes, and symbols
 
-When values have mixed or unknown types, the variable keeps neutral styling. A variable name alone does not determine its type.
+Type inference follows assignments at each reference, not just declarations.
+A known single type produces `stringVariable`, `numberVariable`, or `booleanVariable`. Mixed or unknown values use
+`variable`. Branch joins retain only information justified by incoming paths.
 
-Definitions, references, and rename operate on resolved symbols. Rename avoids narrative text and unresolved dynamic references. This can leave a dynamic reference unchanged when its destination cannot be proven; inspect such references when renaming a symbol used indirectly.
+Globals, scene-local temporaries, parameters, generated array bindings, and indirect references affect lookup.
+An active explicit binding can shadow a generated array name. Dynamic names and runtime inputs reduce precision.
+Known defects in array handling and shadowing mean these rules are the model, not a guarantee for every construct.
+
+Definitions and references use resolved symbols. Rename avoids guessing dynamic names and rejects many collisions,
+but [known rename defects](known-limitations.md#language-analysis-and-rename) require reviewing proposed edits.
+Scene-file renaming is outside symbol rename.
 
 ## Highlighting layers
 
-Expressions and markup take precedence over surrounding prose spans. This keeps interpolation, multireplace, markup delimiters, and command arguments readable inside dialogue, without overlapping semantic tokens.
+The shared analyzer emits nonoverlapping semantic spans. Code and markup override narrative spans. Commands,
+expressions, and interpolations remain legible while a narrative quote is open. Bold and italic tags add modifiers
+to supported narrative spans.
 
-Fallback highlighting is deliberately line-local: TextMate in VS Code and a minimal lexer in JetBrains. It provides basic syntax colors while the language service starts or is unavailable. Cross-line quotation and branch-dependent variable colors require semantic analysis; a regex string region is not used to consume narrative across commands.
+VS Code's TextMate grammar and JetBrains' minimal lexer provide line-local fallback colors. They do not maintain
+cross-line dialogue string regions. Branch-dependent quotation and variable types belong to semantic analysis.
 
-## Limits
-
-Static analysis does not execute game code or prove every runtime path correct. Dynamic values, generated text, and unresolved destinations reduce precision. Use official [QuickTest and RandomTest](usage.md#quicktest-and-randomtest) alongside editor diagnostics.
-
-The [regression suites](testing.md) exercise these behaviors with small synthetic scenes and the pinned interpreter. When changing the analyzer, preserve both the classifications and the recovery behavior of incomplete input.
+The [architecture](architecture.md) explains compact closed-scene summaries and why partial or budget-limited analysis
+cannot establish complete project-wide results. Use official tests and manual play alongside editor diagnostics.

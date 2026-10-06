@@ -1,6 +1,24 @@
-# Test a Bifoil ChoiceScript change
+# Test a plugin change
 
-This guide is for plugin development. To test a story from the editor, use the [game testing guide](usage.md#quicktest-and-randomtest). Install source dependencies using [Contributing](../CONTRIBUTING.md#build-from-source) before running the commands below, all from the repository root.
+This is the contributor test guide. To test a story, use [game tools](game-tools.md).
+Set up dependencies through [Contributing](../CONTRIBUTING.md#build-from-source).
+Commands run from the repository root.
+
+## Choose the check that answers the question
+
+| Check                              | Establishes                                             | Does not establish                                    |
+| ---------------------------------- | ------------------------------------------------------- | ----------------------------------------------------- |
+| Type checking                      | TypeScript API/type consistency                         | Runtime or editor behavior                            |
+| Core regression                    | Semantics and ranges on its examples                    | Every engine construct or large game                  |
+| LSP integration                    | Server/client wire behavior under the harness           | Native editor UI delivery                             |
+| Tooling integration                | Staging and official job behavior on tested games       | Arbitrary workload capacity or hostile-code isolation |
+| Extracted-bundle smoke             | Packaged runtime/server can execute the tested workflow | Full editor compatibility                             |
+| Native adapter test                | Tested platform classes/helper integrations work        | All native manager/transport paths                    |
+| Plugin Verifier                    | API compatibility against selected IDE builds           | Correct notifications, theme rendering, or latency    |
+| Manual installed-plugin acceptance | Observed workflows in a real editor session             | Other platforms or untested workloads                 |
+
+Record the artifact and revision tested. Rebuild and repackage after source changes before using installed-package
+results as evidence about that change.
 
 ## Shared checks
 
@@ -8,28 +26,58 @@ This guide is for plugin development. To test a story from the editor, use the [
 pnpm check
 ```
 
-This verifies the pinned engine, builds the bundles, checks TypeScript types, and runs regression and integration tests. Coverage includes parsing and recovery, dialogue flow, variable types, project discovery, real LSP requests, and official game-tool jobs.
+This verifies the engine pin, generates/bundles code, checks TypeScript, and runs the package regression/integration
+suites. It can execute official tools on original temporary games.
 
-For a targeted investigation, `pnpm typecheck` and `pnpm test` are separate commands. Run `pnpm build` before tests that exercise built bundles.
-
-Add small original regressions alongside the affected package tests. Analysis changes should cover both the result and source ranges, especially around malformed strings, branch joins, indirect references, CRLF, Unicode, and edits. Keep sample scenes under package tests or `fixtures/`; documentation is not a corpus or a store of test results.
-
-## Analyze local scenes
-
-The corpus command performs read-only analysis without executing game code or copying sources into this repository:
+For focused work:
 
 ```sh
-pnpm test:corpus "/path/to/game" "/path/to/scene-fragments"
-pnpm test:corpus --details "/path/to/game"
+pnpm build
+node --import tsx --test --test-isolation=none packages/core/test/core.test.ts
 ```
 
-It prints JSON summaries; `--details` adds relative locations and diagnostic messages. A directory without a discovered project is treated as explicitly selected scene fragments.
+Use the affected test file. Pure source tests may not need a rebuild; server/bundle tests that launch generated code do.
+Run additional suites when the change or a failure warrants them, rather than repeatedly rerunning unchanged checks.
 
-Each directory runs in a separate process with a 1 GiB V8 heap limit and a 60-second timeout. Analysis errors, invalid token ranges, truncated analysis, and worker failures produce a nonzero exit status. Narrative warnings alone do not fail the run. Keep local sources and generated reports outside public documentation and committed fixtures.
+## Regression design
+
+Use small original inputs and assert behavior, not only “did not crash.”
+
+| Area             | Important cases                                                                               |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| Quotes           | Both branches, nested alternatives, `*elseif`, missing `*else`, quotes opened inside branches |
+| Recovery         | Unterminated command strings inside open dialogue, malformed interpolation, later commands    |
+| Flow             | Jumps, scenes, subroutines, recursion, unreachable continuations, unknown destinations        |
+| Types            | Reassignment, branch joins, coercion, arrays, indirection, deletion, shadowing                |
+| Ranges           | CRLF, escaped quotes, supplementary Unicode, nonoverlapping tokens                            |
+| Incremental work | Different text on every edit, current versions, projection/full-analysis agreement            |
+| Tooling          | Trust, invalid options, open buffers, collision preservation, failures, cancellation, cleanup |
+| Adapters         | Real transport payloads, project selection, UI settlement, light/dark styles, coverage        |
+
+Add regressions in package tests or `fixtures/`. Public docs may explain examples but are not a store of private corpus
+results or audit evidence.
+
+## Analyze local scenes without execution
+
+```sh
+pnpm test:corpus "/path/to/game"
+pnpm test:corpus --details "/path/to/game" "/path/to/scene-fragments"
+```
+
+The command statically analyzes supplied sources without copying them into the repository or executing game code.
+If no project is found, a supplied directory can be treated as explicitly selected scene fragments.
+JSON output includes summaries; `--details` includes relative locations/messages.
+
+Each directory uses a separate process with a **1 GiB V8 heap limit** and a **60-second timeout**.
+This diagnostic harness does not use the production 256 MiB combined-runtime acceptance budget.
+Errors, invalid ranges, truncated analysis, or worker failures fail the run; narrative warnings alone do not.
+
+Use only sources you are authorized to access and keep source names/text and reports out of committed docs and
+fixtures.
 
 ## Packaged VS Code checks
 
-After shared checks pass:
+After shared checks:
 
 ```sh
 pnpm package:vscode
@@ -38,44 +86,84 @@ node scripts/test-bundle.mjs
 node scripts/test-vscode.mjs
 ```
 
-Extraction verifies the package target and bundled runtime checksums. The tests use the extracted VSIX, an isolated editor profile, and a temporary game. On headless Linux, replace the last command with:
+Extraction checks the host target and bundled runtime provenance, writes an installed-extension pointer, and retains an
+extracted package under `.cache/installed/`. The tests use that package, an isolated profile, and temporary game source.
+
+The editor harness defaults to VS Code **1.109.0** and can download it. To use an existing installation, set
+`BIFOIL_CHOICESCRIPT_VSCODE_EXECUTABLE` to its executable.
+`BIFOIL_CHOICESCRIPT_EXTENSION_PATH` selects an explicitly extracted extension.
+Using another version does not validate the minimum version.
+
+On headless Linux:
 
 ```sh
 xvfb-run -a node scripts/test-vscode.mjs
 ```
 
-`BIFOIL_CHOICESCRIPT_EXTENSION_PATH` selects an extracted extension directory. `BIFOIL_CHOICESCRIPT_VSCODE_EXECUTABLE` selects an existing editor executable instead of the default downloaded test installation. Editor diagnostics go to `dist/test-results/editor`.
-
-These checks exercise packaged code, so rebuild and repackage after changing the implementation.
+Editor reports are under `dist/test-results/editor`. The harness removes its temporary profile but retains reports and
+package/test caches. A GUI smoke test still needs assertions of the relevant user-visible behavior.
 
 ## JetBrains checks
 
-For a single-host development check, after building the shared bundles:
+After `pnpm build`, prepare a host-local bundle:
 
 ```sh
 pnpm package:intellij --current
 bash editors/intellij/gradlew -p editors/intellij test buildPlugin verifyPlugin
 ```
 
-Use `editors\intellij\gradlew.bat` on Windows without Bash. IDEA is the default product; select another baseline with `-PplatformProduct=webstorm` or `-PplatformProduct=pycharm`. SDK downloads are large, so start with the product affected by your change.
+Windows command:
 
-Release checks prepare all runtimes with `pnpm package:intellij` and run all three products. Native tests and Plugin Verifier serve different purposes: tests exercise adapter behavior, while the verifier checks platform API compatibility. See [the compatibility matrix](jetbrains-compatibility.md) and [API maintenance notes](jetbrains-api-notes.md).
+```powershell
+editors/intellij/gradlew.bat -p editors/intellij test buildPlugin verifyPlugin
+```
+
+IDEA is the default. Add `-PplatformProduct=webstorm` or `-PplatformProduct=pycharm` for another declared product.
+Release validation prepares all runtime resources and checks all three products; avoid those large downloads for
+unrelated local changes.
+
+The existing integration test directly creates a descriptor/process/LSP4J connection for parts of its coverage.
+That is useful but does not prove the real IDE LSP manager invokes every callback correctly.
+Exercise the native manager and notification delivery in an actual IDE session for changes to discovery, DTOs,
+coverage, startup, and disposal.
+
+See [compatibility](jetbrains-compatibility.md) and [implementation notes](jetbrains-api-notes.md).
 
 ## Manual acceptance
 
-Install the packaged plugins and open `fixtures/dialogue`. Check both runtime outcomes of the dialogue example in both editors, then exercise:
+Install the built package, open `fixtures/dialogue`, and check the required dialogue fixture in both editors.
+Change gender so both runtime alternatives execute.
 
-- Dialogue and variable styles in light and dark themes, including ordinary prose after a branch closes a quote.
-- Completion, hover, navigation, references, rename, folding, selections, indentation, comments, and markup actions.
-- File association inside a game without changing unrelated text files.
-- Embedded preview, advancing choices, browser fallback, explicit restart, and stop.
-- Unsaved buffers, stale results, cancellation, clickable failure locations, and each editor's coverage presentation.
-- Export to a fresh directory, collision handling, companion assets, and cleanup after shutdown.
+Then verify:
 
-Include spaces and Unicode in project paths. Static classifications can agree while a theme or UI action still behaves poorly, so automated tests do not replace these checks.
+- Commands retain expression colors inside open dialogue; following prose returns to ordinary narrative styling.
+- Light/dark schemes, modifier styles, and readable coverage decorations.
+- Completion, hover, definitions, references, rename preview, symbols, folding, selection, comments, and markup actions.
+- Game detection without claiming unrelated text files, including multiple games and spaces/Unicode in paths.
+- Preview choices, browser fallback, explicit restart, stop, and closing the project.
+- Unsaved buffers, current diagnostics, stale results, clickable failures, seeds, coverage, and cancellation.
+- Exported HTML and companion assets, collisions, partial failure, and process/temp cleanup.
 
-## CI and reporting
+An unavailable/locked desktop or failed automation session leaves visual checks unverified.
+Report known defects as failures or limitations, not passed checks with omitted assertions.
 
-[Build and verify](../.github/workflows/ci.yml) runs six operating-system/architecture jobs for VS Code packaging and editor smoke tests, plus native tests and Plugin Verifier for IDEA, WebStorm, and PyCharm. Diagnostic artifacts are uploaded even on failures when reports exist.
+## Performance and large games
 
-In a pull request, record the commands and platforms actually checked, and explain anything left unverified. Keep detailed local output in ignored `.bifoil-choicescript/development/`. A release must also account for outstanding [manual acceptance](release-notes.md#known-limitations).
+The server performance suite and `scripts/benchmark-large-game.mjs` are described in
+[performance and scale](performance.md), including their measurement gaps.
+Acceptance includes native editors and games with tens of millions of words.
+A no-op edit, timeout, stale response, worker crash, or placeholder does not satisfy response latency.
+
+Sample combined owned-process RSS while tools and analysis run concurrently.
+Line count alone, Node heap size, or the full IDE JVM's memory is not the required measurement.
+
+## CI and results
+
+[Build and verify](../.github/workflows/ci.yml) defines six VS Code OS/architecture jobs and three JetBrains product
+jobs.
+It builds packages and uploads artifacts/diagnostics where available. Workflow configuration is not evidence of a
+successful current run; inspect the jobs for the revision being reviewed.
+
+In the change report, list the commands and platforms actually checked, failures, and remaining unverified dimensions.
+Keep detailed local output in ignored `.bifoil-choicescript/development/`. Publication has its own
+[release gates](releasing.md).
