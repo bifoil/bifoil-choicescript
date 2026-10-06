@@ -22,11 +22,15 @@ export async function startServer(roots: string[], options: { legacyRootUri?: bo
   });
   const diagnostics: any[] = [];
   const events: any[] = [];
+  const refreshes: number[] = [];
   let errors = "";
   child.stderr.on("data", (b) => (errors += b));
   const rpc = createMessageConnection(new StreamMessageReader(child.stdout), new StreamMessageWriter(child.stdin));
   rpc.onRequest("client/registerCapability", () => null);
-  rpc.onRequest("workspace/semanticTokens/refresh", () => null);
+  rpc.onRequest("workspace/semanticTokens/refresh", () => {
+    refreshes.push(performance.now());
+    return null;
+  });
   rpc.onNotification("textDocument/publishDiagnostics", (p) => diagnostics.push(p));
   rpc.onNotification("choicescript/jobEvent", (p) => events.push(p));
   rpc.listen();
@@ -43,6 +47,7 @@ export async function startServer(roots: string[], options: { legacyRootUri?: bo
     child,
     diagnostics,
     events,
+    refreshes,
     legend: initialized.capabilities.semanticTokensProvider.legend,
     open(uri: string, text: string, version = 1) {
       rpc.sendNotification("textDocument/didOpen", {
