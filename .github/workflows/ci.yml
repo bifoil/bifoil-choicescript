@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, ubuntu-24.04-arm, windows-2025, windows-11-arm, macos-15, macos-15-intel]
+        os: [ ubuntu-24.04, ubuntu-24.04-arm, windows-2025, windows-11-arm, macos-15, macos-15-intel ]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Preserve upstream line endings
@@ -22,7 +22,7 @@ jobs:
           submodules: recursive
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
-        with: {node-version: 24.21.0, cache: pnpm}
+        with: { node-version: 24.21.0, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm package:vscode
@@ -47,7 +47,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        product: [idea, webstorm, pycharm]
+        product: [ idea, webstorm, pycharm ]
     runs-on: ubuntu-24.04
     steps:
       - name: Reserve space for the selected IDE SDK
@@ -63,9 +63,9 @@ jobs:
           submodules: recursive
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
-        with: {node-version: 24.21.0, cache: pnpm}
+        with: { node-version: 24.21.0, cache: pnpm }
       - uses: actions/setup-java@v6
-        with: {distribution: temurin, java-version: 21}
+        with: { distribution: temurin, java-version: 21 }
       - uses: gradle/actions/setup-gradle@v6
         with:
           # Avoid restoring several gigabytes of another matrix product's SDK.

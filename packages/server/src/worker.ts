@@ -1,3 +1,11 @@
+/**
+ * Analysis worker entry point; the server sends one unit of work at a time.
+ * Index mode reads stable regular files and writes compressed projections atomically.
+ * Analysis mode prefers exact open buffers, then full foreground sources, then cached
+ * projections, with identity-only placeholders for not-yet-indexed scenes.
+ * Caches belong to this worker lifetime; emitted buffers are transferred, not shared.
+ * Do not pipeline messages without adding serialization around these mutable caches.
+ */
 import { parentPort } from "node:worker_threads";
 import { lstat, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -9,6 +17,7 @@ import { sameFileUri } from "@bifoil/choicescript-tooling";
 import type { BufferSnapshot } from "@bifoil/choicescript-protocol";
 import type { IndexedSource } from "./scene-index.js";
 import { type FeatureCache, packAnalysis, snapshotBuffers } from "./snapshots.js";
+
 const parsedCache = new Map<string, { stamp?: number; version: number; full: boolean; doc: Document }>();
 const featureCache: FeatureCache = new Map();
 parentPort!.on(
@@ -31,9 +40,12 @@ parentPort!.on(
         for (const source of sources) {
           try {
             const before = await lstat(source.file, { bigint: true });
+
             if (!before.isFile() || before.isSymbolicLink()) throw new Error("Scene must be a regular file.");
+
             const text = await readFile(source.file, "utf8");
             const after = await lstat(source.file, { bigint: true });
+
             if (
               before.ino !== after.ino ||
               before.size !== after.size ||
@@ -41,6 +53,7 @@ parentPort!.on(
               before.ctimeNs !== after.ctimeNs
             )
               throw new Error("Scene changed while indexing; retry after saving.");
+
             const document = projectDocument(parseDocument(source.uri, text));
             const cache = path.join(directory!, createHash("sha256").update(source.uri).digest("hex") + ".bin");
             const temporary = cache + ".tmp";
@@ -52,14 +65,18 @@ parentPort!.on(
             parentPort!.postMessage({ indexError: { uri: source.uri, error: String(error) } });
           }
         }
+
         parentPort!.postMessage({ done: true });
         return;
       }
+
       const started = performance.now();
       const parsed: Document[] = [];
       let incomplete = false;
+
       for (const source of sources) {
         const buffer = documents.find((document) => sameFileUri(document.uri, source.uri));
+
         if (buffer) {
           const previous = parsedCache.get(buffer.uri);
           const doc =
@@ -70,21 +87,26 @@ parentPort!.on(
           parsed.push(doc);
           continue;
         }
+
         const previous = parsedCache.get(source.uri);
+
         if (previous && previous.stamp === source.stamp && previous.version <= 0 && (!source.full || previous.full)) {
           if (previous.full && !source.full) {
             projectDocument(previous.doc);
             previous.full = false;
           }
+
           parsed.push(previous.doc);
           continue;
         }
+
         if (source.full) {
           const doc = parseDocument(source.uri, await readFile(source.file, "utf8"), -(source.stamp ?? 0));
           parsedCache.set(source.uri, { stamp: source.stamp, version: doc.version, full: true, doc });
           parsed.push(doc);
           continue;
         }
+
         if (source.cache) {
           const doc: Document = deserialize(inflateSync(source.data ?? (await readFile(source.cache))));
           doc.version = -(source.stamp ?? 0);
@@ -92,6 +114,7 @@ parentPort!.on(
           parsed.push(doc);
           continue;
         }
+
         // Catalogue identities are known before their code is indexed.
         const placeholder = parseDocument(source.uri, "");
         placeholder.roots = [];
@@ -102,17 +125,22 @@ parentPort!.on(
         parsed.push(placeholder);
         incomplete = true;
       }
+
       for (const buffer of documents)
         if (!sources.some((source) => sameFileUri(buffer.uri, source.uri)))
           parsed.push(parseDocument(buffer.uri, buffer.text, buffer.version));
+
       const included = new Set(parsed.map((doc) => doc.uri));
+
       for (const uri of parsedCache.keys()) if (!included.has(uri)) parsedCache.delete(uri);
+
       const loaded = performance.now();
       const analysis = analyzeProject(parsed, {
         ...options,
         incompleteProject: incomplete,
         quoteWarnings: incomplete ? false : options.quoteWarnings,
       });
+
       if (incomplete) {
         for (const [uri, diagnostics] of analysis.diagnostics)
           analysis.diagnostics.set(
@@ -120,8 +148,10 @@ parentPort!.on(
             diagnostics.filter((d) => d.code !== "missing-target"),
           );
       }
+
       const analyzed = performance.now();
       const snapshot = packAnalysis(analysis, false, featureCache, true);
+
       if (process.env.BIFOIL_CHOICESCRIPT_PROFILE === "1")
         console.error(
           "BIFOIL_ANALYSIS_PROFILE " +
@@ -134,6 +164,7 @@ parentPort!.on(
               featureCacheSize: featureCache.size,
             }),
         );
+
       snapshot.incomplete = incomplete;
       parentPort!.postMessage({ snapshot }, snapshotBuffers(snapshot));
     } catch (error) {

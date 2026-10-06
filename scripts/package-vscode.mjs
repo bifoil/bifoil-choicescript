@@ -1,3 +1,9 @@
+/**
+ * Package already-built adapter/server output for argv[2] or the current host.
+ * Provisions the pinned runtime, replaces editors/vscode/runtime, and writes a target VSIX.
+ * Run from the repository root after build; this shared staging path makes concurrent
+ * target packaging unsafe. Cross-packaging is not target-host execution validation.
+ */
 import { createVSIX } from "@vscode/vsce";
 import { cp, mkdir, rm } from "node:fs/promises";
 import path from "node:path";

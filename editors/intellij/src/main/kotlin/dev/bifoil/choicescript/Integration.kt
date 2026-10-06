@@ -13,7 +13,16 @@ import org.eclipse.lsp4j.jsonrpc.services.JsonNotification
 import org.eclipse.lsp4j.jsonrpc.services.JsonRequest
 import java.util.concurrent.CompletableFuture
 
+/**
+ * Project defaults mirrored from the shared protocol. Long is used for seeds, but only
+ * JavaScript's safe-integer range is valid; [RandomTestInput] enforces that boundary.
+ */
 data class RandomTestOptions(val iterations: Int = 1000, val seed: Long = 0)
+
+/**
+ * Server-discovered game. [id] is opaque; directory fields are absolute server-host paths,
+ * not file URIs. A project descriptor does not mean background analysis is complete.
+ */
 data class GameProject(
 	val id: String = "",
 	val root: String = "",
@@ -23,10 +32,19 @@ data class GameProject(
 	val randomtest: RandomTestOptions? = null
 )
 
+/**
+ * Start acknowledgement, not a test-success result. [output] is a saved log path.
+ * Tests/export complete through [JobEvent]; preview supplies [url].
+ */
 data class JobResult(
 	val jobId: String = "", val projectId: String = "", val url: String? = null, val output: String? = null
 )
 
+/**
+ * Subset of the shared job notification used by this adapter.
+ * [line] and coverage indices are zero-based. Events may arrive before the start response.
+ * A stale result belongs to its captured source; completed exitCode 0 succeeds, 130 cancels.
+ */
 data class JobEvent(
 	val jobId: String = "",
 	val projectId: String = "",
@@ -40,9 +58,15 @@ data class JobEvent(
 	val stale: Boolean = false
 )
 
+/**
+ * Custom methods carried by the native LSP4J connection. Keep parameter shapes aligned
+ * with packages/protocol, including array payloads and optional fields. These methods
+ * operate on the local server process, not a separately authenticated network service.
+ */
 interface ChoiceServer : Lsp4jServer {
 	@JsonNotification("choicescript/assetChanged")
 	fun assetChanged(request: Map<String, String>)
+
 	@JsonRequest("choicescript/projects")
 	fun projects(): CompletableFuture<List<GameProject>>
 
@@ -53,6 +77,9 @@ interface ChoiceServer : Lsp4jServer {
 	fun wordCount(request: Map<String, String>): CompletableFuture<Int>
 }
 
+/**
+ * Native file-open entry point. Only supported scene files should cause the project-wide client to start.
+ */
 class ChoiceIntegration : LspIntegrationProvider {
 	override fun fileOpened(
 		project: Project, file: VirtualFile, clientStarter: LspIntegrationProvider.LspClientStarter
@@ -61,12 +88,20 @@ class ChoiceIntegration : LspIntegrationProvider {
 	}
 }
 
+/**
+ * One native LSP session per project. The platform owns process startup; this descriptor
+ * supplies the verified bundle, semantic legend, initialization settings, and notifications.
+ * Use supported lifecycle hooks rather than overriding GeneralCommandLine.createProcess.
+ */
 class ChoiceDescriptor(project: Project) : ProjectWideLspClientDescriptor(project, "Bifoil ChoiceScript (Unofficial)") {
 	override fun isSupportedFile(file: VirtualFile) = ChoiceProjects.supports(project, file)
+
 	override fun getLanguageId(file: VirtualFile) = "choicescript"
+
 	override fun createCommandLine(): GeneralCommandLine {
 		val root = BundledRuntime.directory()
 		val server = root.resolve("server")
+
 		return GeneralCommandLine(
 			BundledRuntime.node(root),
 			"--max-old-space-size=96",
@@ -78,13 +113,19 @@ class ChoiceDescriptor(project: Project) : ProjectWideLspClientDescriptor(projec
 		)
 	}
 
+	/**
+	 * Bind process exit to this UI session's generation, so a late exit from a retired
+	 * server cannot dismiss progress or previews belonging to its replacement.
+	 */
 	override fun startServerProcess(): BaseProcessHandler<*> {
 		val handler = super.startServerProcess()
 		val ui = ChoiceUi.get(project)
 		val session = ui.sessionStarted()
 		handler.process.onExit().thenRun { ui.sessionEnded(session) }
+
 		return handler
 	}
+
 	override fun createInitializationOptions(): Any =
 		mapOf("quoteWarnings" to project.service<ChoiceSettings>().state.quoteWarnings)
 
@@ -92,13 +133,20 @@ class ChoiceDescriptor(project: Project) : ProjectWideLspClientDescriptor(projec
 	override val lspCustomization = object : LspCustomization() {
 		override val semanticTokensCustomizer = object : LspSemanticTokensSupport() {
 			override fun shouldAskServerForSemanticTokens(psiFile: PsiFile) = true
+
 			override val tokenTypes = ChoiceColors.names
 			override val tokenModifiers = listOf("declaration", "readonly", "bold", "italic")
+
 			override fun getTextAttributesKey(tokenType: String, modifiers: List<String>) =
 				ChoiceColors.key(tokenType, modifiers)
 		}
 	}
 
+	/**
+	 * Custom notifications are invoked reflectively by the native transport.
+	 * Test this path through the actual LSP manager, not just direct callback invocation:
+	 * projectsChanged's List payload currently has a known binding/coverage-delivery issue.
+	 */
 	override fun createLsp4jClient(handler: LspServerNotificationsHandler): Lsp4jClient =
 		object : Lsp4jClient(handler) {
 			// LSP4J invokes this callback through JSON-RPC reflection.

@@ -1,3 +1,9 @@
+/**
+ * Installed-package editor smoke harness. Uses an isolated temporary profile and original
+ * fixture, defaulting to VS Code 1.109.0 unless an executable override is supplied.
+ * Preserves reports/logs under dist/test-results/editor and removes its profile afterward.
+ * Changing the executable changes the tested baseline; it does not validate the minimum.
+ */
 import { runTests } from "@vscode/test-electron";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -7,10 +13,12 @@ import { installedExtension } from "./installed-extension.mjs";
 // vscode-test-electron 2.5.2 invokes cmd.exe on Windows; it does not quote
 // caller-provided paths. Preserve each path as one argument, including spaces.
 const launchPath = (value) => (process.platform === "win32" ? `"${value}"` : value);
+
 const profile = await mkdtemp(path.join(os.tmpdir(), "bifoil-choicescript-editor-"));
 const reports = path.resolve("dist/test-results/editor");
 await rm(reports, { recursive: true, force: true });
 await mkdir(reports, { recursive: true });
+
 try {
   const game = path.join(profile, "game Ω");
   await cp(path.resolve("fixtures/dialogue"), game, { recursive: true });
@@ -32,6 +40,7 @@ try {
       launchPath(path.join(profile, "extensions")),
     ],
   });
+
   const workflow = JSON.parse(await readFile(path.join(reports, "workflows.json"), { encoding: "utf8" }));
   await writeFile(
     path.join(reports, "result.json"),

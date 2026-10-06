@@ -1,21 +1,34 @@
+/**
+ * Assemble release provenance beside six VSIX files and one JetBrains ZIP.
+ * Requires GITHUB_SHA; records optional GITHUB_RUN_ID, copies notices/pins, and writes
+ * the manifest and checksums. It does not publish, inspect native behavior, or ensure
+ * a requested release tag points at that revision. Run against trusted build artifacts.
+ */
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const directory = path.resolve(process.argv[2] ?? "release");
 await mkdir(directory, { recursive: true });
+
 const lock = JSON.parse(await readFile("runtime-lock.json", { encoding: "utf8" }));
 const names = await readdir(directory);
 const targets = Object.keys(lock.archives).sort();
+
 for (const target of targets) {
   if (!names.includes(`bifoil-choicescript-${target}.vsix`)) throw new Error(`Missing package for ${target}`);
 }
+
 const native = names.filter((name) => name.endsWith(".zip"));
+
 if (native.length !== 1 || names.filter((name) => name.endsWith(".vsix")).length !== 6)
   throw new Error("Expected six VSIX files and one universal JetBrains ZIP");
+
 const version = JSON.parse(await readFile("package.json", { encoding: "utf8" })).version;
+
 if (!process.env.GITHUB_SHA || !/^[a-f0-9]{40}$/.test(process.env.GITHUB_SHA))
   throw new Error("GITHUB_SHA must identify the verified source commit");
+
 for (const [source, destination] of [
   ["LICENSE", "BIFOIL_CHOICESCRIPT-LICENSE.txt"],
   ["THIRD_PARTY_NOTICES.md", "THIRD_PARTY_NOTICES.md"],
@@ -28,7 +41,9 @@ for (const [source, destination] of [
   ["docs/release-notes.md", "RELEASE-NOTES.md"],
 ])
   await copyFile(source, path.join(directory, destination));
+
 const artifacts = [];
+
 for (const file of [...targets.map((target) => `bifoil-choicescript-${target}.vsix`), ...native]) {
   const bytes = await readFile(path.join(directory, file));
   artifacts.push({
@@ -37,6 +52,7 @@ for (const file of [...targets.map((target) => `bifoil-choicescript-${target}.vs
     sha256: createHash("sha256").update(bytes).digest("hex"),
   });
 }
+
 await writeFile(
   path.join(directory, "release-manifest.json"),
   JSON.stringify(
@@ -56,12 +72,15 @@ await writeFile(
     2,
   ) + "\n",
 );
+
 const checksums = [];
+
 for (const file of (await readdir(directory)).filter((name) => name !== "SHA256SUMS.txt").sort()) {
   const digest = createHash("sha256")
     .update(await readFile(path.join(directory, file)))
     .digest("hex");
   checksums.push(`${digest}  ${file}`);
 }
+
 await writeFile(path.join(directory, "SHA256SUMS.txt"), checksums.join("\n") + "\n");
 console.log("Prepared seven packages, dependency provenance, notices and SHA-256 checksums.");

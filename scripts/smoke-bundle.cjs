@@ -16,11 +16,13 @@ const pending = new Map(),
   diagnostics = [];
 let serial = 0,
   buffer = Buffer.alloc(0);
+
 function send(message) {
   const body = Buffer.from(JSON.stringify({ jsonrpc: "2.0", ...message }));
   server.stdin.write("Content-Length: " + body.length + "\r\n\r\n");
   server.stdin.write(body);
 }
+
 function request(method, params) {
   const id = ++serial;
   return new globalThis.Promise((resolve, reject) => {
@@ -38,21 +40,29 @@ function request(method, params) {
     send({ id, method, params });
   });
 }
+
 server.stdout.on("data", (chunk) => {
   buffer = Buffer.concat([buffer, chunk]);
+
   while (true) {
     const end = buffer.indexOf("\r\n\r\n");
+
     if (end < 0) return;
+
     const len = Number(/Content-Length: (\d+)/i.exec(buffer.subarray(0, end).toString())[1]);
+
     if (buffer.length < end + 4 + len) return;
+
     const message = JSON.parse(buffer.subarray(end + 4, end + 4 + len));
     buffer = buffer.subarray(end + 4 + len);
+
     if (message.method) {
       if (message.id !== undefined) send({ id: message.id, result: null });
       if (message.method === "choicescript/jobEvent") events.push(message.params);
       if (message.method === "textDocument/publishDiagnostics") diagnostics.push(message.params);
     } else {
       const p = pending.get(message.id);
+
       if (p) {
         pending.delete(message.id);
         message.error ? p.reject(message.error) : p.resolve(message.result);
@@ -60,19 +70,26 @@ server.stdout.on("data", (chunk) => {
     }
   }
 });
+
 async function waitFor(get) {
   for (let i = 0; i < 600; i++) {
     const value = get();
+
     if (value) return value;
+
     await new globalThis.Promise((r) => setTimeout(r, 50));
   }
+
   throw new Error("Timed out waiting for server event");
 }
+
 (async () => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), "Bifoil ChoiceScript Ω "));
+
   try {
     const folder = path.join(temporary, "game Ω");
     await cp(path.join(root, "fixtures/dialogue"), folder, { recursive: true });
+
     const file = path.join(folder, "scenes/startup.txt"),
       uri = pathToFileURL(file).href;
     const fixture = await readFile(file, { encoding: "utf8" });
@@ -94,13 +111,18 @@ async function waitFor(get) {
       },
     });
     await waitFor(() => diagnostics.find((d) => d.version === 1));
+
     const tokens = await request("textDocument/semanticTokens/full", {
       textDocument: { uri },
     });
+
     assert(tokens.data.length);
     assert(!diagnostics.flatMap((d) => d.diagnostics).some((d) => d.code.startsWith("quote-")));
+
     const [project] = await request("choicescript/projects");
+
     assert(project);
+
     for (const operation of ["quicktest", "randomtest", "exportHtml"]) {
       const job = await request("choicescript/job", {
         protocolVersion: 1,
@@ -112,8 +134,10 @@ async function waitFor(get) {
         destination: path.join(temporary, "game.html"),
       });
       const done = await waitFor(() => events.find((e) => e.jobId === job.jobId && e.kind === "completed"));
+
       assert.equal(done.exitCode, 0, JSON.stringify(events.filter((e) => e.jobId === job.jobId)));
     }
+
     const original = await readFile(path.join(temporary, "game.html"), { encoding: "utf8" });
     const collision = await request("choicescript/job", {
       protocolVersion: 1,
@@ -122,11 +146,13 @@ async function waitFor(get) {
       trusted: true,
       destination: path.join(temporary, "game.html"),
     });
+
     assert.equal(
       (await waitFor(() => events.find((e) => e.jobId === collision.jobId && e.kind === "completed"))).exitCode,
       1,
     );
     assert.equal(await readFile(path.join(temporary, "game.html"), { encoding: "utf8" }), original);
+
     send({
       method: "textDocument/didChange",
       params: {
@@ -138,18 +164,21 @@ async function waitFor(get) {
         ],
       },
     });
+
     const failure = await request("choicescript/job", {
       protocolVersion: 1,
       operation: "quicktest",
       projectId: project.id,
       trusted: true,
     });
+
     assert.equal(
       (await waitFor(() => events.find((e) => e.jobId === failure.jobId && e.kind === "completed"))).exitCode,
       1,
     );
     assert(events.some((e) => e.jobId === failure.jobId && e.kind === "diagnostic" && e.line === 2));
     assert((await readFile(failure.output, { encoding: "utf8" })).includes("missing_variable"));
+
     send({
       method: "textDocument/didChange",
       params: {
@@ -157,6 +186,7 @@ async function waitFor(get) {
         contentChanges: [{ text: fixture.replace("William", "Snapshot William") }],
       },
     });
+
     const cancel = await request("choicescript/job", {
       protocolVersion: 1,
       operation: "randomtest",
@@ -170,18 +200,22 @@ async function waitFor(get) {
       projectId: project.id,
       jobId: cancel.jobId,
     });
+
     assert.equal(
       (await waitFor(() => events.find((e) => e.jobId === cancel.jobId && e.kind === "completed"))).exitCode,
       130,
     );
+
     const preview = await request("choicescript/job", {
       protocolVersion: 1,
       operation: "run",
       projectId: project.id,
       trusted: true,
     });
+
     assert.equal((await fetch(preview.url)).status, 200);
     assert((await (await fetch(new URL("scenes/startup.txt", preview.url))).text()).includes("Snapshot William"));
+
     send({
       method: "textDocument/didChange",
       params: {
@@ -190,6 +224,7 @@ async function waitFor(get) {
       },
     });
     await waitFor(() => events.find((e) => e.jobId === preview.jobId && e.kind === "stale" && e.stale));
+
     const restarted = await request("choicescript/job", {
       protocolVersion: 1,
       operation: "run",
@@ -197,7 +232,9 @@ async function waitFor(get) {
       trusted: true,
     });
     await assert.rejects(fetch(preview.url));
+
     assert.equal((await fetch(restarted.url)).status, 200);
+
     await request("shutdown");
     await assert.rejects(fetch(restarted.url));
     send({ method: "exit" });

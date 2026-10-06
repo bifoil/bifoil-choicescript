@@ -435,6 +435,7 @@ test("startup directories do not claim unrelated text as a game", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
 test(
   "different games share one tool process and a queued preparation remains cancellable",
   { timeout: 10_000 },
@@ -442,11 +443,14 @@ test(
     const root = await mkdtemp(path.join(os.tmpdir(), "bifoil process budget "));
     const { fakeEngine, game } = await createGameFixture(root);
     await writeFile(path.join(fakeEngine, "mygamegenerator.js"), "setInterval(() => {}, 1000)");
+
     const other = path.join(root, "other");
     await mkdir(path.join(other, "scenes"), { recursive: true });
     await writeFile(path.join(other, "scenes/startup.txt"), "*ending");
+
     const events: JobEvent[] = [];
     const runner = new ToolRunner(fakeEngine, (event) => events.push(event));
+
     try {
       const projects = await discoverProjects([game, other]);
       const firstId = randomUUID(),
@@ -454,16 +458,21 @@ test(
       const first = runner.start({ ...request, jobId: firstId }, projects[0], []);
       const firstRejected = assert.rejects(first, /cancelled|aborted/i);
       await waitFor(() => runner.jobs.get(firstId)?.child);
+
       const second = runner.start({ ...request, jobId: secondId }, projects[1], []);
       const secondRejected = assert.rejects(second, /cancelled|aborted/i);
       await waitFor(() => runner.jobs.get(secondId)?.stage);
       await new Promise((resolve) => setTimeout(resolve, 150));
+
       assert.equal(runner.jobs.get(secondId)?.child, undefined);
       assert(runner.jobs.get(firstId)?.child);
+
       await runner.stop(secondId);
       await secondRejected;
+
       assert.equal(events.find((event) => event.jobId === secondId && event.kind === "completed")?.exitCode, 130);
       assert(runner.jobs.get(firstId)?.child);
+
       await runner.stop(firstId);
       await firstRejected;
     } finally {

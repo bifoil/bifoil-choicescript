@@ -1,3 +1,9 @@
+/**
+ * Provision checksum-pinned official Node archives from the repository root.
+ * CLI: [target] defaults to the host; --all provisions every runtime-lock target.
+ * Downloads/cache live under .cache/runtimes; extracted distribution files under dist/runtime.
+ * Importing provision() supplies the same operation to packaging scripts.
+ */
 import { unzipSync } from "fflate";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -5,27 +11,39 @@ import { chmod, cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const lock = JSON.parse(await readFile("runtime-lock.json", { encoding: "utf8" }));
+
+/** Provision a locked target and return its absolute dist/runtime directory; reject unknown targets or bad hashes. */
 export async function provision(target) {
   const archive = lock.archives[target];
+
   if (!archive) throw new Error(`Unsupported platform ${target}`);
+
   const dir = path.resolve(".cache/runtimes", target);
   await mkdir(dir, { recursive: true });
+
   const file = path.join(dir, archive.file);
   let bytes;
+
   try {
     bytes = await readFile(file);
   } catch {
     const response = await fetch(`https://nodejs.org/dist/${lock.version}/${archive.file}`);
+
     if (!response.ok) throw new Error(`Runtime download failed: ${response.status}`);
+
     bytes = Buffer.from(await response.arrayBuffer());
     await writeFile(file, bytes);
   }
+
   if (createHash("sha256").update(bytes).digest("hex") !== archive.sha256) throw new Error("Runtime checksum mismatch");
+
   const prefix = archive.file.replace(/\.(tar\.xz|zip)$/, "");
   const extracted = path.join(dir, prefix),
     out = path.resolve("dist/runtime", target);
   await mkdir(out, { recursive: true });
+
   const binary = target.startsWith("win32-") ? "node.exe" : "node";
+
   if (archive.file.endsWith(".zip")) {
     const needed = new Set([prefix + "/node.exe", prefix + "/LICENSE"]);
     const files = unzipSync(bytes, {
@@ -38,6 +56,7 @@ export async function provision(target) {
     await cp(path.join(extracted, "bin/node"), path.join(out, binary));
     await cp(path.join(extracted, "LICENSE"), path.join(out, "NODE-LICENSE"));
   }
+
   await chmod(path.join(out, binary), 0o755);
   await writeFile(
     path.join(out, "provenance.json"),
@@ -54,8 +73,10 @@ export async function provision(target) {
       2,
     ),
   );
+
   return out;
 }
+
 if (process.argv[1]?.endsWith("runtime.mjs"))
   for (const target of process.argv.includes("--all")
     ? Object.keys(lock.archives)

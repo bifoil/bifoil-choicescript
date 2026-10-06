@@ -9,6 +9,7 @@ test("TextMate fallback strings end on the same line and never capture prose or 
   const require = createRequire(import.meta.url);
   const wasm = await readFile(require.resolve("vscode-oniguruma/release/onig.wasm"));
   await oniguruma.loadWASM(wasm);
+
   const raw = await readFile(
     new URL("../../../editors/vscode/syntaxes/choicescript.tmLanguage.json", import.meta.url),
     "utf8",
@@ -22,19 +23,29 @@ test("TextMate fallback strings end on the same line and never capture prose or 
     loadGrammar: async () => textmate.parseRawGrammar(raw, "grammar.json"),
   });
   const grammar = await registry.loadGrammar("source.choicescript");
+
   assert(grammar);
+
   let state = textmate.INITIAL;
+
   for (const [line, text] of ['She said "Hello', '*set name "broken', 'World."', "*print 42"].entries()) {
     const result = grammar.tokenizeLine(text, state);
     state = result.ruleStack;
     if (line === 0 || line === 2) assert(!result.tokens.some((t) => t.scopes.some((s) => s.startsWith("string."))));
     if (line === 3) assert(result.tokens.some((t) => t.scopes.includes("keyword.control.choicescript")));
   }
+
   const comment = grammar.tokenizeLine('*CoMmEnT "literal prose', textmate.INITIAL);
+
   assert(comment.tokens.every((token) => token.scopes.includes("comment.line.choicescript")));
+
   const command = grammar.tokenizeLine("*SET score (score + 1)", textmate.INITIAL);
+
   assert(command.tokens.some((token) => token.scopes.includes("keyword.control.choicescript")));
+
   const prefix = grammar.tokenizeLine("*commentary Text", textmate.INITIAL);
+
   assert(!prefix.tokens.some((token) => token.scopes.includes("comment.line.choicescript")));
+
   registry.dispose();
 });

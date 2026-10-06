@@ -1,3 +1,9 @@
+/**
+ * Extract argv[2] (or the host VSIX) into a new .cache/installed directory.
+ * Check the host target and packaged runtime provenance, then record its path in
+ * dist/installed-extension.json for smoke/editor tests. Extraction is retained for reuse;
+ * this script does not launch an editor or validate every package content.
+ */
 import { unzipSync } from "fflate";
 import { createHash } from "node:crypto";
 import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
@@ -7,20 +13,29 @@ const target = `${process.platform}-${process.arch}`;
 const artifact = process.argv[2] ?? `dist/packages/bifoil-choicescript-${target}.vsix`;
 const files = unzipSync(new Uint8Array(await readFile(artifact)));
 const descriptor = Buffer.from(files["extension.vsixmanifest"]).toString();
+
 if (!descriptor.includes(`TargetPlatform="${target}"`)) throw new Error("VSIX target does not match this host");
+
 await mkdir(".cache/installed", { recursive: true });
+
 const destination = await mkdtemp(path.resolve(".cache/installed/extension-"));
+
 for (const [name, bytes] of Object.entries(files)) {
   if (!name.startsWith("extension/")) continue;
+
   const output = path.resolve(destination, name);
+
   if (!output.startsWith(destination + path.sep)) throw new Error("Invalid archive path");
+
   if (name.endsWith("/")) {
     await mkdir(output, { recursive: true });
     continue;
   }
+
   await mkdir(path.dirname(output), { recursive: true });
   await writeFile(output, bytes);
 }
+
 const extension = path.join(destination, "extension");
 const runtime = path.join(extension, "runtime", process.platform === "win32" ? "node.exe" : "node");
 const provenance = JSON.parse(
@@ -29,6 +44,7 @@ const provenance = JSON.parse(
   }),
 );
 const lock = JSON.parse(await readFile("runtime-lock.json", { encoding: "utf8" }));
+
 if (
   provenance.archiveSha256 !== lock.archives[target].sha256 ||
   createHash("sha256")
@@ -36,6 +52,7 @@ if (
     .digest("hex") !== provenance.binarySha256
 )
   throw new Error("Packaged runtime checksum mismatch");
+
 await chmod(runtime, 0o755);
 await mkdir("dist", { recursive: true });
 await writeFile(

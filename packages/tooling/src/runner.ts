@@ -36,6 +36,10 @@ const enginePaths = new Set(
   }),
 );
 
+/**
+ * Serialize work by key while allowing a rejected operation's successor to proceed.
+ * The map stores settlement promises; waiting here is distinct from the abortable child slot.
+ */
 function enqueue<T>(queue: Map<string, Promise<void>>, key: string, run: () => Promise<T>): Promise<T> {
   const previous = queue.get(key) ?? Promise.resolve();
   const result = previous.then(run);
@@ -47,15 +51,26 @@ function enqueue<T>(queue: Map<string, Promise<void>>, key: string, run: () => P
   void settled.then(() => {
     if (queue.get(key) === settled) queue.delete(key);
   });
+
   return result;
 }
+
 function sceneFilename(sceneDir: string, file: string): string | undefined {
   if (!contains(sceneDir, file) || !/\.txt$/i.test(file)) return undefined;
+
   const relative = path.relative(sceneDir, file);
+
   if (path.dirname(relative) !== ".")
     throw new Error("ChoiceScript runtime scenes must be directly inside the scene directory: " + relative);
+
   return relative;
 }
+
+/**
+ * Runner-owned lifetime record from registration through completion.
+ * controller cancels preparation/slot waits, while completion settles after cleanup is
+ * attempted. child and server identify direct resources only, not arbitrary descendants.
+ */
 type Job = {
   id: string;
   project: Project;
@@ -70,6 +85,14 @@ type Job = {
   resolveCompletion: () => void;
   finished?: boolean;
 };
+
+/**
+ * Owns staged game jobs, direct child processes, previews, and recent stale-result history.
+ * The engine directory must contain the pinned runtime inventory; `node` defaults to this
+ * process's executable, so packaged servers use their bundled Node for children.
+ * emit may run before start() resolves. Call dispose() and await it at session shutdown.
+ * This is local trusted-game tooling, not a hostile-code execution sandbox.
+ */
 export class ToolRunner {
   readonly jobs = new Map<string, Job>();
   private readonly results = new Map<string, Job>();
@@ -79,11 +102,13 @@ export class ToolRunner {
   private readonly toolSlot = new ProcessSlot();
   private closing = false;
   private readonly cleanupPaths = new Set<string>();
+
   constructor(
     readonly engine: string,
     readonly emit: (event: JobEvent) => void,
     readonly node = process.execPath,
   ) {}
+
   event(job: Job, kind: JobEvent["kind"], rest: Partial<JobEvent> = {}) {
     this.emit({
       protocolVersion: PROTOCOL_VERSION,
@@ -94,15 +119,32 @@ export class ToolRunner {
       ...rest,
     });
   }
+
+  /**
+   * Copy the pinned template into a new/empty directory without merging existing files.
+   * Serializes same-destination creates and returns a direct result, not a streamed job.
+   * A failed copy can leave partial new files; callers must not assume atomic creation.
+   */
   async createProject(destination: string) {
     if (this.closing) throw new Error("Game tooling is shutting down.");
+
     const key = path.resolve(destination);
     return enqueue(this.creates, key, () => this.createProjectNow(destination));
   }
+
+  /**
+   * Create a disposable engine/game tree, overlaying captured scene buffers and disk assets.
+   * Checks disk scene identity before/after copying; this is not an atomic filesystem snapshot.
+   * Runs the official generator after enforcing flat runtime scene paths. A successful
+   * standalone caller owns the returned directory; registered jobs clean it through completion.
+   */
   async stage(project: Project, buffers: BufferSnapshot[], job?: Job) {
     this.check(job);
+
     const dir = await mkdtemp(path.join(os.tmpdir(), "bifoil-choicescript-"));
+
     if (job) job.stage = dir;
+
     try {
       const files = await projectSources(project, buffers, job?.controller.signal);
       this.check(job);
@@ -110,8 +152,10 @@ export class ToolRunner {
         const relative = path.relative(this.engine, source).split(path.sep).join("/");
         return relative === "" || enginePaths.has(relative);
       });
+
       const game = path.join(dir, "web/mygame");
       await rm(path.join(game, "scenes"), { recursive: true, force: true });
+
       const excluded = new Set([
         ".git",
         ".cache",
@@ -135,6 +179,7 @@ export class ToolRunner {
       ]);
       await this.copySnapshot(project.assetDir, game, job, (source) => {
         if (source === project.assetDir) return true;
+
         const name = path.basename(source);
         return !(
           excluded.has(name) ||
@@ -145,22 +190,31 @@ export class ToolRunner {
         );
       });
       await mkdir(path.join(game, "scenes"), { recursive: true });
+
       // Only regular scene files are staged. Never copy links or arbitrary directories
       // into the generator's flat scene directory and never overlay a copied link.
       for (const source of files) {
         this.check(job);
+
         const relative = sceneFilename(project.sceneDir, source.file);
+
         if (relative === undefined) continue;
+
         const destination = path.join(game, "scenes", relative);
+
         if (source.buffer) await writeFile(destination, source.buffer.text, { signal: job?.controller.signal });
         else {
           const before = await lstat(source.file, { bigint: true });
+
           if (!before.isFile() || before.isSymbolicLink())
             throw new Error("Scene source must be a regular file: " + relative);
+
           await pipeline(createReadStream(source.file), createWriteStream(destination, { flags: "wx" }), {
             signal: job?.controller.signal,
           });
+
           const after = await lstat(source.file, { bigint: true });
+
           if (
             !after.isFile() ||
             after.isSymbolicLink() ||
@@ -172,44 +226,63 @@ export class ToolRunner {
             throw new Error("Scene changed while preparing the game; run it again: " + relative);
         }
       }
+
       const generated = await this.capture(dir, "mygamegenerator.js", ["mygame"], job);
       this.check(job);
       await writeFile(path.join(game, "mygame.js"), generated, { signal: job?.controller.signal });
+
       return dir;
     } catch (error) {
       await this.cleanup(dir, job);
       throw error;
     }
   }
+
+  /**
+   * Run the preparation generator with the shared child slot and production tool heap flags.
+   * Bounds this child's runtime to 30 seconds and combined stdout/stderr to 16 MiB.
+   * The limit excludes preceding queue wait/staging and does not bound QuickTest or compilation.
+   * Releases the permit only after the child settles; returns stdout or throws with failure output.
+   */
   async capture(cwd: string, script: string, args: string[], job?: Job) {
     this.check(job);
+
     const release = await this.toolSlot.acquire(job?.controller.signal);
+
     try {
       this.check(job);
       return await new Promise<string>((resolve, reject) => {
         const child = spawn(this.node, [...toolNodeArgs, script, ...args], { cwd, windowsHide: true });
+
         if (job) job.child = child;
+
         const out: Buffer[] = [],
           err: Buffer[] = [];
         let bytes = 0,
           failure: Error | undefined;
+
         const abort = () => {
           failure ??= new Error("Operation cancelled.");
           child.kill("SIGKILL");
         };
+
         job?.controller.signal.addEventListener("abort", abort, { once: true });
+
         const timer = setTimeout(() => {
           failure = new Error("ChoiceScript preparation exceeded 30 seconds.");
           child.kill("SIGKILL");
         }, 30_000);
         timer.unref();
+
         const collect = (chunks: Buffer[], chunk: Buffer) => {
           bytes += chunk.length;
+
           if (bytes > 16 * 1024 * 1024) {
             failure ??= new Error("ChoiceScript preparation exceeded its 16 MiB output limit.");
             child.kill("SIGKILL");
           } else chunks.push(chunk);
         };
+
         child.stdout.on("data", (chunk: Buffer) => collect(out, chunk));
         child.stderr.on("data", (chunk: Buffer) => collect(err, chunk));
         child.once("error", (error) => {
@@ -219,6 +292,7 @@ export class ToolRunner {
           clearTimeout(timer);
           job?.controller.signal.removeEventListener("abort", abort);
           if (job?.child === child) job.child = undefined;
+
           if (failure) reject(failure);
           else if (code !== 0)
             reject(
@@ -233,35 +307,57 @@ export class ToolRunner {
       release();
     }
   }
+
+  /**
+   * Stop by owned identity without reading project files. A job/project mismatch throws;
+   * a missing job is harmless. Omitting both selectors stops all jobs owned by this runner.
+   */
   async stopProject(projectId?: string, jobId?: string): Promise<JobResult> {
     if (jobId) {
       const job = this.jobs.get(jobId);
+
       if (job && projectId && job.project.id !== projectId) throw new Error("Job belongs to another project.");
+
       await this.stop(jobId);
     } else
       await Promise.all(
         [...this.jobs.values()].filter((j) => !projectId || j.project.id === projectId).map((j) => this.stop(j.id)),
       );
+
     return { jobId: jobId ?? "", projectId: projectId ?? "" };
   }
+
+  /**
+   * Validate/register an operation and capture buffer values before queueing preparation.
+   * Emits started immediately, so subscribe first. The returned handle acknowledges launch,
+   * not test/export completion; listen for completed and inspect exitCode. A rejected start
+   * can also emit completed. Fresh UUIDs prevent confusing active/recent job identities.
+   */
   async start(request: JobRequest, project: Project, buffers: BufferSnapshot[]): Promise<JobResult> {
     if (request.protocolVersion !== PROTOCOL_VERSION) throw new Error("Unsupported tooling protocol version.");
     if (request.operation === "stop") return this.stopProject(project.id, request.jobId);
     if (this.closing) throw new Error("Game tooling is shutting down.");
     if (!["run", "quicktest", "randomtest", "exportHtml"].includes(request.operation))
       throw new Error("Unknown tooling operation.");
+
     if (!request.trusted) throw new Error("Trust this workspace before running game code.");
+
     const count = request.iterations ?? project.randomtest?.iterations ?? 1000;
     const seed = request.seed ?? project.randomtest?.seed ?? 0;
+
     if (request.operation === "randomtest") {
       if (!validIterations(count)) throw new Error(ITERATIONS_ERROR);
       if (!validSeed(seed)) throw new Error(SEED_ERROR);
       if (!validSeedRange(seed, count)) throw new Error(SEED_RANGE_ERROR);
     }
+
     if (request.operation === "exportHtml" && !request.destination) throw new Error("Choose an export destination.");
+
     const id = request.jobId ?? randomUUID();
+
     if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)) throw new Error("Job ID must be a UUID.");
     if (this.jobs.has(id) || this.results.has(id)) throw new Error("Job ID is already in use.");
+
     let resolveCompletion!: () => void;
     const completion = new Promise<void>((resolve) => {
       resolveCompletion = resolve;
@@ -280,6 +376,7 @@ export class ToolRunner {
     const snapshot = buffers.map((buffer) => ({ ...buffer }));
     this.jobs.set(id, job);
     this.event(job, "started");
+
     return enqueue(this.starts, project.id, async () => {
       try {
         this.check(job);
@@ -290,6 +387,12 @@ export class ToolRunner {
       }
     });
   }
+
+  /**
+   * Serve one job's staged web root on loopback with a fresh URL token and no caching.
+   * Resolve requested paths physically inside the stage; never use lexical containment alone.
+   * The returned URL is a local capability, not a public authentication scheme.
+   */
   async preview(job: Job): Promise<JobResult> {
     const base = await realpath(path.join(job.stage, "web"));
     const types: Record<string, string> = {
@@ -307,22 +410,29 @@ export class ToolRunner {
       try {
         const url = new URL(req.url ?? "/", "http://localhost");
         const prefix = "/" + token + "/";
+
         if (!url.pathname.startsWith(prefix)) {
           res.writeHead(404).end();
           return;
         }
+
         const decoded = decodeURIComponent(url.pathname.slice(prefix.length));
         let file = path.resolve(base, decoded || "mygame/index.html");
+
         if (!contains(base, file)) {
           res.writeHead(403).end();
           return;
         }
+
         if ((await stat(file)).isDirectory()) file = path.join(file, "index.html");
+
         file = await realpath(file);
+
         if (!contains(base, file)) {
           res.writeHead(403).end();
           return;
         }
+
         res.setHeader("Content-Type", types[path.extname(file)] ?? "application/octet-stream");
         res.setHeader("Cache-Control", "no-store");
         createReadStream(file)
@@ -336,19 +446,32 @@ export class ToolRunner {
       server.once("error", reject);
       server.listen(0, "127.0.0.1", () => resolve());
     });
+
     if (job.controller.signal.aborted) {
       await new Promise<void>((resolve) => server.close(() => resolve()));
       this.check(job);
     }
+
     job.server = server;
+
     const address = server.address();
+
     if (!address || typeof address === "string") throw new Error("Preview failed to bind");
+
     const url = `http://127.0.0.1:${address.port}/${token}/mygame/index.html`;
     this.event(job, "preview", { url });
+
     return { jobId: job.id, projectId: job.project.id, url };
   }
+
+  /**
+   * Advance the project's tool revision and mark active/recent results stale once.
+   * History is bounded globally, so this method cannot invalidate results already evicted
+   * from the runner's retained map; consumers must not treat retention as permanent provenance.
+   */
   markStale(projectId: string) {
     this.revisions.set(projectId, (this.revisions.get(projectId) ?? 0) + 1);
+
     for (const job of [...this.jobs.values(), ...this.results.values()])
       if (job.project.id === projectId && !job.stale) {
         job.stale = true;
@@ -357,11 +480,22 @@ export class ToolRunner {
         });
       }
   }
+
+  /**
+   * Coalesce cancellation of one owned job; unknown IDs are a no-op.
+   */
   async stop(id: string) {
     const job = this.jobs.get(id);
+
     if (!job) return;
+
     return (job.stopping ??= this.stopJob(job));
   }
+
+  /**
+   * Reject new starts, await jobs and queued creates, then retry leftover stage cleanup.
+   * The caller must await this before exiting the server process.
+   */
   async dispose() {
     this.closing = true;
     await Promise.all([...this.jobs.keys()].map((id) => this.stop(id)));
@@ -369,9 +503,11 @@ export class ToolRunner {
     await Promise.all(this.creates.values());
     await Promise.all([...this.cleanupPaths].map((stage) => this.cleanup(stage)));
   }
+
   private async createProjectNow(destination: string) {
     if ((await exists(destination)) && (await readdir(destination)).length)
       throw new Error("Choose an empty directory; existing files will not be overwritten.");
+
     await mkdir(destination, { recursive: true });
     await this.copySnapshot(path.join(this.engine, "web/mygame"), destination, undefined, () => true, true, true);
     await cp(path.join(this.engine, "LICENSE.txt"), path.join(destination, "CHOICESCRIPT-LICENSE.txt"), {
@@ -396,14 +532,23 @@ export class ToolRunner {
       "This game was created from the unmodified ChoiceScript template at commit 60a6c3ee7393c9ee7e42650b8e1642ae38e3cb6a. Template and engine materials retain the ChoiceScript License in CHOICESCRIPT-LICENSE.txt. The independent editor tooling is unaffiliated with Choice of Games.\n",
       { flag: "wx" },
     );
+
     return {
       jobId: "created",
       projectId: URI.file(path.join(destination, "scenes")).toString(),
     };
   }
+
   private check(job?: Job) {
     job?.controller.signal.throwIfAborted();
   }
+
+  /**
+   * Copy selected regular files with cancellation and optional exclusive destination writes.
+   * Descendants use lstat and skip links; the explicit root uses stat and can resolve a link.
+   * `exclusive` preserves collisions but does not make the whole copy atomic. Staging may
+   * overwrite previously copied template assets intentionally; exports must set `exclusive` to true.
+   */
   private async copySnapshot(
     source: string,
     destination: string,
@@ -414,14 +559,19 @@ export class ToolRunner {
   ): Promise<void> {
     this.check(job);
     if (!include(source)) return;
+
     const entry = root ? await stat(source) : await lstat(source);
+
     if (entry.isSymbolicLink()) return;
+
     if (entry.isDirectory()) {
       if (exclusive && (await exists(destination))) {
         const output = await lstat(destination);
+
         if (!output.isDirectory() || output.isSymbolicLink())
           throw new Error("Export directory must not replace a file or follow a symbolic link: " + destination);
       }
+
       await mkdir(destination, { recursive: true });
       for (const name of await readdir(source))
         await this.copySnapshot(path.join(source, name), path.join(destination, name), job, include, false, exclusive);
@@ -431,6 +581,12 @@ export class ToolRunner {
       });
     }
   }
+
+  /**
+   * Prepare and launch a registered job after its project's earlier start work settles.
+   * Output parsing and export-copy completion run asynchronously after the start handle
+   * returns. The initial project revision detects edits that occur during preparation.
+   */
   private async startNow(
     request: JobRequest,
     project: Project,
@@ -440,16 +596,21 @@ export class ToolRunner {
   ): Promise<JobResult> {
     const count = request.iterations ?? project.randomtest?.iterations ?? 1000,
       seed = request.seed ?? project.randomtest?.seed ?? 0;
+
     if (request.operation === "run") {
       for (const job of this.jobs.values()) if (job.project.id === project.id && job.server) await this.stop(job.id);
     }
+
     const stage = await this.stage(project, buffers, job);
     this.check(job);
     job.stale ||= revision !== (this.revisions.get(project.id) ?? 0);
+
     try {
       if (request.operation === "run") return await this.preview(job);
+
       let script = "quicktest.js",
         args = ["mygame"];
+
       if (request.operation === "randomtest") {
         script = "randomtest.js";
         args = [
@@ -462,11 +623,14 @@ export class ToolRunner {
           "delay=false",
         ];
       }
+
       if (request.operation === "exportHtml") {
         script = "compile.js";
         args = ["export.html"];
       }
+
       const nodeArgs = [script, ...args];
+
       if (request.operation === "exportHtml") {
         const preload = path.join(stage, "bifoil-choicescript-preload.cjs");
         await writeFile(
@@ -475,44 +639,55 @@ export class ToolRunner {
         );
         nodeArgs.unshift("--require", preload);
       }
+
       const sceneNames = new Set(
         (await readdir(path.join(stage, "web/mygame/scenes"))).map((file) => file.replace(/\.txt$/i, "")),
       );
       const logDir = path.join(project.root, ".bifoil-choicescript", "logs");
       await mkdir(logDir, { recursive: true });
       this.check(job);
+
       const output = path.join(logDir, job.id + ".log"),
         log = createWriteStream(output);
       let sawError = false;
       const paused = new Set<Readable>();
       log.on("error", (error) => {
         for (const stream of paused) stream.resume();
+
         paused.clear();
         sawError = true;
         this.event(job, "output", {
           message: "Could not save test output: " + error.message,
         });
       });
+
       const coverage: Record<string, number[]> = Object.create(null);
       let coverageReady = !request.showText;
       let quicktestFailed = false;
       let failure: Partial<JobEvent> | undefined;
       const warnings: Partial<JobEvent>[] = [];
+
       const handle = (message: string) => {
         this.event(job, "output", { message });
+
         // Coverage echoes arbitrary source text. Consume it before parsing errors.
         if (/^Word count: \d+$/.test(message)) {
           coverageReady = true;
           // Actual final coverage follows the final word count, after prose output.
           for (const scene of Object.keys(coverage)) delete coverage[scene];
         }
+
         if (message === "QUICKTEST FAILED") quicktestFailed = true;
+
         const count = /^(.*?) (\d+): /.exec(message);
+
         if (request.operation === "randomtest" && coverageReady && count && sceneNames.has(count[1])) {
           (coverage[count[1]] ??= []).push(Number(count[2]));
           return;
         }
+
         const match = /^(RANDOMTEST FAILED: (?:Error: )?|WARNING |Error: )?(.+?) line (\d+):\s*(.*)$/i.exec(message);
+
         if (
           match &&
           sceneNames.has(match[2].replace(/\.txt$/i, "")) &&
@@ -520,7 +695,9 @@ export class ToolRunner {
         ) {
           const warning = match[1] === "WARNING " || /^WARNING\b/.test(match[4]);
           const file = path.join(project.sceneDir, match[2].replace(/\.txt$/i, "") + ".txt");
+
           if (!contains(project.sceneDir, file)) return;
+
           const diagnostic: Partial<JobEvent> = {
             uri:
               buffers.find((buffer) => sameFileUri(buffer.uri, pathToFileURL(file).href))?.uri ??
@@ -529,14 +706,18 @@ export class ToolRunner {
             message: match[4],
             severity: warning ? 2 : 1,
           };
+
           if (warning && request.operation === "quicktest") warnings.push(diagnostic);
           else if (!warning) failure = diagnostic;
         }
       };
+
       this.check(job);
+
       const release = await this.toolSlot.acquire(job.controller.signal);
       let child: ChildProcessWithoutNullStreams;
       let acquired = true;
+
       try {
         this.check(job);
         child = spawn(this.node, [...toolNodeArgs, ...nodeArgs], {
@@ -548,21 +729,27 @@ export class ToolRunner {
       } finally {
         if (acquired) release();
       }
+
       job.child = child;
+
       const streams = [child.stdout, child.stderr].map((stream) => {
         const decoder = new StringDecoder("utf8");
         let pending = "";
+
         const accept = (text: string) => {
           pending += text;
+
           const lines = pending.split(/\r?\n/);
           pending = lines.pop() ?? "";
           for (const line of lines) handle(line);
+
           // Bound line buffering even for scripts emitting no newlines.
           if (pending.length > 1024 * 1024) {
             handle(pending);
             pending = "";
           }
         };
+
         stream.on("data", (chunk: Buffer) => {
           if (!log.destroyed && !log.write(chunk)) {
             stream.pause();
@@ -572,10 +759,13 @@ export class ToolRunner {
               stream.resume();
             });
           }
+
           accept(decoder.write(chunk));
         });
+
         return () => {
           accept(decoder.end());
+
           if (pending) {
             handle(pending);
             pending = "";
@@ -583,15 +773,19 @@ export class ToolRunner {
         };
       });
       let finished = false;
+
       const finish = async (code: number, message?: string) => {
         if (finished) return;
+
         finished = true;
         for (const flush of streams) flush();
         if (message) this.event(job, "output", { message });
+
         log.end();
         await streamFinished(log).catch(() => {
           sawError = true;
         });
+
         try {
           // The official process exit status decides failure. Narrative text can
           // resemble a runner message, so only publish a failure on failed runs.
@@ -599,10 +793,12 @@ export class ToolRunner {
             if (code !== 0 && failure) this.event(job, "diagnostic", failure);
             for (const warning of warnings) this.event(job, "diagnostic", warning);
           }
+
           if (request.operation === "exportHtml" && code === 0 && !job.cancelled) {
             const dest = request.destination!;
             await mkdir(path.dirname(dest), { recursive: true });
             await this.copySnapshot(path.join(stage, "export.html"), dest, job, () => true, true, true);
+
             for (const e of await readdir(path.join(stage, "web/mygame"), {
               withFileTypes: true,
             }))
@@ -615,9 +811,11 @@ export class ToolRunner {
                   true,
                   true,
                 );
+
             this.check(job);
             this.event(job, "output", { message: `Exported ${dest}` });
           }
+
           if (Object.keys(coverage).length) this.event(job, "coverage", { coverage });
         } catch (e) {
           code = 1;
@@ -626,16 +824,24 @@ export class ToolRunner {
           await this.complete(job, job.cancelled ? 130 : sawError ? 1 : code, output);
         }
       };
+
       child.on("error", (e) => void finish(1, e.message));
       child.on("close", (code) => void finish(code ?? 1));
+
       return { jobId: job.id, projectId: project.id, output };
     } catch (error) {
       await this.complete(job, job.cancelled ? 130 : 1, String(error));
       throw error;
     }
   }
+
+  /**
+   * Attempt removal only of an owned staging directory. Retain failed paths for a final
+   * retry during `dispose()` and emit actionable output; a cleanup attempt is not proof of removal.
+   */
   private async cleanup(stage: string, job?: Job) {
     if (!stage) return;
+
     try {
       await rm(stage, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
       this.cleanupPaths.delete(stage);
@@ -645,39 +851,61 @@ export class ToolRunner {
         this.event(job, "output", { message: "Could not remove temporary directory " + stage + ": " + String(error) });
     }
   }
+
+  /**
+   * Settle a job once, after cleanup is attempted; retain up to 50 recent records for staleness.
+   * Resolve waiting stops before emitting the terminal event. Consumers must tolerate a
+   * terminal notification racing with the start response.
+   */
   private async complete(job: Job, exitCode: number, message?: string) {
     if (job.finished) return;
+
     job.finished = true;
+
     try {
       await this.cleanup(job.stage, job);
     } finally {
       this.jobs.delete(job.id);
       this.results.set(job.id, job);
       if (this.results.size > 50) this.results.delete(this.results.keys().next().value!);
+
       job.resolveCompletion();
       this.event(job, "completed", { exitCode, message });
     }
   }
+
+  /**
+   * Abort preparation/queue waits, then stop the directly owned child or preview server.
+   * Direct children get a delayed forced kill; arbitrary descendant process trees are not
+   * tracked here. Preparation/queued work must settle its own completion after abort.
+   */
   private async stopJob(job: Job) {
     job.cancelled = true;
     job.controller.abort();
+
     const child = job.child;
+
     if (child) {
       child.kill();
+
       const timer = setTimeout(() => child.kill("SIGKILL"), 1500);
       timer.unref();
+
       try {
         await job.completion;
       } finally {
         clearTimeout(timer);
       }
+
       return;
     }
+
     if (job.server) {
       job.server.closeAllConnections();
       await new Promise<void>((resolve) => job.server!.close(() => resolve()));
       await this.complete(job, 130);
     }
+
     // Preparation and queued jobs settle their own completion after aborting.
     await job.completion;
   }

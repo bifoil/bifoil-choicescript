@@ -8,6 +8,7 @@ import org.jetbrains.annotations.PropertyKey
 @NonNls
 private const val BUNDLE = "messages.BifoilBundle"
 
+/** Localized adapter messages; keep UI labels and live-template descriptions in the resource bundle. */
 internal object BifoilBundle {
 	private val bundle = DynamicBundle(BifoilBundle::class.java, BUNDLE)
 

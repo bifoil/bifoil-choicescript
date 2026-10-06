@@ -5,13 +5,7 @@
   },
   "choice": {
     "prefix": "choice",
-    "body": [
-      "*choice",
-      "  #${1:First option}",
-      "    ${2:*finish}",
-      "  #${3:Second option}",
-      "    ${4:*finish}"
-    ]
+    "body": ["*choice", "  #${1:First option}", "    ${2:*finish}", "  #${3:Second option}", "    ${4:*finish}"]
   },
   "variable": {
     "prefix": "create",

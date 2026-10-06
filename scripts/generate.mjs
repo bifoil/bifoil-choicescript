@@ -1,6 +1,11 @@
+/**
+ * Generate the tracked VS Code TextMate fallback from shared command metadata.
+ * Rules stop at physical line boundaries. Branch-dependent dialogue belongs to the
+ * semantic analyzer; do not add a cross-line narrative string region here.
+ */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 
-const commands = JSON.parse(await readFile("packages/core/src/commands.json", {encoding:"utf8"}));
+const commands = JSON.parse(await readFile("packages/core/src/commands.json", { encoding: "utf8" }));
 const grammar = {
   name: "ChoiceScript",
   scopeName: "source.choicescript",

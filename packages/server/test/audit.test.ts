@@ -155,22 +155,28 @@ test(
   async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "bifoil analysis pool "));
     const files: string[] = [];
+
     for (let i = 0; i < 9; i++) {
       const dir = path.join(root, "game" + i, "scenes");
       await mkdir(dir, { recursive: true });
+
       const file = path.join(dir, "startup.txt");
       await writeFile(file, "*create score 1\n*print score\n*ending");
       files.push(pathToFileURL(file).href);
     }
+
     const h = await startServer([root]);
+
     try {
       await waitFor(
         () => h.rpc.sendRequest<any[]>("choicescript/projects"),
         (projects) => projects.length === 9,
       );
       for (const uri of files) await waitFor(() => h.diagnostics.findLast((entry) => entry.uri === uri));
+
       for (const uri of files) {
         const tokens = await h.rpc.sendRequest<any>("textDocument/semanticTokens/full", { textDocument: { uri } });
+
         assert(tokens.data.length > 0);
       }
     } finally {
@@ -179,6 +185,7 @@ test(
     }
   },
 );
+
 test("owned log notifications keep current language analysis available", { timeout: 30_000 }, async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "bifoil ignored watcher "));
   await mkdir(path.join(root, "scenes"));
