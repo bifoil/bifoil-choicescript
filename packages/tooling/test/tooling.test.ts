@@ -4,8 +4,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { discoverProjects, projectFor, readProject, ToolRunner } from "@branchlight/tooling";
-import type { JobEvent } from "@branchlight/protocol";
+import { discoverProjects, projectFor, readProject, ToolRunner } from "@bifoil/choicescript-tooling";
+import type { JobEvent } from "@bifoil/choicescript-protocol";
 
 const engine = fileURLToPath(new URL("../../../vendor/choicescript", import.meta.url));
 test("discovery associates only scene directories and preserves other text", async () => {
@@ -183,7 +183,7 @@ test("official template, QuickTest, RandomTest, snapshot preview, export, cancel
 });
 
 test("project snapshots deduplicate equivalent encoded file URIs", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "branchlight URI Ω "));
+  const root = await mkdtemp(path.join(os.tmpdir(), "bifoil-choicescript URI Ω "));
   try {
     await mkdir(path.join(root, "scenes"));
     const file = path.join(root, "scenes/startup.txt");

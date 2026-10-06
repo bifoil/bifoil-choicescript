@@ -8,7 +8,7 @@ const assert = require("node:assert/strict");
 const root = path.resolve(__dirname, "..");
 const server = spawn(
   process.execPath,
-  [process.env.BRANCHLIGHT_SERVER_PATH || path.join(root, "dist/server/server.cjs"), "--stdio"],
+  [process.env.BIFOIL_CHOICESCRIPT_SERVER_PATH || path.join(root, "dist/server/server.cjs"), "--stdio"],
   { stdio: ["pipe", "pipe", "inherit"] },
 );
 const pending = new Map(),
@@ -69,7 +69,7 @@ async function waitFor(get) {
   throw new Error("Timed out waiting for server event");
 }
 (async () => {
-  const temporary = await mkdtemp(path.join(os.tmpdir(), "Branchlight Ω "));
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "Bifoil ChoiceScript Ω "));
   try {
     const folder = path.join(temporary, "game Ω");
     await cp(path.join(root, "fixtures/dialogue"), folder, { recursive: true });

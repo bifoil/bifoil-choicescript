@@ -1,4 +1,4 @@
-package dev.chinay.branchlight
+package dev.bifoil.choicescript
 
 import com.google.gson.JsonParser
 import com.intellij.icons.AllIcons

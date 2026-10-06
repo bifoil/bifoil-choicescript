@@ -10,7 +10,7 @@ await cp(runtime, "editors/vscode/runtime", { recursive: true });
 await mkdir("dist/packages", { recursive: true });
 await createVSIX({
   cwd: path.resolve("editors/vscode"),
-  packagePath: path.resolve(`dist/packages/branchlight-${target}.vsix`),
+  packagePath: path.resolve(`dist/packages/bifoil-choicescript-${target}.vsix`),
   target,
   dependencies: false,
   githubBranch: "main",

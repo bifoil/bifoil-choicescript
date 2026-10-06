@@ -1,8 +1,8 @@
-# Branchlight
+# Bifoil ChoiceScript
 
 ChoiceScript authoring tools for VS Code and JetBrains IDEs.
 
-Branchlight helps you write, navigate, preview, and test branching stories. Both editor plugins use the same language service, so dialogue, variables, and diagnostics are analyzed consistently across editors.
+Bifoil ChoiceScript helps you write, navigate, preview, and test branching stories. Both editor plugins use the same language service, so dialogue, variables, and diagnostics are analyzed consistently across editors.
 
 **An unofficial personal project by chinay, unaffiliated with Choice of Games or upstream ChoiceScript.**
 
@@ -32,7 +32,7 @@ Both `William."` and `Belle."` receive dialogue styling. The command expression 
 
 ## Get started
 
-Branchlight is in private prerelease development. Repository access is required to download builds or open issues; it is not published to an editor marketplace.
+Bifoil ChoiceScript is in private prerelease development. Repository access is required to download builds or open issues; it is not published to an editor marketplace.
 
 | Editor                           | Supported baseline | Installer                                |
 | -------------------------------- | ------------------ | ---------------------------------------- |
@@ -42,8 +42,8 @@ Branchlight is in private prerelease development. Repository access is required 
 Packages include Node.js and the pinned ChoiceScript engine. You do not need a separate Node.js installation to use them. Windows, macOS, and Linux packages cover x64 and ARM64; Linux requires glibc. See [installation](docs/support.md) for download instructions and [JetBrains compatibility](docs/jetbrains-compatibility.md) for exact builds.
 
 1. Install the plugin for your editor.
-2. Open a game folder containing `scenes/startup.txt`, or use **Branchlight: New Project** in VS Code / **Tools → Branchlight → New Project** in a JetBrains IDE.
-3. Open a scene and start writing. Branchlight recognizes scene files without claiming every `.txt` file in your workspace.
+2. Open a game folder containing `scenes/startup.txt`, or use **Bifoil ChoiceScript: New Project** in VS Code / **Tools → Bifoil ChoiceScript → New Project** in a JetBrains IDE.
+3. Open a scene and start writing. Bifoil ChoiceScript recognizes scene files without claiming every `.txt` file in your workspace.
 4. Use **Run Game** to preview, then **Run QuickTest** or **Run RandomTest** to test. Execution requires a trusted workspace; editing assistance remains available without it.
 
 ## Documentation
@@ -58,4 +58,4 @@ The [release notes](docs/release-notes.md) describe the current candidate and it
 
 ## License
 
-Original Branchlight code is [MIT licensed](LICENSE). The bundled ChoiceScript engine and other dependencies retain their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md). Branchlight's license does not replace the license for ChoiceScript or its project template.
+Original Bifoil ChoiceScript code is [MIT licensed](LICENSE). The bundled ChoiceScript engine and other dependencies retain their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md). Bifoil ChoiceScript's license does not replace the license for ChoiceScript or its project template.

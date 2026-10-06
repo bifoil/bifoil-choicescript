@@ -2,7 +2,7 @@ import { URI } from "vscode-uri";
 import { access, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { BufferSnapshot, Project } from "@branchlight/protocol";
+import type { BufferSnapshot, Project } from "@bifoil/choicescript-protocol";
 
 const excluded = new Set([".git", "node_modules", "vendor", "dist", "build", ".cache", ".idea", ".gradle"]);
 export async function exists(file: string) {

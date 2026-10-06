@@ -8,7 +8,7 @@ const lock = JSON.parse(await readFile("runtime-lock.json", { encoding: "utf8" }
 const names = await readdir(directory);
 const targets = Object.keys(lock.archives).sort();
 for (const target of targets) {
-  if (!names.includes(`branchlight-${target}.vsix`)) throw new Error(`Missing package for ${target}`);
+  if (!names.includes(`bifoil-choicescript-${target}.vsix`)) throw new Error(`Missing package for ${target}`);
 }
 const native = names.filter((name) => name.endsWith(".zip"));
 if (native.length !== 1 || names.filter((name) => name.endsWith(".vsix")).length !== 6)
@@ -17,7 +17,7 @@ const version = JSON.parse(await readFile("package.json", { encoding: "utf8" }))
 if (!process.env.GITHUB_SHA || !/^[a-f0-9]{40}$/.test(process.env.GITHUB_SHA))
   throw new Error("GITHUB_SHA must identify the verified source commit");
 for (const [source, destination] of [
-  ["LICENSE", "BRANCHLIGHT-LICENSE.txt"],
+  ["LICENSE", "BIFOIL_CHOICESCRIPT-LICENSE.txt"],
   ["THIRD_PARTY_NOTICES.md", "THIRD_PARTY_NOTICES.md"],
   ["vendor/choicescript/LICENSE.txt", "CHOICESCRIPT-LICENSE.txt"],
   ["vendor/choicescript.lock.json", "choicescript.lock.json"],
@@ -29,7 +29,7 @@ for (const [source, destination] of [
 ])
   await copyFile(source, path.join(directory, destination));
 const artifacts = [];
-for (const file of [...targets.map((target) => `branchlight-${target}.vsix`), ...native]) {
+for (const file of [...targets.map((target) => `bifoil-choicescript-${target}.vsix`), ...native]) {
   const bytes = await readFile(path.join(directory, file));
   artifacts.push({
     file,
@@ -41,7 +41,7 @@ await writeFile(
   path.join(directory, "release-manifest.json"),
   JSON.stringify(
     {
-      name: "Branchlight",
+      name: "Bifoil ChoiceScript",
       version,
       commit: process.env.GITHUB_SHA,
       prerelease: true,

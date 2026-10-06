@@ -11,7 +11,7 @@ const root = fileURLToPath(new URL("../../../", import.meta.url));
 const engine = path.join(root, "vendor/choicescript");
 
 test("engine verification handles submodule metadata, modified files, revision mismatches, and missing initialization", async () => {
-  const directory = await mkdtemp(path.join(os.tmpdir(), "branchlight submodule Ω "));
+  const directory = await mkdtemp(path.join(os.tmpdir(), "bifoil-choicescript submodule Ω "));
   try {
     const vendor = path.join(directory, "vendor");
     const checkout = path.join(vendor, "choicescript");

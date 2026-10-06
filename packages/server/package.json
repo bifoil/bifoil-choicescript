@@ -1,12 +1,12 @@
 {
-  "name": "@branchlight/server",
+  "name": "@bifoil/choicescript-server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "@branchlight/core": "workspace:*",
-    "@branchlight/protocol": "workspace:*",
-    "@branchlight/tooling": "workspace:*"
+    "@bifoil/choicescript-core": "workspace:*",
+    "@bifoil/choicescript-protocol": "workspace:*",
+    "@bifoil/choicescript-tooling": "workspace:*"
   }
 }

@@ -1,4 +1,4 @@
-package dev.chinay.branchlight
+package dev.bifoil.choicescript
 
 import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.util.io.FileUtil
@@ -50,7 +50,7 @@ class ChoiceIntegrationTest : BasePlatformTestCase() {
 	fun testPackagedDialogueAndProjectDetection() {
 		val text =
 			"*create gender \"male\"\n*create implicit_control_flow true\nShe said \"This is the end,\n*if gender = \"male\"\n    William.\"\n*else\n    Belle.\"\nShe walked away."
-		val directory = Files.createTempDirectory("branchlight native Ω ")
+		val directory = Files.createTempDirectory("bifoil-choicescript native Ω ")
 		Files.createDirectories(directory.resolve("scenes"))
 		Files.writeString(directory.resolve("scenes/startup.txt"), text)
 		Files.writeString(directory.resolve("notes.txt"), "Unrelated notes")

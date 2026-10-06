@@ -12,6 +12,8 @@ editors/vscode/runtime/
 editors/vscode/README.md
 editors/vscode/LICENSE
 editors/intellij/src/main/resources/bundle/
+.bifoil-choicescript/
+# Preserve exclusions for output from earlier private builds.
 .branchlight/
 .vscode-test/
 .kotlin/

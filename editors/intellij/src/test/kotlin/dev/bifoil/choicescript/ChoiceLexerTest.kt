@@ -1,4 +1,4 @@
-package dev.chinay.branchlight
+package dev.bifoil.choicescript
 
 import org.junit.Assert.assertTrue
 import org.junit.Test

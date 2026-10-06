@@ -25,7 +25,7 @@ Or select a target explicitly:
 pnpm package:vscode linux-arm64
 ```
 
-Targets are `win32-x64`, `win32-arm64`, `darwin-x64`, `darwin-arm64`, `linux-x64`, and `linux-arm64`. Installers go to `dist/packages/branchlight-<target>.vsix`. Each contains the target's Node runtime, server, engine, and notices. Cross-packaging an installer is not a substitute for testing it on its target host.
+Targets are `win32-x64`, `win32-arm64`, `darwin-x64`, `darwin-arm64`, `linux-x64`, and `linux-arm64`. Installers go to `dist/packages/bifoil-choicescript-<target>.vsix`. Each contains the target's Node runtime, server, engine, and notices. Cross-packaging an installer is not a substitute for testing it on its target host.
 
 ### JetBrains
 

@@ -1,5 +1,5 @@
 import { parentPort } from "node:worker_threads";
-import { analyzeProject } from "@branchlight/core";
+import { analyzeProject } from "@bifoil/choicescript-core";
 
 parentPort!.on("message", ({ documents, options }) => {
   try {

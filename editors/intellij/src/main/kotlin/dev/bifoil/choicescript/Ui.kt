@@ -1,4 +1,4 @@
-package dev.chinay.branchlight
+package dev.bifoil.choicescript
 
 import com.intellij.execution.filters.OpenFileHyperlinkInfo
 import com.intellij.execution.filters.TextConsoleBuilderFactory
@@ -41,7 +41,7 @@ import javax.swing.JPanel
 
 data class ChoiceState(var quoteWarnings: Boolean = true)
 
-@State(name = "Branchlight", storages = [Storage("branchlight.xml")])
+@State(name = "BifoilChoiceScript", storages = [Storage("bifoil.choicescript.xml")])
 @Service(Service.Level.PROJECT)
 class ChoiceSettings : PersistentStateComponent<ChoiceState> {
 	private var data = ChoiceState()
@@ -75,7 +75,7 @@ class ChoiceUi(private val project: Project) : Disposable {
 				"${file.name}:${(event.line ?: 0) + 1}\n", OpenFileHyperlinkInfo(project, file, event.line ?: 0)
 			)
 		}
-		if (event.kind == "stale") previews[event.jobId]?.displayName = BranchlightBundle.message("preview.source.changed.title")
+		if (event.kind == "stale") previews[event.jobId]?.displayName = BifoilBundle.message("preview.source.changed.title")
 		if (event.kind == "coverage") console.print(
 			"Coverage: ${event.coverage?.mapValues { (_, counts) -> "${counts.count { it > 0 }}/${counts.size} lines" }}\n",
 			ConsoleViewContentType.NORMAL_OUTPUT
@@ -88,7 +88,7 @@ class ChoiceUi(private val project: Project) : Disposable {
 	}
 
 	fun track(result: JobResult) {
-		ProgressManager.getInstance().run(object : Task.Backgroundable(project, "Branchlight operation", true) {
+		ProgressManager.getInstance().run(object : Task.Backgroundable(project, "Bifoil ChoiceScript operation", true) {
 				override fun run(indicator: ProgressIndicator) {
 					indicator.isIndeterminate = true
 					while (!completed.remove(result.jobId) && !project.isDisposed) {
@@ -115,7 +115,7 @@ class ChoiceUi(private val project: Project) : Disposable {
 
 	fun preview(result: JobResult) {
 		val url = result.url ?: return
-		val window = ToolWindowManager.getInstance(project).getToolWindow("Branchlight") ?: return
+		val window = ToolWindowManager.getInstance(project).getToolWindow("Bifoil ChoiceScript") ?: return
 		if (!JBCefApp.isSupported()) {
 			BrowserUtil.browse(url)
 			return
@@ -161,13 +161,13 @@ class ChoiceToolWindow : ToolWindowFactory {
 		val panel = JPanel(BorderLayout())
 		val actions = ActionManager.getInstance()
 		val group = DefaultActionGroup(
-			actions.getAction("Branchlight.Run"),
-			actions.getAction("Branchlight.Stop"),
-			actions.getAction("Branchlight.QuickTest"),
-			actions.getAction("Branchlight.RandomTest"),
-			actions.getAction("Branchlight.Export")
+			actions.getAction("BifoilChoiceScript.Run"),
+			actions.getAction("BifoilChoiceScript.Stop"),
+			actions.getAction("BifoilChoiceScript.QuickTest"),
+			actions.getAction("BifoilChoiceScript.RandomTest"),
+			actions.getAction("BifoilChoiceScript.Export")
 		)
-		val toolbar = actions.createActionToolbar("Branchlight", group, true)
+		val toolbar = actions.createActionToolbar("Bifoil ChoiceScript", group, true)
 		toolbar.targetComponent = panel
 		panel.add(toolbar.component, BorderLayout.NORTH)
 		panel.add(console.component, BorderLayout.CENTER)
@@ -194,7 +194,7 @@ fun <T> request(
 		} catch (error: Exception) {
 			ApplicationManager.getApplication().invokeLater {
 				if (!project.isDisposed) Messages.showErrorDialog(
-					project, error.message ?: error.toString(), "Branchlight"
+					project, error.message ?: error.toString(), "Bifoil ChoiceScript"
 				)
 			}
 		}
@@ -205,7 +205,7 @@ open class ToolAction(private val operation: String) : AnAction() {
 	override fun actionPerformed(event: AnActionEvent) {
 		val project = event.project ?: return
 		if (operation != "stop" && !TrustedProjects.isProjectTrusted(project)) {
-			Messages.showInfoMessage(project, "Trust this project before running game code.", "Branchlight")
+			Messages.showInfoMessage(project, "Trust this project before running game code.", "Bifoil ChoiceScript")
 			return
 		}
 		val args = mutableMapOf<String, Any>("protocolVersion" to 1, "operation" to operation, "trusted" to true)
@@ -214,7 +214,7 @@ open class ToolAction(private val operation: String) : AnAction() {
 				FileChooser.chooseFile(FileChooserDescriptorFactory.createSingleFolderDescriptor(), project, null)
 					?: return
 			val name = Messages.showInputDialog(
-				project, "New project folder name", "Branchlight", null, "my-choice-game", null
+				project, "New project folder name", "Bifoil ChoiceScript", null, "my-choice-game", null
 			) ?: return
 			if (!name.matches(Regex("[\\w -]+"))) return
 			args["destination"] = parent.toNioPath().resolve(name).toString()
@@ -224,7 +224,7 @@ open class ToolAction(private val operation: String) : AnAction() {
 		request(project, { it.projects() }) { games ->
 			if (games.isNullOrEmpty()) {
 				Messages.showInfoMessage(
-					project, "Open a folder containing scenes/startup.txt.", "Branchlight"
+					project, "Open a folder containing scenes/startup.txt.", "Bifoil ChoiceScript"
 				)
 				return@request
 			}
@@ -232,7 +232,7 @@ open class ToolAction(private val operation: String) : AnAction() {
 			val selected = games.firstOrNull { active != null && active.toNioPath().startsWith(Path.of(it.sceneDir)) }
 				?: if (games.size == 1) games.first() else {
 					val dialog = object : com.intellij.ide.util.ChooseElementsDialog<GameProject>(
-						project, games, "Branchlight", "Select a game"
+						project, games, "Bifoil ChoiceScript", "Select a game"
 					) {
 						override fun getItemText(item: GameProject) = item.name + " — " + item.root
 						override fun getItemIcon(item: GameProject): javax.swing.Icon? = null
@@ -270,7 +270,7 @@ open class ToolAction(private val operation: String) : AnAction() {
 	}
 
 	private fun execute(project: Project, args: Map<String, Any>) {
-		ToolWindowManager.getInstance(project).getToolWindow("Branchlight")?.show()
+		ToolWindowManager.getInstance(project).getToolWindow("Bifoil ChoiceScript")?.show()
 		request(
 			project, { server ->
 				if (operation == "run") server.job(args + ("operation" to "stop"))
@@ -280,7 +280,7 @@ open class ToolAction(private val operation: String) : AnAction() {
 				ChoiceUi.get(project).preview(result)
 				if (operation in listOf("quicktest", "randomtest", "exportHtml")) ChoiceUi.get(project).track(result)
 				if (operation == "createProject") Messages.showInfoMessage(
-					project, "Created ${args["destination"]}. Open that folder to edit your game.", "Branchlight"
+					project, "Created ${args["destination"]}. Open that folder to edit your game.", "Bifoil ChoiceScript"
 				)
 			}
 		}
@@ -299,7 +299,7 @@ class WordCountAction : AnAction() {
 		val file = FileEditorManager.getInstance(project).selectedFiles.firstOrNull() ?: return
 		request(project, { it.wordCount(mapOf("uri" to file.toNioPath().toUri().toString())) }) {
 			Messages.showInfoMessage(
-				project, "Narrative word count: $it", "Branchlight"
+				project, "Narrative word count: $it", "Bifoil ChoiceScript"
 			)
 		}
 	}
@@ -309,8 +309,8 @@ class AboutAction : AnAction() {
 	override fun actionPerformed(e: AnActionEvent) {
 		Messages.showInfoMessage(
 			e.project,
-			"Branchlight 0.1.0\nAn independent personal project, unaffiliated with Choice of Games or upstream ChoiceScript.",
-			"About Branchlight"
+			"Bifoil ChoiceScript 0.1.0\nAn independent Bifoil Foundation project, unaffiliated with Choice of Games or upstream ChoiceScript.",
+			"About Bifoil ChoiceScript"
 		)
 	}
 }
@@ -326,7 +326,7 @@ class QuoteWarningsAction : ToggleAction() {
 		for (client in LspClientManager.getInstance(project)
 			.getClients(ChoiceIntegration::class.java)) client.sendNotification {
 			it.workspaceService.didChangeConfiguration(
-				DidChangeConfigurationParams(mapOf("branchlight" to mapOf("quoteWarnings" to state)))
+				DidChangeConfigurationParams(mapOf("bifoil" to mapOf("choicescript" to mapOf("quoteWarnings" to state))))
 			)
 		}
 	}

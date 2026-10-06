@@ -4,8 +4,8 @@ import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promise
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { discoverProjects, ToolRunner } from "@branchlight/tooling";
-import type { JobEvent, JobRequest } from "@branchlight/protocol";
+import { discoverProjects, ToolRunner } from "@bifoil/choicescript-tooling";
+import type { JobEvent, JobRequest } from "@bifoil/choicescript-protocol";
 import { waitFor } from "../../server/test/helpers.js";
 
 const engine = fileURLToPath(new URL("../../../vendor/choicescript", import.meta.url));
@@ -13,7 +13,7 @@ test(
   "tool jobs serialize preview restarts and clean pending starts, failures and cancelled workers",
   { timeout: 60000 },
   async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "branchlight lifecycle Ω "));
+    const root = await mkdtemp(path.join(os.tmpdir(), "bifoil-choicescript lifecycle Ω "));
     const events: JobEvent[] = [];
     const runner = new ToolRunner(engine, (e) => events.push(e));
     await mkdir(path.join(root, "scenes"));
@@ -86,7 +86,7 @@ test("invalid tooling options fail before staging or publishing a started job", 
     stages++;
     throw new Error("Invalid requests must not stage game files");
   };
-  const root = path.join(os.tmpdir(), "branchlight invalid options");
+  const root = path.join(os.tmpdir(), "bifoil-choicescript invalid options");
   const project = { id: "invalid-options", name: "Test", root, sceneDir: path.join(root, "scenes"), assetDir: root };
   const request = (options: Partial<JobRequest>) =>
     runner.start({ protocolVersion: 1, operation: "randomtest", trusted: true, ...options }, project, []);

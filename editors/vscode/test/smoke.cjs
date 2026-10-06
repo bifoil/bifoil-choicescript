@@ -3,7 +3,7 @@
 const vscode = require("vscode");
 const assert = require("node:assert/strict");
 exports.run = async () => {
-  const extension = vscode.extensions.getExtension("chinay.branchlight");
+  const extension = vscode.extensions.getExtension("chinay.bifoil-choicescript");
   assert(extension);
   const api = await extension.activate();
   const events = [];
@@ -88,10 +88,10 @@ exports.run = async () => {
   try {
     await setText("Hello");
     editor.selection = new vscode.Selection(0, 0, 0, 5);
-    await vscode.commands.executeCommand("branchlight.bold");
+    await vscode.commands.executeCommand("bifoil.choicescript.bold");
     assert.equal(document.getText(), "[b]Hello[/b]");
     editor.selection = new vscode.Selection(0, 0, 0, document.lineAt(0).text.length);
-    await vscode.commands.executeCommand("branchlight.italic");
+    await vscode.commands.executeCommand("bifoil.choicescript.italic");
     assert.equal(document.getText(), "[i][b]Hello[/b][/i]");
     editor.selection = new vscode.Selection(0, 0, 0, 0);
     await vscode.commands.executeCommand("editor.action.commentLine");
@@ -123,7 +123,7 @@ exports.run = async () => {
       let timer;
       try {
         return await Promise.race([
-          vscode.commands.executeCommand("branchlight." + name, {
+          vscode.commands.executeCommand("bifoil.choicescript." + name, {
             ...options,
             ...extra,
           }),
@@ -178,9 +178,9 @@ exports.run = async () => {
       openCreatedProject: false,
     });
     assert((await fs.readFile(path.join(created, "UPSTREAM-TEMPLATE.md"), "utf8")).includes("60a6c3e"));
-    if (process.env.BRANCHLIGHT_TEST_REPORTS)
+    if (process.env.BIFOIL_CHOICESCRIPT_TEST_REPORTS)
       await fs.writeFile(
-        path.join(process.env.BRANCHLIGHT_TEST_REPORTS, "workflows.json"),
+        path.join(process.env.BIFOIL_CHOICESCRIPT_TEST_REPORTS, "workflows.json"),
         JSON.stringify(
           {
             events,

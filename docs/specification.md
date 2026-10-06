@@ -1,6 +1,6 @@
 # Language behavior
 
-Branchlight's shared analyzer supplies the same classifications and diagnostics to both editors. It follows the pinned ChoiceScript interpreter and recovers from incomplete input while you write. This guide describes the editor's behavior; narrative quote warnings do not add rules to ChoiceScript itself.
+Bifoil ChoiceScript's shared analyzer supplies the same classifications and diagnostics to both editors. It follows the pinned ChoiceScript interpreter and recovers from incomplete input while you write. This guide describes the editor's behavior; narrative quote warnings do not add rules to ChoiceScript itself.
 
 ## Commands, expressions, and prose
 
@@ -43,13 +43,13 @@ The expected classifications are:
 
 There are no unmatched-dialogue warnings for this example. `implicit_control_flow` permits the branches to fall through to the following narrative. Directives do not use trailing colons.
 
-At a join, Branchlight merges reachable continuation states. If all paths close the quote, following text is outside dialogue. If known paths disagree, uncertain text receives neutral styling and narrative warnings can identify the inconsistency. Without an `*else`, the path that skips the conditional also participates in the merge.
+At a join, Bifoil ChoiceScript merges reachable continuation states. If all paths close the quote, following text is outside dialogue. If known paths disagree, uncertain text receives neutral styling and narrative warnings can identify the inconsistency. Without an `*else`, the path that skips the conditional also participates in the merge.
 
 ### Jumps, calls, and uncertainty
 
 Resolvable destinations propagate quotation across labels, scenes, and subroutine calls. Loops and recursive calls are analyzed to a fixed point rather than treated as a single linear pass. Scene transitions do not automatically close dialogue.
 
-Dynamic destinations and generated text can make the state unknown. Branchlight styles text as dialogue only when the incoming states agree. Unknown state alone is not evidence of a quote error. Consequently, some dialogue can remain neutrally styled when the analyzer cannot prove how execution reaches it.
+Dynamic destinations and generated text can make the state unknown. Bifoil ChoiceScript styles text as dialogue only when the incoming states agree. Unknown state alone is not evidence of a quote error. Consequently, some dialogue can remain neutrally styled when the analyzer cannot prove how execution reaches it.
 
 Narrative warnings report provable problems, not every opening quote at the end of a line. You can [disable those warnings](configuration.md#narrative-warnings) independently of syntax diagnostics and highlighting.
 

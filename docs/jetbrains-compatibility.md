@@ -1,6 +1,6 @@
 # JetBrains compatibility
 
-Branchlight uses JetBrains' built-in LSP integration. These are the declared product baselines used by the build and compatibility checks:
+Bifoil ChoiceScript uses JetBrains' built-in LSP integration. These are the declared product baselines used by the build and compatibility checks:
 
 | Product       | Version  | Build          | Gradle selector |
 | ------------- | -------- | -------------- | --------------- |

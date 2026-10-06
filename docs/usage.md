@@ -1,10 +1,10 @@
 # Write and test a game
 
-This guide assumes you have [installed Branchlight](support.md) and opened a game folder. In VS Code, find actions in the Command Palette under **Branchlight**. In JetBrains IDEs, use **Tools → Branchlight**.
+This guide assumes you have [installed Bifoil ChoiceScript](support.md) and opened a game folder. In VS Code, find actions in the Command Palette under **Bifoil ChoiceScript**. In JetBrains IDEs, use **Tools → Bifoil ChoiceScript**.
 
 ## Edit scenes
 
-Branchlight supplies completion, hover documentation, go to definition, find references, rename, document and workspace symbols, folding, and selection ranges through your editor's usual actions. Rename updates resolved code references; it does not rewrite prose or guess the destination of an unresolved indirect reference.
+Bifoil ChoiceScript supplies completion, hover documentation, go to definition, find references, rename, document and workspace symbols, folding, and selection ranges through your editor's usual actions. Rename updates resolved code references; it does not rewrite prose or guess the destination of an unresolved indirect reference.
 
 Use the editor's completion action when you need suggestions. VS Code disables automatic quick suggestions for ChoiceScript by default to avoid interrupting prose. Snippets and JetBrains live templates provide common command structures; normal Enter and comment actions handle indentation and `*comment` lines.
 
@@ -35,7 +35,7 @@ Use **Run QuickTest** to invoke the bundled engine's official QuickTest runner. 
 
 The default is **1,000 iterations with seed 0**. You can set project defaults in [choicescript.json](configuration.md#randomtest-defaults). Use the same source snapshot, engine, seed, and iteration count to reproduce a run. Iterations must be between 1 and 10,000,000. For seeds shared between both editor dialogs, use a signed 32-bit integer.
 
-Output appears in the **Branchlight** output channel in VS Code or the **Branchlight** tool window in JetBrains. Reported scene failures include source locations. Full output is saved to `.branchlight/logs/<job-id>.log` under the game root; the completion message gives the log path.
+Output appears in the **Bifoil ChoiceScript** output channel in VS Code or the **Bifoil ChoiceScript** tool window in JetBrains. Reported scene failures include source locations. Full output is saved to `.bifoil-choicescript/logs/<job-id>.log` under the game root; the completion message gives the log path.
 
 Cancel through the progress UI or **Stop Game or Tests**. Edits make prior results stale, so rerun against the new snapshot before relying on the result.
 
@@ -47,7 +47,7 @@ Coverage describes the paths exercised by that run. Increasing iterations may ex
 
 ## Export HTML
 
-Choose **Export HTML** and select a new output file, preferably in an empty destination directory. Branchlight invokes the official compiler and copies companion assets next to the generated HTML. Keep those files together when moving or serving the exported game.
+Choose **Export HTML** and select a new output file, preferably in an empty destination directory. Bifoil ChoiceScript invokes the official compiler and copies companion assets next to the generated HTML. Keep those files together when moving or serving the exported game.
 
 Export includes the staged scene snapshot, including open buffers. Existing destination files are not overwritten. A collision can leave a partially copied export, so retry in a fresh directory after checking the reported failure. Avoid exporting back into your source or asset directory.
 

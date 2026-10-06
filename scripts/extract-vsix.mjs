@@ -4,7 +4,7 @@ import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const target = `${process.platform}-${process.arch}`;
-const artifact = process.argv[2] ?? `dist/packages/branchlight-${target}.vsix`;
+const artifact = process.argv[2] ?? `dist/packages/bifoil-choicescript-${target}.vsix`;
 const files = unzipSync(new Uint8Array(await readFile(artifact)));
 const descriptor = Buffer.from(files["extension.vsixmanifest"]).toString();
 if (!descriptor.includes(`TargetPlatform="${target}"`)) throw new Error("VSIX target does not match this host");

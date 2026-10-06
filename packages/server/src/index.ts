@@ -24,9 +24,9 @@ import {
   selections,
   tokenModifiers,
   tokenTypes,
-} from "@branchlight/core";
-import { discoverProjects, projectFor, readProject, sameFileUri, ToolRunner } from "@branchlight/tooling";
-import { type BufferSnapshot, commands, type JobRequest, type Project, PROTOCOL_VERSION } from "@branchlight/protocol";
+} from "@bifoil/choicescript-core";
+import { discoverProjects, projectFor, readProject, sameFileUri, ToolRunner } from "@bifoil/choicescript-tooling";
+import { type BufferSnapshot, commands, type JobRequest, type Project, PROTOCOL_VERSION } from "@bifoil/choicescript-protocol";
 
 const connection = createConnection(ProposedFeatures.all),
   documents = new TextDocuments(TextDocument);
@@ -189,7 +189,7 @@ connection.onInitialize((params) => {
     if (legacyParams.rootUri) roots = [legacyParams.rootUri];
   }
   return {
-    serverInfo: { name: "Branchlight (Unofficial)", version: "0.1.0" },
+    serverInfo: { name: "Bifoil ChoiceScript (Unofficial)", version: "0.1.0" },
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
       completionProvider: { triggerCharacters: ["*", "{"] },
@@ -244,7 +244,7 @@ connection.onNotification(
   },
 );
 connection.onDidChangeConfiguration((e) => {
-  quoteWarnings = e.settings?.branchlight?.quoteWarnings ?? true;
+  quoteWarnings = e.settings?.bifoil?.choicescript?.quoteWarnings ?? true;
   schedule();
 });
 connection.onCompletion((p) => {

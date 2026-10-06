@@ -1,20 +1,20 @@
-# Install Branchlight
+# Install Bifoil ChoiceScript
 
 Packaged plugins include their own Node.js runtime and ChoiceScript engine. You need a supported editor, not a system Node.js installation. Building from source has separate [development requirements](../CONTRIBUTING.md#build-from-source).
 
 ## Choose a build
 
-Branchlight is in private prerelease development and is not on an editor marketplace. With repository access, download an installer from a successful **Build and verify** run in [GitHub Actions](https://github.com/Chinay-Domitrix/branchlight/actions/workflows/ci.yml). Unzip the downloaded Actions artifact to get the installer inside.
+Bifoil ChoiceScript is in private prerelease development and is not on an editor marketplace. With repository access, download an installer from a successful **Build and verify** run in [GitHub Actions](https://github.com/bifoil/bifoil-choicescript/actions/workflows/ci.yml). Unzip the downloaded Actions artifact to get the installer inside.
 
 - For VS Code, choose the `vscode-…` artifact for your operating system and CPU. The installer filename identifies its target, as listed below.
 - For JetBrains IDEs, choose `intellij-idea`. Its plugin ZIP is the distribution artifact; the WebStorm and PyCharm artifacts are compatibility builds of the same adapter.
-- When a private prerelease is published, its installers and checksum file are also available under [Releases](https://github.com/Chinay-Domitrix/branchlight/releases).
+- When a private prerelease is published, its installers and checksum file are also available under [Releases](https://github.com/bifoil/bifoil-choicescript/releases).
 
 | System           | x64 VS Code installer         | ARM64 VS Code installer         |
 | ---------------- | ----------------------------- | ------------------------------- |
-| Windows          | `branchlight-win32-x64.vsix`  | `branchlight-win32-arm64.vsix`  |
-| macOS            | `branchlight-darwin-x64.vsix` | `branchlight-darwin-arm64.vsix` |
-| Linux with glibc | `branchlight-linux-x64.vsix`  | `branchlight-linux-arm64.vsix`  |
+| Windows          | `bifoil-choicescript-win32-x64.vsix`  | `bifoil-choicescript-win32-arm64.vsix`  |
+| macOS            | `bifoil-choicescript-darwin-x64.vsix` | `bifoil-choicescript-darwin-arm64.vsix` |
+| Linux with glibc | `bifoil-choicescript-linux-x64.vsix`  | `bifoil-choicescript-linux-arm64.vsix`  |
 
 The distribution JetBrains ZIP includes all six runtimes. Alpine Linux and other musl-based environments are outside the packaged runtime targets.
 
@@ -28,19 +28,19 @@ Requires VS Code desktop **1.109 or later**.
 2. Select the downloaded `.vsix` for your host and reload if prompted.
 3. Open the folder containing your game and then a scene file.
 
-The extension identifier is `chinay.branchlight`. Disable older development extensions for ChoiceScript if they provide duplicate diagnostics or language clients.
+The extension identifier is `bifoil.choicescript`. Disable older development extensions for ChoiceScript if they provide duplicate diagnostics or language clients.
 
 Browser-only VS Code and virtual workspaces are outside the first release.
 
 ## JetBrains IDEs
 
-The declared product baselines are **IntelliJ IDEA, WebStorm, and PyCharm 2026.1.4**. Check the [exact compatibility matrix](jetbrains-compatibility.md) before installing in another build. Branchlight requires the IDE's built-in LSP module; older Community editions and Android Studio are outside support.
+The declared product baselines are **IntelliJ IDEA, WebStorm, and PyCharm 2026.1.4**. Check the [exact compatibility matrix](jetbrains-compatibility.md) before installing in another build. Bifoil ChoiceScript requires the IDE's built-in LSP module; older Community editions and Android Studio are outside support.
 
 1. Open **Settings → Plugins**.
 2. Use the gear menu's **Install Plugin from Disk** action and select the plugin ZIP inside the downloaded Actions artifact, or the ZIP from a release.
 3. Restart if prompted and open your game folder.
 
-The plugin identifier is `dev.chinay.branchlight`. Commands are under **Tools → Branchlight**, and run output appears in the **Branchlight** tool window.
+The plugin identifier is `dev.bifoil.choicescript`. Commands are under **Tools → Bifoil ChoiceScript**, and run output appears in the **Bifoil ChoiceScript** tool window.
 
 ## Open or create a game
 

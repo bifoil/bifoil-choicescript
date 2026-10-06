@@ -1,4 +1,4 @@
-package dev.chinay.branchlight
+package dev.bifoil.choicescript
 
 import com.intellij.lexer.LexerBase
 import com.intellij.openapi.editor.HighlighterColors
@@ -57,7 +57,7 @@ object ChoiceColors {
 	)
 	val keys = names.mapIndexed { i, name ->
 		name to TextAttributesKey.createTextAttributesKey(
-			"BRANCHLIGHT_${name.uppercase()}", defaults[i]
+			"BIFOIL_CHOICESCRIPT_${name.uppercase()}", defaults[i]
 		)
 	}.toMap()
 
@@ -169,5 +169,5 @@ class ChoiceColorsPage : ColorSettingsPage {
 		ChoiceColors.names.map { AttributesDescriptor(it, ChoiceColors.keys.getValue(it)) }.toTypedArray()
 
 	override fun getColorDescriptors(): Array<ColorDescriptor> = ColorDescriptor.EMPTY_ARRAY
-	override fun getDisplayName() = "Branchlight"
+	override fun getDisplayName() = "Bifoil ChoiceScript"
 }

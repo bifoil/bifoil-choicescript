@@ -52,7 +52,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
-          gh release create "$RELEASE_TAG" release/* --target "$GITHUB_SHA" --prerelease --title "Branchlight $RELEASE_TAG" --notes-file docs/release-notes.md
+          gh release create "$RELEASE_TAG" release/* --target "$GITHUB_SHA" --prerelease --title "Bifoil ChoiceScript $RELEASE_TAG" --notes-file docs/release-notes.md
           gh release download "$RELEASE_TAG" --dir downloaded
           cmp release/SHA256SUMS.txt downloaded/SHA256SUMS.txt
           node scripts/verify-release.mjs downloaded

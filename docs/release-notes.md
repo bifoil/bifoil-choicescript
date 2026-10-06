@@ -1,6 +1,6 @@
-# Branchlight 0.1.0 prerelease
+# Bifoil ChoiceScript 0.1.0 prerelease
 
-Branchlight brings ChoiceScript authoring tools to VS Code and JetBrains IDEs. It is an unofficial personal project by chinay, unaffiliated with Choice of Games or upstream ChoiceScript.
+Bifoil ChoiceScript brings ChoiceScript authoring tools to VS Code and JetBrains IDEs. It is an unofficial personal project by chinay, unaffiliated with Choice of Games or upstream ChoiceScript.
 
 These notes describe the current prerelease candidate. The project is distributed privately and is not published to editor marketplaces.
 
@@ -16,7 +16,7 @@ These notes describe the current prerelease candidate. The project is distribute
 
 VS Code desktop requires version 1.109 or later. The JetBrains baselines are IntelliJ IDEA, WebStorm, and PyCharm 2026.1.4, using their native LSP support. Six VSIX targets cover Windows, macOS, and glibc Linux on x64 and ARM64; the distribution JetBrains ZIP contains all six runtimes. System Node.js is not required.
 
-See the [installation guide](https://github.com/Chinay-Domitrix/branchlight/blob/main/docs/support.md) and [JetBrains build matrix](https://github.com/Chinay-Domitrix/branchlight/blob/main/docs/jetbrains-compatibility.md). Repository access is required for downloads and documentation on GitHub.
+See the [installation guide](https://github.com/bifoil/bifoil-choicescript/blob/main/docs/support.md) and [JetBrains build matrix](https://github.com/bifoil/bifoil-choicescript/blob/main/docs/jetbrains-compatibility.md). Repository access is required for downloads and documentation on GitHub.
 
 ## Known limitations
 
@@ -29,4 +29,4 @@ See the [installation guide](https://github.com/Chinay-Domitrix/branchlight/blob
 
 The release workflow requires six packaged VS Code checks and native tests plus Plugin Verifier for all three declared JetBrains products. The release manifest identifies the source revision and artifact hashes; uploaded assets are downloaded and verified again. These automated gates do not replace the outstanding manual checks above.
 
-Original Branchlight code is MIT licensed. Bundled dependencies, the ChoiceScript engine, and the upstream template retain their own licenses. Release files include the relevant licenses, notices, dependency pins, and checksums.
+Original Bifoil ChoiceScript code is MIT licensed. Bundled dependencies, the ChoiceScript engine, and the upstream template retain their own licenses. Release files include the relevant licenses, notices, dependency pins, and checksums.

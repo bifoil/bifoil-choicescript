@@ -1,4 +1,4 @@
-package dev.chinay.branchlight
+package dev.bifoil.choicescript
 
 import com.intellij.codeInsight.template.TemplateActionContext
 import com.intellij.codeInsight.template.impl.TemplateSettings
@@ -11,24 +11,24 @@ class ChoiceEditingTest : BasePlatformTestCase() {
 	fun testActionAndTemplateMessagesAreRegistered() {
 		val manager = ActionManager.getInstance()
 		val actions = listOf(
-			manager.getAction("Branchlight.New"),
-			manager.getAction("Branchlight.Run"),
-			manager.getAction("Branchlight.Stop"),
-			manager.getAction("Branchlight.QuickTest"),
-			manager.getAction("Branchlight.RandomTest"),
-			manager.getAction("Branchlight.Export"),
-			manager.getAction("Branchlight.Words"),
-			manager.getAction("Branchlight.Bold"),
-			manager.getAction("Branchlight.Italic"),
-			manager.getAction("Branchlight.QuoteWarnings"),
-			manager.getAction("Branchlight.About")
+			manager.getAction("BifoilChoiceScript.New"),
+			manager.getAction("BifoilChoiceScript.Run"),
+			manager.getAction("BifoilChoiceScript.Stop"),
+			manager.getAction("BifoilChoiceScript.QuickTest"),
+			manager.getAction("BifoilChoiceScript.RandomTest"),
+			manager.getAction("BifoilChoiceScript.Export"),
+			manager.getAction("BifoilChoiceScript.Words"),
+			manager.getAction("BifoilChoiceScript.Bold"),
+			manager.getAction("BifoilChoiceScript.Italic"),
+			manager.getAction("BifoilChoiceScript.QuoteWarnings"),
+			manager.getAction("BifoilChoiceScript.About")
 		)
 		for (action in actions) {
 			assertNotNull("Missing registered action", action)
 			assertFalse("Missing action text", action.templatePresentation.text.isNullOrBlank())
 		}
 		assertEquals(ActionUpdateThread.EDT, QuoteWarningsAction().actionUpdateThread)
-		assertEquals("Game — Source Changed", BranchlightBundle.message("preview.source.changed.title"))
+		assertEquals("Game — Source Changed", BifoilBundle.message("preview.source.changed.title"))
 		val settings = TemplateSettings.getInstance()
 		for (key in listOf("csif", "cschoice")) {
 			val template = settings.getTemplate(key, "ChoiceScript")

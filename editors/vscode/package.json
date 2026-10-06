@@ -1,9 +1,9 @@
 {
-  "name": "branchlight",
-  "displayName": "Branchlight",
-  "description": "Independent ChoiceScript authoring tools. Unaffiliated with Choice of Games or upstream ChoiceScript.",
+  "name": "choicescript",
+  "displayName": "Bifoil ChoiceScript",
+  "description": "Unofficial ChoiceScript authoring tools from Bifoil Foundation. Unaffiliated with Choice of Games or upstream ChoiceScript.",
   "version": "0.1.0",
-  "publisher": "chinay",
+  "publisher": "bifoil",
   "license": "MIT",
   "engines": {
     "vscode": "^1.109.0"
@@ -48,60 +48,60 @@
     ],
     "commands": [
       {
-        "command": "branchlight.createProject",
+        "command": "bifoil.choicescript.createProject",
         "title": "New Project",
-        "category": "Branchlight"
+        "category": "Bifoil ChoiceScript"
       },
       {
-        "command": "branchlight.run",
+        "command": "bifoil.choicescript.run",
         "title": "Run Game",
-        "category": "Branchlight"
+        "category": "Bifoil ChoiceScript"
       },
       {
-        "command": "branchlight.stop",
+        "command": "bifoil.choicescript.stop",
         "title": "Stop Game or Tests",
-        "category": "Branchlight"
+        "category": "Bifoil ChoiceScript"
       },
       {
-        "command": "branchlight.quicktest",
+        "command": "bifoil.choicescript.quicktest",
         "title": "Run QuickTest",
-        "category": "Branchlight"
+        "category": "Bifoil ChoiceScript"
       },
       {
-        "command": "branchlight.randomtest",
+        "command": "bifoil.choicescript.randomtest",
         "title": "Run RandomTest",
-        "category": "Branchlight"
+        "category": "Bifoil ChoiceScript"
       },
       {
-        "command": "branchlight.exportHtml",
+        "command": "bifoil.choicescript.exportHtml",
         "title": "Export HTML",
-        "category": "Branchlight"
+        "category": "Bifoil ChoiceScript"
       },
       {
-        "command": "branchlight.wordCount",
+        "command": "bifoil.choicescript.wordCount",
         "title": "Show Narrative Word Count",
-        "category": "Branchlight"
+        "category": "Bifoil ChoiceScript"
       },
       {
-        "command": "branchlight.bold",
+        "command": "bifoil.choicescript.bold",
         "title": "Bold Selection",
-        "category": "Branchlight"
+        "category": "Bifoil ChoiceScript"
       },
       {
-        "command": "branchlight.italic",
+        "command": "bifoil.choicescript.italic",
         "title": "Italicize Selection",
-        "category": "Branchlight"
+        "category": "Bifoil ChoiceScript"
       },
       {
-        "command": "branchlight.about",
+        "command": "bifoil.choicescript.about",
         "title": "About",
-        "category": "Branchlight"
+        "category": "Bifoil ChoiceScript"
       }
     ],
     "configuration": {
-      "title": "Branchlight",
+      "title": "Bifoil ChoiceScript",
       "properties": {
-        "branchlight.quoteWarnings": {
+        "bifoil.choicescript.quoteWarnings": {
           "type": "boolean",
           "default": true,
           "description": "Report inconsistent or unclosed narrative dialogue separately from expression syntax errors."
@@ -224,11 +224,12 @@
   },
   "private": true,
   "devDependencies": {
-    "@branchlight/protocol": "workspace:*"
+    "@bifoil/choicescript-protocol": "workspace:*"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Chinay-Domitrix/branchlight.git",
+    "url": "https://github.com/bifoil/bifoil-choicescript.git",
     "directory": "editors/vscode"
-  }
+  },
+  "icon": "icon.png"
 }

@@ -1,6 +1,6 @@
 # Third-party notices
 
-Branchlight is an unofficial personal project by chinay, unaffiliated with Choice of Games or upstream ChoiceScript. Original Branchlight code is covered by the MIT license in `LICENSE`. Dependencies and upstream template material retain the licenses below; bundling them does not imply endorsement or change their terms.
+Bifoil ChoiceScript is an unofficial personal project by chinay, unaffiliated with Choice of Games or upstream ChoiceScript. Original Bifoil ChoiceScript code is covered by the MIT license in `LICENSE`. Dependencies and upstream template material retain the licenses below; bundling them does not imply endorsement or change their terms.
 
 ## ChoiceScript
 
@@ -10,7 +10,7 @@ Branchlight is an unofficial personal project by chinay, unaffiliated with Choic
 
 The engine is an unmodified Git submodule at `vendor/choicescript`. Original source comments and notices are retained. `vendor/choicescript.lock.json` records the repository, revision, and original archive provenance; `vendor/checksums.json` records per-file hashes checked by the build.
 
-New games use the pinned upstream template and include `CHOICESCRIPT-LICENSE.txt` and `UPSTREAM-TEMPLATE.md`. Branchlight's MIT license does not replace the license for that material.
+New games use the pinned upstream template and include `CHOICESCRIPT-LICENSE.txt` and `UPSTREAM-TEMPLATE.md`. Bifoil ChoiceScript's MIT license does not replace the license for that material.
 
 ## Node.js
 

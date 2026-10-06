@@ -1,4 +1,4 @@
-# Test a Branchlight change
+# Test a Bifoil ChoiceScript change
 
 This guide is for plugin development. To test a story from the editor, use the [game testing guide](usage.md#quicktest-and-randomtest). Install source dependencies using [Contributing](../CONTRIBUTING.md#build-from-source) before running the commands below, all from the repository root.
 
@@ -44,7 +44,7 @@ Extraction verifies the package target and bundled runtime checksums. The tests 
 xvfb-run -a node scripts/test-vscode.mjs
 ```
 
-`BRANCHLIGHT_EXTENSION_PATH` selects an extracted extension directory. `BRANCHLIGHT_VSCODE_EXECUTABLE` selects an existing editor executable instead of the default downloaded test installation. Editor diagnostics go to `dist/test-results/editor`.
+`BIFOIL_CHOICESCRIPT_EXTENSION_PATH` selects an extracted extension directory. `BIFOIL_CHOICESCRIPT_VSCODE_EXECUTABLE` selects an existing editor executable instead of the default downloaded test installation. Editor diagnostics go to `dist/test-results/editor`.
 
 These checks exercise packaged code, so rebuild and repackage after changing the implementation.
 
@@ -78,4 +78,4 @@ Include spaces and Unicode in project paths. Static classifications can agree wh
 
 [Build and verify](../.github/workflows/ci.yml) runs six operating-system/architecture jobs for VS Code packaging and editor smoke tests, plus native tests and Plugin Verifier for IDEA, WebStorm, and PyCharm. Diagnostic artifacts are uploaded even on failures when reports exist.
 
-In a pull request, record the commands and platforms actually checked, and explain anything left unverified. Keep detailed local output in ignored `.branchlight/development/`. A release must also account for outstanding [manual acceptance](release-notes.md#known-limitations).
+In a pull request, record the commands and platforms actually checked, and explain anything left unverified. Keep detailed local output in ignored `.bifoil-choicescript/development/`. A release must also account for outstanding [manual acceptance](release-notes.md#known-limitations).

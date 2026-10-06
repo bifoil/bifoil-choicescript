@@ -10,7 +10,7 @@ test(
   "LSP rapid edits invalidate workspace symbols and never republish obsolete versions",
   { timeout: 45000 },
   async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "branchlight edits Ω "));
+    const dir = await mkdtemp(path.join(os.tmpdir(), "bifoil-choicescript edits Ω "));
     await mkdir(path.join(dir, "scenes"));
     const file = path.join(dir, "scenes/startup.txt"),
       uri = pathToFileURL(file).href;
@@ -56,7 +56,7 @@ test(
   "LSP disk edits, buffer close, configuration and multi-game discovery invalidate dependencies",
   { timeout: 45000 },
   async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "branchlight projects Ω "));
+    const dir = await mkdtemp(path.join(os.tmpdir(), "bifoil-choicescript projects Ω "));
     for (const game of ["one", "two"]) {
       await mkdir(path.join(dir, game, "scenes"), { recursive: true });
       await writeFile(
@@ -117,7 +117,7 @@ test(
         (d) => d?.diagnostics.some((x: any) => x.code === "quote-unclosed"),
       );
       await h.rpc.sendNotification("workspace/didChangeConfiguration", {
-        settings: { branchlight: { quoteWarnings: false } },
+        settings: { bifoil: { choicescript: { quoteWarnings: false } } },
       });
       await waitFor(
         () => h.diagnostics.filter((d) => d.uri === one).at(-1),
@@ -160,7 +160,7 @@ test(
 );
 
 test("LSP project discovery retains rootUri-only client compatibility", { timeout: 20000 }, async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "branchlight legacy root Ω "));
+  const dir = await mkdtemp(path.join(os.tmpdir(), "bifoil-choicescript legacy root Ω "));
   let server: Awaited<ReturnType<typeof startServer>> | undefined;
   try {
     await mkdir(path.join(dir, "scenes"));

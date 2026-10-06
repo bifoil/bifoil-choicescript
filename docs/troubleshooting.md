@@ -1,18 +1,18 @@
 # Troubleshooting
 
-Start with the **Branchlight** output channel in VS Code or **Branchlight** tool window in JetBrains. Game-tool completion messages include the saved log path. Keep the editor version, plugin version, and exact error when reporting a problem.
+Start with the **Bifoil ChoiceScript** output channel in VS Code or **Bifoil ChoiceScript** tool window in JetBrains. Game-tool completion messages include the saved log path. Keep the editor version, plugin version, and exact error when reporting a problem.
 
 ## A scene stays plain text
 
 - Open the game folder as a workspace/project and check that its scene directory contains `startup.txt`.
 - For a custom layout, check the paths in [choicescript.json](configuration.md#project-layout). They resolve from the configuration file's directory.
 - If the game is buried in a larger directory tree, open it directly. Automatic discovery has a depth limit and skips hidden and dependency/build directories.
-- For a standalone scene, explicitly choose the ChoiceScript language/file type. Branchlight deliberately does not associate all `.txt` files globally.
+- For a standalone scene, explicitly choose the ChoiceScript language/file type. Bifoil ChoiceScript deliberately does not associate all `.txt` files globally.
 - Check for another extension or file-type association already claiming the file. Reload the window/project after correcting the layout if discovery has not refreshed.
 
 ## Basic colors appear, but dialogue or type colors do not
 
-Basic syntax colors can come from the fallback lexer while the language service is unavailable. Check the output for a server startup error. In VS Code, ensure semantic highlighting is enabled for ChoiceScript; in JetBrains, inspect the Branchlight color scheme entries.
+Basic syntax colors can come from the fallback lexer while the language service is unavailable. Check the output for a server startup error. In VS Code, ensure semantic highlighting is enabled for ChoiceScript; in JetBrains, inspect the Bifoil ChoiceScript color scheme entries.
 
 If the server is running, neutral colors may be intentional: unresolved jumps or generated text can make dialogue uncertain, and mixed variable types retain neutral styling. See [language behavior](specification.md) before treating neutral text as a lexer failure.
 
@@ -30,7 +30,7 @@ Trust the workspace/project through your editor's normal controls if you intend 
 
 ## Preview shows old text or cannot open in a browser
 
-Preview uses the snapshot captured when **Run Game** started. Run it again after editing; Branchlight does not automatically restart a playthrough. A title indicating source changes means the snapshot is stale.
+Preview uses the snapshot captured when **Run Game** started. Run it again after editing; Bifoil ChoiceScript does not automatically restart a playthrough. A title indicating source changes means the snapshot is stale.
 
 Keep the preview job running while using its browser URL. Closing the embedded preview or choosing **Stop Game or Tests** stops its server. For remote development, forward the preview's loopback port from the extension host before using a local browser.
 
@@ -38,13 +38,13 @@ If the embedded browser fails, try its **Open in Browser** control. JetBrains fa
 
 ## A test fails, or coverage seems incomplete
 
-Read the first reported scene location and the saved `.branchlight/logs/<job-id>.log`. Reproduce RandomTest failures using the same source, seed, and iteration count. Rerun after edits because earlier results are stale.
+Read the first reported scene location and the saved `.bifoil-choicescript/logs/<job-id>.log`. Reproduce RandomTest failures using the same source, seed, and iteration count. Rerun after edits because earlier results are stale.
 
 Coverage is available only when reported by the runner. VS Code decorates visible scenes; JetBrains prints a summary. Coverage from one randomized run does not establish that every path was explored.
 
 ## Export fails on an existing file
 
-Choose a new HTML filename in an empty directory. Branchlight protects both the HTML destination and companion assets from overwrites. A failed copy can leave part of an export behind, so use a fresh directory for the retry. Keep exported companion assets beside the HTML file.
+Choose a new HTML filename in an empty directory. Bifoil ChoiceScript protects both the HTML destination and companion assets from overwrites. A failed copy can leave part of an export behind, so use a fresh directory for the retry. Keep exported companion assets beside the HTML file.
 
 ## A source build fails on the engine check
 
@@ -56,13 +56,13 @@ On Windows, line-ending conversion can invalidate the upstream checksums. Follow
 
 JetBrains SDKs and verifier downloads are much larger than the source tree. Build one IDE product at a time and use `pnpm package:intellij --current` for a host-only development bundle.
 
-Generated output includes `dist/`, repository `.cache/`, `editors/intellij/build/`, and `editors/intellij/src/main/resources/bundle/`. Stop relevant runs before removing generated output; the next build or packaging step recreates it. Dependency caches may be shared with other projects, so avoid deleting them as part of routine repository cleanup. Old game logs can be removed from that game's `.branchlight/logs/` once no active run is writing them.
+Generated output includes `dist/`, repository `.cache/`, `editors/intellij/build/`, and `editors/intellij/src/main/resources/bundle/`. Stop relevant runs before removing generated output; the next build or packaging step recreates it. Dependency caches may be shared with other projects, so avoid deleting them as part of routine repository cleanup. Old game logs can be removed from that game's `.bifoil-choicescript/logs/` once no active run is writing them.
 
 ## Reporting a problem
 
-Open an [issue](https://github.com/Chinay-Domitrix/branchlight/issues) with:
+Open an [issue](https://github.com/bifoil/bifoil-choicescript/issues) with:
 
-1. Editor name and full version/build, operating system and CPU, and Branchlight version.
+1. Editor name and full version/build, operating system and CPU, and Bifoil ChoiceScript version.
 2. Whether the editor is local, WSL, or SSH, and which host runs the extension.
 3. A small original scene demonstrating the issue, including relevant `startup.txt` declarations and configuration.
 4. Expected and observed behavior, exact reproduction steps, and relevant output.

@@ -44,10 +44,10 @@ export interface BufferSnapshot {
   version: number;
 }
 export const commands = [
-  "branchlight.server.createProject",
-  "branchlight.server.run",
-  "branchlight.server.stop",
-  "branchlight.server.quicktest",
-  "branchlight.server.randomtest",
-  "branchlight.server.exportHtml",
+  "bifoil.choicescript.server.createProject",
+  "bifoil.choicescript.server.run",
+  "bifoil.choicescript.server.stop",
+  "bifoil.choicescript.server.quicktest",
+  "bifoil.choicescript.server.randomtest",
+  "bifoil.choicescript.server.exportHtml",
 ];

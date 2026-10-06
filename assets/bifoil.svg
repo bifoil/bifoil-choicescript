@@ -1,0 +1,14 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="256"
+  height="256"
+  viewBox="0 0 80 80"
+  role="img"
+  aria-labelledby="bifoil-title"
+>
+  <title id="bifoil-title">Bifoil Foundation</title>
+  <rect width="80" height="80" rx="12" fill="#153F46" />
+  <path d="M14 8H42L68 27L46 42H14ZM27 20V31H40L49 26L40 20Z" fill="#F3F7ED" fill-rule="evenodd" />
+  <path d="M14 38H44L70 57L44 72H14ZM27 49V60H41L51 55L41 49Z" fill="#91D8BD" fill-rule="evenodd" />
+  <path d="M14 38H44L27 49H14Z" fill="#57AE94" />
+</svg>

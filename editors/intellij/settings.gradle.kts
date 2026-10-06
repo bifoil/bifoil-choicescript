@@ -4,4 +4,4 @@ pluginManagement {
 		mavenCentral()
 	}
 }
-rootProject.name = "branchlight"
+rootProject.name = "bifoil-choicescript"

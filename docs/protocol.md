@@ -1,6 +1,6 @@
 # Tooling protocol and editor API
 
-Standard LSP carries completion, hover, definitions, references, rename, symbols, folding, selection ranges, diagnostics, and semantic tokens. Branchlight adds a small protocol for projects and game operations.
+Standard LSP carries completion, hover, definitions, references, rename, symbols, folding, selection ranges, diagnostics, and semantic tokens. Bifoil ChoiceScript adds a small protocol for projects and game operations.
 
 The authoritative TypeScript contracts are in [packages/protocol/src/index.ts](../packages/protocol/src/index.ts). Kotlin DTOs mirror them, and contract tests check agreement. The current protocol version is **1**; this is a prerelease interface.
 
@@ -14,7 +14,7 @@ The authoritative TypeScript contracts are in [packages/protocol/src/index.ts](.
 | `choicescript/jobEvent`        | Server notification | Report output and job lifecycle changes              |
 | `choicescript/wordCount`       | Client request      | Return the narrative word count for `{ "uri": "…" }` |
 
-These method names are wire identifiers retained by Branchlight. They do not indicate upstream affiliation.
+These method names are wire identifiers retained by Bifoil ChoiceScript. They do not indicate upstream affiliation.
 
 A `Project` contains `id`, `name`, `root`, `sceneDir`, `assetDir`, and optional `randomtest` defaults. Treat `id` as the server's identifier and pass it back unchanged. Filesystem paths and document URIs have distinct fields.
 
@@ -66,19 +66,19 @@ Progress is event-driven and indeterminate; the protocol has no percentage-compl
 
 ## VS Code integration API
 
-The extension identifier is `chinay.branchlight`. After activation, its exported API provides `projects()` and `onJobEvent`. Tool commands accept an optional options object:
+The extension identifier is `bifoil.choicescript`. After activation, its exported API provides `projects()` and `onJobEvent`. Tool commands accept an optional options object:
 
 | Command ID                  | Operation                              |
 | --------------------------- | -------------------------------------- |
-| `branchlight.createProject` | Create a game from the pinned template |
-| `branchlight.run`           | Start preview                          |
-| `branchlight.stop`          | Stop a preview or test job             |
-| `branchlight.quicktest`     | Run QuickTest                          |
-| `branchlight.randomtest`    | Run RandomTest                         |
-| `branchlight.exportHtml`    | Export HTML and assets                 |
+| `bifoil.choicescript.createProject` | Create a game from the pinned template |
+| `bifoil.choicescript.run`           | Start preview                          |
+| `bifoil.choicescript.stop`          | Stop a preview or test job             |
+| `bifoil.choicescript.quicktest`     | Run QuickTest                          |
+| `bifoil.choicescript.randomtest`    | Run RandomTest                         |
+| `bifoil.choicescript.exportHtml`    | Export HTML and assets                 |
 
 Options are `projectId`, `destination`, `iterations`, `seed`, and `jobId`. Project creation also accepts `openCreatedProject: false`. Omitted interactive choices prompt normally. Supplying both RandomTest values avoids its iteration/seed prompts.
 
 Commands enforce editor trust and do not accept overrides of the operation or protocol version. On a successful start they return `JobResult`; the test/export commands wait for completion before returning it. A returned handle is not itself evidence of success: inspect the correlated completion event's `exitCode`. Cancellation of a dialog, a missing project, or an error may yield no result.
 
-`branchlight.wordCount` returns the count as well as displaying it. `branchlight.bold`, `branchlight.italic`, and `branchlight.about` are editor actions rather than game jobs.
+`bifoil.choicescript.wordCount` returns the count as well as displaying it. `bifoil.choicescript.bold`, `bifoil.choicescript.italic`, and `bifoil.choicescript.about` are editor actions rather than game jobs.

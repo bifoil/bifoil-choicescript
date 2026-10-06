@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
-import { analyzeProject, definition, encodeTokens, parseDocument, rename } from "@branchlight/core";
+import { analyzeProject, definition, encodeTokens, parseDocument, rename } from "@bifoil/choicescript-core";
 
 const uri = "file:///game/scenes/startup.txt";
 function analyze(text: string, other: Record<string, string> = {}) {

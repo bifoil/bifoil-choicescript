@@ -10,7 +10,7 @@ LSP4J invokes notification callbacks through reflection. Keep their `unused` sup
 
 ## UI and threading
 
-The game picker uses `ChooseElementsDialog` with single selection. Action labels and live-template descriptions come from `messages.BranchlightBundle`.
+The game picker uses `ChooseElementsDialog` with single selection. Action labels and live-template descriptions come from `messages.BifoilBundle`.
 
 The narrative-warning toggle declares EDT updates because it reads mutable settings also changed by UI actions. Console and preview changes are scheduled on the UI thread. Keep project state in project services and nonconstant parser state outside extension companion objects.
 

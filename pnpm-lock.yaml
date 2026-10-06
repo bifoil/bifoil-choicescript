@@ -221,7 +221,7 @@ importers:
 
   editors/vscode:
     devDependencies:
-      '@branchlight/protocol':
+      '@bifoil/choicescript-protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
 
@@ -231,19 +231,19 @@ importers:
 
   packages/server:
     dependencies:
-      '@branchlight/core':
+      '@bifoil/choicescript-core':
         specifier: workspace:*
         version: link:../core
-      '@branchlight/protocol':
+      '@bifoil/choicescript-protocol':
         specifier: workspace:*
         version: link:../protocol
-      '@branchlight/tooling':
+      '@bifoil/choicescript-tooling':
         specifier: workspace:*
         version: link:../tooling
 
   packages/tooling:
     dependencies:
-      '@branchlight/protocol':
+      '@bifoil/choicescript-protocol':
         specifier: workspace:*
         version: link:../protocol
 

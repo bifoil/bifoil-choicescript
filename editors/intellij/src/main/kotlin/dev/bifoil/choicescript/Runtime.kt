@@ -1,4 +1,4 @@
-package dev.chinay.branchlight
+package dev.bifoil.choicescript
 
 import com.google.gson.JsonParser
 import com.intellij.openapi.application.PathManager
@@ -22,7 +22,7 @@ object BundledRuntime {
 		val platform = if (SystemInfo.isWindows) "win32" else if (SystemInfo.isMac) "darwin" else "linux"
 		val arch = if (System.getProperty("os.arch") in listOf("aarch64", "arm64")) "arm64" else "x64"
 		val target =
-			Path.of(PathManager.getSystemPath(), "branchlight", digest(manifestBytes).take(20), "$platform-$arch")
+			Path.of(PathManager.getSystemPath(), "bifoil-choicescript", digest(manifestBytes).take(20), "$platform-$arch")
 		if (Files.exists(target.resolve("ready"))) return target
 		Files.createDirectories(target)
 		for ((name, folder) in listOf("server.zip" to "server", "node-$platform-$arch.zip" to "runtime")) {

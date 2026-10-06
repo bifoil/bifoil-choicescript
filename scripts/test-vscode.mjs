@@ -7,7 +7,7 @@ import { installedExtension } from "./installed-extension.mjs";
 // vscode-test-electron 2.5.2 invokes cmd.exe on Windows; it does not quote
 // caller-provided paths. Preserve each path as one argument, including spaces.
 const launchPath = (value) => (process.platform === "win32" ? `"${value}"` : value);
-const profile = await mkdtemp(path.join(os.tmpdir(), "branchlight-editor-"));
+const profile = await mkdtemp(path.join(os.tmpdir(), "bifoil-choicescript-editor-"));
 const reports = path.resolve("dist/test-results/editor");
 await mkdir(reports, { recursive: true });
 try {
@@ -15,10 +15,10 @@ try {
   await cp(path.resolve("fixtures/dialogue"), game, { recursive: true });
   await runTests({
     version: "1.109.0",
-    vscodeExecutablePath: process.env.BRANCHLIGHT_VSCODE_EXECUTABLE,
+    vscodeExecutablePath: process.env.BIFOIL_CHOICESCRIPT_VSCODE_EXECUTABLE,
     extensionDevelopmentPath: launchPath(await installedExtension()),
     extensionTestsPath: launchPath(path.resolve("editors/vscode/test/smoke.cjs")),
-    extensionTestsEnv: { BRANCHLIGHT_TEST_REPORTS: reports },
+    extensionTestsEnv: { BIFOIL_CHOICESCRIPT_TEST_REPORTS: reports },
     launchArgs: [
       launchPath(game),
       "--disable-extensions",

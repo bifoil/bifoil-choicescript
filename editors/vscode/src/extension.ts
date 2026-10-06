@@ -9,7 +9,7 @@ import {
   type Operation,
   type Project,
   PROTOCOL_VERSION,
-} from "@branchlight/protocol";
+} from "@bifoil/choicescript-protocol";
 
 export interface ToolOptions {
   projectId?: string;
@@ -23,7 +23,7 @@ let client: LanguageClient | undefined;
 // VS Code invokes this exported entry point by name.
 // noinspection JSUnusedGlobalSymbols
 export async function activate(context: vscode.ExtensionContext) {
-  const output = vscode.window.createOutputChannel("Branchlight"),
+  const output = vscode.window.createOutputChannel("Bifoil ChoiceScript"),
     coverage = vscode.window.createTextEditorDecorationType({
       isWholeLine: true,
       backgroundColor: new vscode.ThemeColor("diffEditor.insertedTextBackground"),
@@ -38,8 +38,8 @@ export async function activate(context: vscode.ExtensionContext) {
   const bundle = context.asAbsolutePath("server"),
     runtime = context.asAbsolutePath(path.join("runtime", process.platform === "win32" ? "node.exe" : "node"));
   client = new LanguageClient(
-    "branchlight",
-    "Branchlight",
+    "bifoil.choicescript",
+    "Bifoil ChoiceScript",
     {
       command: existsSync(runtime) ? runtime : process.execPath,
       args: [path.join(bundle, "server.cjs"), "--stdio", "--bundle-root", bundle],
@@ -53,7 +53,7 @@ export async function activate(context: vscode.ExtensionContext) {
     },
     {
       documentSelector: [{ scheme: "file", language: "choicescript" }],
-      synchronize: { configurationSection: "branchlight" },
+      synchronize: { configurationSection: "bifoil.choicescript" },
       outputChannel: output,
     },
   );
@@ -87,7 +87,7 @@ export async function activate(context: vscode.ExtensionContext) {
     if (event.kind === "diagnostic" && event.uri)
       output.appendLine(`${vscode.Uri.parse(event.uri).fsPath}:${(event.line ?? 0) + 1}: ${event.message}`);
     if (event.kind === "completed" && event.exitCode && event.exitCode !== 130)
-      void vscode.window.showErrorMessage("Branchlight operation failed. See Branchlight output.");
+      void vscode.window.showErrorMessage("Bifoil ChoiceScript operation failed. See Bifoil ChoiceScript output.");
     if (event.kind === "stale") {
       for (const editor of vscode.window.visibleTextEditors) editor.setDecorations(coverage, []);
       const panel = panels.get(event.jobId);
@@ -199,7 +199,7 @@ export async function activate(context: vscode.ExtensionContext) {
       result = await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: "Branchlight " + operation,
+          title: "Bifoil ChoiceScript " + operation,
           cancellable: true,
         },
         async (progress, cancellation) => {
@@ -248,7 +248,7 @@ export async function activate(context: vscode.ExtensionContext) {
   }
   for (const operation of ["createProject", "run", "stop", "quicktest", "randomtest", "exportHtml"] as Operation[])
     context.subscriptions.push(
-      vscode.commands.registerCommand("branchlight." + operation, (options?: ToolOptions) =>
+      vscode.commands.registerCommand("bifoil.choicescript." + operation, (options?: ToolOptions) =>
         job(operation, options).catch((e) => vscode.window.showErrorMessage(String(e))),
       ),
     );
@@ -257,7 +257,7 @@ export async function activate(context: vscode.ExtensionContext) {
     ["italic", "i"],
   ])
     context.subscriptions.push(
-      vscode.commands.registerCommand("branchlight." + name, () => {
+      vscode.commands.registerCommand("bifoil.choicescript." + name, () => {
         const editor = vscode.window.activeTextEditor;
         if (editor)
           return editor.edit((edit) => {
@@ -267,7 +267,7 @@ export async function activate(context: vscode.ExtensionContext) {
       }),
     );
   context.subscriptions.push(
-    vscode.commands.registerCommand("branchlight.wordCount", async () => {
+    vscode.commands.registerCommand("bifoil.choicescript.wordCount", async () => {
       const uri = vscode.window.activeTextEditor?.document.uri;
       if (uri) {
         const count = await client!.sendRequest<number>("choicescript/wordCount", { uri: uri.toString() });
@@ -277,9 +277,9 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
   context.subscriptions.push(
-    vscode.commands.registerCommand("branchlight.about", () =>
+    vscode.commands.registerCommand("bifoil.choicescript.about", () =>
       vscode.window.showInformationMessage(
-        "Branchlight 0.1.0 — an unofficial personal project, unaffiliated with Choice of Games or upstream ChoiceScript.",
+        "Bifoil ChoiceScript 0.1.0 — an unofficial Bifoil Foundation project, unaffiliated with Choice of Games or upstream ChoiceScript.",
       ),
     ),
   );

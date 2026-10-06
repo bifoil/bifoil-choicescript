@@ -4,7 +4,7 @@ plugins {
 	kotlin("jvm") version "2.2.20"
 	id("org.jetbrains.intellij.platform") version "2.19.0"
 }
-group = "dev.chinay.branchlight"
+group = "dev.bifoil.choicescript"
 version = "0.1.0"
 repositories {
 	mavenCentral()
@@ -31,7 +31,7 @@ kotlin {
 }
 intellijPlatform {
 	pluginConfiguration {
-		name = "Branchlight"
+		name = "Bifoil ChoiceScript"
 		ideaVersion {
 			sinceBuild = "261.26222"
 		}

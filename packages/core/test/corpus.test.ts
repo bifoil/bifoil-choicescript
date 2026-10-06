@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
-import { analyzeProject, definition, literal, parseDocument, rename } from "@branchlight/core";
+import { analyzeProject, definition, literal, parseDocument, rename } from "@bifoil/choicescript-core";
 import { Environment } from "../src/environment.js";
 
 // Synthetic examples derived from language constructs, not copies of game text.

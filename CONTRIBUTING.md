@@ -1,6 +1,6 @@
-# Contributing to Branchlight
+# Contributing to Bifoil ChoiceScript
 
-Branchlight is an independent personal project maintained by chinay. Contributions should keep the shared language service consistent across VS Code and JetBrains IDEs and preserve normal editing when game tooling is unavailable.
+Bifoil ChoiceScript is an independent personal project maintained by chinay. Contributions should keep the shared language service consistent across VS Code and JetBrains IDEs and preserve normal editing when game tooling is unavailable.
 
 For a bug, start with [a minimal reproduction](docs/troubleshooting.md#reporting-a-problem). For a substantial feature or compatibility change, open an issue describing the user problem and proposed behavior before building it. Issues and pull requests currently require access to the private repository.
 
@@ -11,8 +11,8 @@ You need Git, Node.js 24, and the pnpm version declared in [package.json](packag
 Clone with the engine submodule and preserve its original line endings, including on Windows:
 
 ```sh
-git -c core.autocrlf=false clone --recurse-submodules https://github.com/Chinay-Domitrix/branchlight.git
-cd branchlight
+git -c core.autocrlf=false clone --recurse-submodules https://github.com/bifoil/bifoil-choicescript.git
+cd bifoil-choicescript
 git config core.autocrlf false
 pnpm install --frozen-lockfile
 pnpm check
@@ -52,7 +52,7 @@ For a local VS Code installer, after `pnpm check`:
 pnpm package:vscode
 ```
 
-Install the resulting `dist/packages/branchlight-<platform>-<arch>.vsix` through **Extensions: Install from VSIX**. This command packages the current host platform by default.
+Install the resulting `dist/packages/bifoil-choicescript-<platform>-<arch>.vsix` through **Extensions: Install from VSIX**. This command packages the current host platform by default.
 
 For a JetBrains development build, prepare only the current host runtime first:
 
@@ -83,7 +83,7 @@ A pull request should explain the problem, the resulting behavior, and the check
 
 ## Documentation and local material
 
-`docs/` is public documentation: user guides, contributor references, and release information. Regression inputs belong in `fixtures/` or package tests. Local reports, exploratory measurements, logs, and development notes belong in ignored `.branchlight/development/`, not public guides.
+`docs/` is public documentation: user guides, contributor references, and release information. Regression inputs belong in `fixtures/` or package tests. Local reports, exploratory measurements, logs, and development notes belong in ignored `.bifoil-choicescript/development/`, not public guides.
 
 Use original synthetic examples in committed fixtures and documentation. Keep external game sources and their identifying details out of the repository. [Read-only corpus analysis](docs/testing.md#analyze-local-scenes) is available for local investigation without copying those files into the project.
 

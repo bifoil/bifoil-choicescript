@@ -1,51 +1,51 @@
 <idea-plugin>
-	<id>dev.chinay.branchlight</id>
-	<name>Branchlight</name>
-	<vendor>Independent personal project</vendor>
-	<resource-bundle>messages.BranchlightBundle</resource-bundle>
+	<id>dev.bifoil.choicescript</id>
+	<name>Bifoil ChoiceScript</name>
+	<vendor url="https://bifoil.dev">Bifoil Foundation</vendor>
+	<resource-bundle>messages.BifoilBundle</resource-bundle>
 	<description>
 		<![CDATA[
 		<p>Write ChoiceScript games with dialogue highlighting and code navigation.</p>
 		<p>Preview games, run tests, and export HTML.</p>
-		<p>An unofficial personal project, unaffiliated with Choice of Games or upstream ChoiceScript.</p>
+		<p>An unofficial Bifoil Foundation project, unaffiliated with Choice of Games or upstream ChoiceScript.</p>
 		]]></description>
 	<depends>com.intellij.modules.platform</depends>
 	<depends>com.intellij.modules.lsp</depends>
 	<extensions defaultExtensionNs="com.intellij">
-		<platform.lsp.integrationProvider implementation="dev.chinay.branchlight.ChoiceIntegration" />
-		<lang.substitutor language="TEXT" implementationClass="dev.chinay.branchlight.ChoiceSubstitutor" />
+		<platform.lsp.integrationProvider implementation="dev.bifoil.choicescript.ChoiceIntegration" />
+		<lang.substitutor language="TEXT" implementationClass="dev.bifoil.choicescript.ChoiceSubstitutor" />
 		<fileType
       name="ChoiceScript"
-      implementationClass="dev.chinay.branchlight.ChoiceFileType"
+      implementationClass="dev.bifoil.choicescript.ChoiceFileType"
       fieldName="INSTANCE"
       language="ChoiceScript"
     />
 		<lang.syntaxHighlighterFactory
       language="ChoiceScript"
-      implementationClass="dev.chinay.branchlight.ChoiceHighlighterFactory"
+      implementationClass="dev.bifoil.choicescript.ChoiceHighlighterFactory"
     />
-		<colorSettingsPage implementation="dev.chinay.branchlight.ChoiceColorsPage" />
-		<lang.parserDefinition language="ChoiceScript" implementationClass="dev.chinay.branchlight.ChoiceParserDefinition" />
-		<lang.commenter language="ChoiceScript" implementationClass="dev.chinay.branchlight.ChoiceCommenter" />
-		<enterHandlerDelegate implementation="dev.chinay.branchlight.ChoiceEnterHandler" />
-		<liveTemplateContext contextId="CHOICESCRIPT" implementation="dev.chinay.branchlight.ChoiceTemplateContext" />
+		<colorSettingsPage implementation="dev.bifoil.choicescript.ChoiceColorsPage" />
+		<lang.parserDefinition language="ChoiceScript" implementationClass="dev.bifoil.choicescript.ChoiceParserDefinition" />
+		<lang.commenter language="ChoiceScript" implementationClass="dev.bifoil.choicescript.ChoiceCommenter" />
+		<enterHandlerDelegate implementation="dev.bifoil.choicescript.ChoiceEnterHandler" />
+		<liveTemplateContext contextId="CHOICESCRIPT" implementation="dev.bifoil.choicescript.ChoiceTemplateContext" />
 		<defaultLiveTemplates file="/liveTemplates/ChoiceScript" />
-		<toolWindow id="Branchlight" anchor="bottom" factoryClass="dev.chinay.branchlight.ChoiceToolWindow" />
+		<toolWindow id="Bifoil ChoiceScript" anchor="bottom" factoryClass="dev.bifoil.choicescript.ChoiceToolWindow" />
 	</extensions>
 	<actions>
-		<group id="Branchlight.Actions" popup="true">
+		<group id="BifoilChoiceScript.Actions" popup="true">
 			<add-to-group group-id="ToolsMenu" anchor="last" />
-			<action id="Branchlight.New" class="dev.chinay.branchlight.NewProjectAction" />
-			<action id="Branchlight.Run" class="dev.chinay.branchlight.RunAction" />
-			<action id="Branchlight.Stop" class="dev.chinay.branchlight.StopAction" />
-			<action id="Branchlight.QuickTest" class="dev.chinay.branchlight.QuickTestAction" />
-			<action id="Branchlight.RandomTest" class="dev.chinay.branchlight.RandomTestAction" />
-			<action id="Branchlight.Export" class="dev.chinay.branchlight.ExportAction" />
-			<action id="Branchlight.Words" class="dev.chinay.branchlight.WordCountAction" />
-			<action id="Branchlight.Bold" class="dev.chinay.branchlight.BoldAction" />
-			<action id="Branchlight.Italic" class="dev.chinay.branchlight.ItalicAction" />
-			<action id="Branchlight.QuoteWarnings" class="dev.chinay.branchlight.QuoteWarningsAction" />
-			<action id="Branchlight.About" class="dev.chinay.branchlight.AboutAction" />
+			<action id="BifoilChoiceScript.New" class="dev.bifoil.choicescript.NewProjectAction" />
+			<action id="BifoilChoiceScript.Run" class="dev.bifoil.choicescript.RunAction" />
+			<action id="BifoilChoiceScript.Stop" class="dev.bifoil.choicescript.StopAction" />
+			<action id="BifoilChoiceScript.QuickTest" class="dev.bifoil.choicescript.QuickTestAction" />
+			<action id="BifoilChoiceScript.RandomTest" class="dev.bifoil.choicescript.RandomTestAction" />
+			<action id="BifoilChoiceScript.Export" class="dev.bifoil.choicescript.ExportAction" />
+			<action id="BifoilChoiceScript.Words" class="dev.bifoil.choicescript.WordCountAction" />
+			<action id="BifoilChoiceScript.Bold" class="dev.bifoil.choicescript.BoldAction" />
+			<action id="BifoilChoiceScript.Italic" class="dev.bifoil.choicescript.ItalicAction" />
+			<action id="BifoilChoiceScript.QuoteWarnings" class="dev.bifoil.choicescript.QuoteWarningsAction" />
+			<action id="BifoilChoiceScript.About" class="dev.bifoil.choicescript.AboutAction" />
 		</group>
 	</actions>
 </idea-plugin>

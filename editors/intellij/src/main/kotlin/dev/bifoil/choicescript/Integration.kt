@@ -1,4 +1,4 @@
-package dev.chinay.branchlight
+package dev.bifoil.choicescript
 
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.openapi.components.service
@@ -57,7 +57,7 @@ class ChoiceIntegration : LspIntegrationProvider {
 	}
 }
 
-class ChoiceDescriptor(project: Project) : ProjectWideLspClientDescriptor(project, "Branchlight (Unofficial)") {
+class ChoiceDescriptor(project: Project) : ProjectWideLspClientDescriptor(project, "Bifoil ChoiceScript (Unofficial)") {
 	override fun isSupportedFile(file: VirtualFile) = ChoiceProjects.supports(project, file)
 	override fun getLanguageId(file: VirtualFile) = "choicescript"
 	override fun createCommandLine(): GeneralCommandLine {

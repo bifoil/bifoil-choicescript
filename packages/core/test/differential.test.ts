@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
-import { analyzeProject, parseDocument } from "@branchlight/core";
+import { analyzeProject, parseDocument } from "@bifoil/choicescript-core";
 
 const uri = "file:///differential/scenes/startup.txt";
 function engine() {

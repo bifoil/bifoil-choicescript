@@ -1,8 +1,8 @@
-# Branchlight documentation
+# Bifoil ChoiceScript documentation
 
-Branchlight provides ChoiceScript editing and game tooling for VS Code and JetBrains IDEs. Start with installation, then follow the user guide for your first preview or test run.
+Bifoil ChoiceScript provides ChoiceScript editing and game tooling for VS Code and JetBrains IDEs. Start with installation, then follow the user guide for your first preview or test run.
 
-## Use Branchlight
+## Use Bifoil ChoiceScript
 
 | Guide                                 | What you will find                                                       |
 | ------------------------------------- | ------------------------------------------------------------------------ |
@@ -13,7 +13,7 @@ Branchlight provides ChoiceScript editing and game tooling for VS Code and JetBr
 | [Troubleshooting](troubleshooting.md) | Common problems and useful bug reports                                   |
 | [Release notes](release-notes.md)     | The current prerelease candidate and limitations                         |
 
-## Develop Branchlight
+## Develop Bifoil ChoiceScript
 
 | Guide                                                 | What you will find                                          |
 | ----------------------------------------------------- | ----------------------------------------------------------- |
@@ -26,4 +26,4 @@ Branchlight provides ChoiceScript editing and game tooling for VS Code and JetBr
 | [Packaging and releases](releasing.md)                | Building installers and preparing a private prerelease      |
 | [Third-party notices](../THIRD_PARTY_NOTICES.md)      | Engine, runtime, and dependency licensing and provenance    |
 
-Branchlight is an unofficial personal project, unaffiliated with Choice of Games or upstream ChoiceScript. These guides describe Branchlight; the [upstream ChoiceScript repository](https://github.com/dfabulich/choicescript) remains the source for the engine itself.
+Bifoil ChoiceScript is an unofficial personal project, unaffiliated with Choice of Games or upstream ChoiceScript. These guides describe Bifoil ChoiceScript; the [upstream ChoiceScript repository](https://github.com/dfabulich/choicescript) remains the source for the engine itself.

@@ -2,7 +2,7 @@
 	<template
     name="csif"
     value="*if $CONDITION$&#10;  $END$&#10;*else&#10;  "
-    resource-bundle="messages.BranchlightBundle"
+    resource-bundle="messages.BifoilBundle"
     key="live.template.csif.description"
     toReformat="false"
     toShortenFQNames="false"
@@ -15,7 +15,7 @@
 	<template
     name="cschoice"
     value="*choice&#10;  #$OPTION$&#10;    $END$"
-    resource-bundle="messages.BranchlightBundle"
+    resource-bundle="messages.BifoilBundle"
     key="live.template.cschoice.description"
     toReformat="false"
     toShortenFQNames="false"

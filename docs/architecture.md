@@ -1,6 +1,6 @@
 # Architecture
 
-Branchlight has one TypeScript language service and game-tooling implementation, with adapters for VS Code and JetBrains IDEs. Editor-specific code handles integration and presentation; syntax and analysis do not depend on either editor's APIs.
+Bifoil ChoiceScript has one TypeScript language service and game-tooling implementation, with adapters for VS Code and JetBrains IDEs. Editor-specific code handles integration and presentation; syntax and analysis do not depend on either editor's APIs.
 
 ## Components
 

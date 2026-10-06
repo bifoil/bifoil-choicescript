@@ -1,5 +1,5 @@
 *title Dialogue Regression
-*author Branchlight
+*author Bifoil ChoiceScript
 *create gender "male"
 *create implicit_control_flow true
 She said "This is the end,

@@ -15,7 +15,7 @@ import {
   type JobResult,
   type Project,
   PROTOCOL_VERSION,
-} from "@branchlight/protocol";
+} from "@bifoil/choicescript-protocol";
 import { contains, exists, sameFileUri } from "./projects.js";
 
 type Job = {
@@ -80,7 +80,7 @@ export class ToolRunner {
     };
   }
   async stage(project: Project, buffers: BufferSnapshot[]) {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "branchlight-"));
+    const dir = await mkdtemp(path.join(os.tmpdir(), "bifoil-choicescript-"));
     try {
       await cp(this.engine, dir, {
         recursive: true,
@@ -101,6 +101,7 @@ export class ToolRunner {
             "build",
             "export",
             ".idea",
+            ".bifoil-choicescript",
             ".branchlight",
             "scenes",
           ].includes(e.name) ||
@@ -224,7 +225,7 @@ export class ToolRunner {
         script = "compile.js";
         args = ["export.html"];
       }
-      const logDir = path.join(project.root, ".branchlight", "logs");
+      const logDir = path.join(project.root, ".bifoil-choicescript", "logs");
       await mkdir(logDir, { recursive: true });
       const output = path.join(logDir, job.id + ".log"),
         log = createWriteStream(output);
@@ -256,7 +257,7 @@ export class ToolRunner {
       };
       const nodeArgs = [script, ...args];
       if (request.operation === "exportHtml") {
-        const preload = path.join(stage, "branchlight-preload.cjs");
+        const preload = path.join(stage, "bifoil-choicescript-preload.cjs");
         await writeFile(
           preload,
           "// Bridge the upstream compiler's VM-loaded generator to its CommonJS host.\nglobal.rootDir = 'web/';\n",
