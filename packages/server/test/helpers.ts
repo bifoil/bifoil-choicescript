@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createMessageConnection, StreamMessageReader, StreamMessageWriter } from "vscode-languageserver/node.js";
+import { serverNodeArgs } from "@bifoil/choicescript-protocol";
 import { pathToFileURL } from "node:url";
 
 export async function waitFor<T>(
@@ -17,7 +18,7 @@ export async function waitFor<T>(
   throw new Error("Timed out waiting for observable LSP state");
 }
 export async function startServer(roots: string[], options: { legacyRootUri?: boolean } = {}) {
-  const child = spawn(process.execPath, ["dist/server/server.cjs", "--stdio"], {
+  const child = spawn(process.execPath, [...serverNodeArgs, "dist/server/server.cjs", "--stdio"], {
     stdio: ["pipe", "pipe", "pipe"],
   });
   const diagnostics: any[] = [];

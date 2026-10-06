@@ -1,4 +1,5 @@
 import {
+  type CancellationToken,
   createConnection,
   type Diagnostic,
   DidChangeWatchedFilesNotification,
@@ -11,18 +12,25 @@ import {
 } from "vscode-languageserver/node.js";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { randomUUID } from "node:crypto";
+import { Worker } from "node:worker_threads";
+import {
+  type AnalysisSnapshot,
+  mergeSnapshot,
+  requestAnalysis,
+  snapshotFolding,
+  snapshotTokens,
+  updatePlainProse,
+} from "./snapshots.js";
+import path from "node:path";
+import { type IndexedSource, SceneIndex, SummaryCache } from "./scene-index.js";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { Worker } from "node:worker_threads";
-import path from "node:path";
 import {
-  type Analysis,
   completions,
   definition,
   documentSymbols,
-  encodeTokens,
-  folding,
   hover,
+  type Position,
   prepareRename,
   references,
   rename,
@@ -30,8 +38,24 @@ import {
   tokenModifiers,
   tokenTypes,
 } from "@bifoil/choicescript-core";
-import { affectedProjects, contains, discoverProjects, projectFor, readProject, sameFileUri, ToolRunner } from "@bifoil/choicescript-tooling";
-import { type BufferSnapshot, commands, type JobRequest, type Project, PROTOCOL_VERSION } from "@bifoil/choicescript-protocol";
+import {
+  affectedProjects,
+  contains,
+  discoverProjects,
+  projectFor,
+  sameFileUri,
+  ToolRunner,
+} from "@bifoil/choicescript-tooling";
+import {
+  analysisWorkerLimits,
+  type BufferSnapshot,
+  commands,
+  type IndexStatus,
+  interactionDeadlineMs,
+  type JobRequest,
+  type Project,
+  PROTOCOL_VERSION,
+} from "@bifoil/choicescript-protocol";
 
 const connection = createConnection(ProposedFeatures.all),
   documents = new TextDocuments(TextDocument);
@@ -40,12 +64,33 @@ const arg = process.argv.indexOf("--bundle-root"),
 let roots: string[] = [],
   projects: Project[] = [],
   quoteWarnings = true,
+  preferredUri: string | undefined,
   revision = 0,
   timer: NodeJS.Timeout | undefined,
   disposed = false;
+const sceneIndexes = new Map<string, SceneIndex>();
+const summaryCache = new SummaryCache();
 const analysisVersions = new Map<string, number>();
-const analyses = new Map<string, Analysis>(),
+const dirtyProjects = new Set<string>();
+const analysisUpdates = new Set<() => void>();
+const analyses = new Map<string, AnalysisSnapshot>(),
   workers = new Set<Worker>();
+const stoppingWorkers = new Set<Promise<unknown>>();
+const workerStops = new Map<Worker, Promise<number>>();
+let activeAnalysis: { id: string; worker: Worker; busy: boolean } | undefined;
+function stopWorker(worker: Worker) {
+  const previous = workerStops.get(worker);
+  if (previous) return previous;
+  const stopped = worker.terminate();
+  workerStops.set(worker, stopped);
+  stoppingWorkers.add(stopped);
+  void stopped.finally(() => {
+    workers.delete(worker);
+    workerStops.delete(worker);
+    stoppingWorkers.delete(stopped);
+  });
+  return stopped;
+}
 const snapshots = (): BufferSnapshot[] =>
   documents
     .all()
@@ -54,7 +99,7 @@ const snapshots = (): BufferSnapshot[] =>
 const testResults = new Map<string, { jobId: string; stale: boolean; diagnostics: Map<string, Diagnostic[]> }>();
 const configDiagnostics = new Map<string, Diagnostic[]>();
 function publishDiagnostics(uri: string) {
-  const snapshot = get(uri);
+  const snapshot = currentSnapshot(uri);
   const tests = [...testResults.values()]
     .filter((result) => !result.stale)
     .flatMap((result) => result.diagnostics.get(uri) ?? []);
@@ -142,16 +187,80 @@ function publish(promise: Promise<unknown>) {
     if (!disposed) console.error("Could not send language-server update:", error);
   });
 }
-function analysisUri(a: Analysis | undefined, uri: string) {
+function analysisUri(a: { documents: ReadonlyMap<string, unknown> } | undefined, uri: string) {
   if (!a || a.documents.has(uri)) return uri;
   return [...a.documents.keys()].find((candidate) => sameFileUri(candidate, uri)) ?? uri;
 }
-function get(uri: string) {
+function currentSnapshot(uri: string) {
   const id = projectFor(projects, uri)?.id ?? uri;
   if (analysisVersions.get(id) !== revision) return undefined;
-  const a = analyses.get(id),
+  const snapshot = analyses.get(id),
     open = documents.get(uri);
-  return open && a?.documents.get(analysisUri(a, uri))?.version !== open.version ? undefined : a;
+  return open && snapshot?.documents.get(analysisUri(snapshot, uri))?.version !== open.version ? undefined : snapshot;
+}
+function notifyAnalysis() {
+  for (const update of [...analysisUpdates]) update();
+}
+async function snapshotForRequest(uri: string, token?: CancellationToken): Promise<AnalysisSnapshot | undefined> {
+  const ready = currentSnapshot(uri);
+  if (ready && !ready.features.get(analysisUri(ready, uri))?.compact) return ready;
+  if (ready) {
+    preferredUri = uri;
+    schedule([uri]);
+  }
+  const id = projectFor(projects, uri)?.id ?? uri;
+  if (!dirtyProjects.has(id) || disposed) return undefined;
+  const preferredId = preferredUri ? (projectFor(projects, preferredUri)?.id ?? preferredUri) : undefined;
+  if (preferredId !== id && activeAnalysis?.id !== id) {
+    preferredUri = uri;
+    schedule([uri]);
+  }
+  const version = documents.get(uri)?.version;
+  return new Promise((resolve, reject) => {
+    let timeout: NodeJS.Timeout | undefined;
+    let cancellation: { dispose(): void } | undefined;
+    const finish = (snapshot?: AnalysisSnapshot, error?: ResponseError) => {
+      if (timeout) clearTimeout(timeout);
+      cancellation?.dispose();
+      analysisUpdates.delete(check);
+      if (error) reject(error);
+      else resolve(snapshot);
+    };
+    const check = () => {
+      if (token?.isCancellationRequested || disposed)
+        finish(undefined, new ResponseError(LSPErrorCodes.RequestCancelled, "Request cancelled."));
+      else if (documents.get(uri)?.version !== version)
+        finish(undefined, new ResponseError(LSPErrorCodes.ContentModified, "Document changed during this request."));
+      else {
+        const snapshot = currentSnapshot(uri);
+        if (snapshot) finish(snapshot);
+      }
+    };
+    analysisUpdates.add(check);
+    cancellation = token?.onCancellationRequested(check);
+    // Reserve time for decoding the small request index and transmitting its result.
+    timeout = setTimeout(
+      () =>
+        finish(
+          undefined,
+          new ResponseError(
+            LSPErrorCodes.ContentModified,
+            "Current analysis is still pending; retry this interaction.",
+          ),
+        ),
+      interactionDeadlineMs - 50,
+    );
+    check();
+  });
+}
+async function get(uri: string, positions: Position[] = [], withReferences = false, token?: CancellationToken) {
+  const snapshot = await snapshotForRequest(uri, token);
+  if (withReferences && snapshot?.incomplete)
+    throw new ResponseError(
+      LSPErrorCodes.ContentModified,
+      "Project indexing is still pending; retry navigation or rename when it finishes.",
+    );
+  return snapshot ? requestAnalysis(snapshot, analysisUri(snapshot, uri), positions, withReferences) : undefined;
 }
 let discoveryRevision = 0;
 async function refreshProjects() {
@@ -184,80 +293,199 @@ async function refreshProjects() {
     connection.window.showErrorMessage(String(error));
   }
 }
-function schedule() {
+function schedule(changedUris?: string[]) {
   revision++;
-  for (const w of workers) void w.terminate();
-  workers.clear();
+  if (changedUris) {
+    for (const uri of changedUris) dirtyProjects.add(projectFor(projects, uri)?.id ?? uri);
+  } else {
+    for (const project of projects) dirtyProjects.add(project.id);
+    for (const doc of documents.all())
+      if (!projectFor(projects, doc.uri) && doc.languageId === "choicescript") dirtyProjects.add(doc.uri);
+  }
+  for (const id of analyses.keys()) if (!dirtyProjects.has(id)) analysisVersions.set(id, revision);
+  notifyAnalysis();
+  if (activeAnalysis?.busy) void stopWorker(activeAnalysis.worker);
   if (timer) clearTimeout(timer);
-  timer = setTimeout(() => void analyze(revision), 100);
+  timer = setTimeout(() => void analyze(revision), 25);
+}
+function createWorker(id: string) {
+  const worker = new Worker(path.join(bundle, "analysis-worker.cjs"), {
+    resourceLimits: analysisWorkerLimits,
+    execArgv: process.execArgv.filter((arg) => !/^--max-(?:old-space|semi-space)-size=/.test(arg)),
+  });
+  activeAnalysis = { id, worker, busy: true };
+  workers.add(worker);
+  worker.on("error", (error) => {
+    connection.console.error(error.message);
+    void stopWorker(worker);
+  });
+  worker.once("exit", () => {
+    if (activeAnalysis?.worker === worker) activeAnalysis = undefined;
+    workers.delete(worker);
+  });
+  return worker;
+}
+async function indexScenes(index: SceneIndex, version: number) {
+  const sources = (await index.inventory()).filter(
+    (source) => !index.cached.has(source.uri) && !index.failed.has(source.uri),
+  );
+  if (!sources.length || version !== revision || disposed) return;
+  const directory = await index.cacheDirectory(),
+    generation = index.generation;
+  if (version !== revision || disposed) return;
+  if (activeAnalysis) await stopWorker(activeAnalysis.worker);
+  if (version !== revision || disposed) return;
+  await new Promise<void>((resolve) => {
+    const worker = createWorker(index.project.id);
+    worker.on("message", (message) => {
+      if (index.generation !== generation || disposed) return;
+      if (message.indexed) {
+        const { uri, cache, data } = message.indexed;
+        index.cached.set(uri, cache);
+        index.stamps.set(uri, ++index.nextStamp);
+        summaryCache.set(cache, data);
+      }
+      if (message.indexError) {
+        index.failed.set(message.indexError.uri, message.indexError.error);
+        connection.console.error(message.indexError.error);
+      }
+      if (message.done || message.error) {
+        if (message.error) connection.console.error(message.error);
+        void stopWorker(worker).then(() => resolve());
+      }
+    });
+    worker.once("error", (error) => {
+      connection.console.error(error.message);
+      void stopWorker(worker).then(() => resolve());
+    });
+    worker.once("exit", () => resolve());
+    worker.postMessage({ mode: "index", sources, directory });
+  });
+  if (version === revision && !disposed && index.generation === generation) schedule([index.project.id]);
 }
 async function analyze(version: number) {
+  await Promise.all([...stoppingWorkers]);
+  if (version !== revision || disposed) return;
   const open = snapshots();
-  const jobs: { id: string; documents: BufferSnapshot[] }[] = [];
+  type Job = { id: string; documents: BufferSnapshot[]; sources: IndexedSource[]; index?: SceneIndex };
+  const jobs: Job[] = [];
   try {
-    for (const project of projects)
-      jobs.push({
-        id: project.id,
-        documents: await readProject(project, open),
+    const preferredId = preferredUri ? (projectFor(projects, preferredUri)?.id ?? preferredUri) : undefined;
+    const pending = projects.filter((project) => dirtyProjects.has(project.id));
+    pending.sort((a, b) => Number(b.id === preferredId) - Number(a.id === preferredId));
+    for (const project of pending) {
+      let index = sceneIndexes.get(project.id);
+      if (!index) {
+        index = new SceneIndex(project);
+        sceneIndexes.set(project.id, index);
+      }
+      const inventory = await index.inventory();
+      const buffers = open.filter((document) => projectFor([project], document.uri));
+      const sources = inventory.map((source) => {
+        const cache = index!.cached.get(source.uri);
+        return {
+          ...source,
+          cache,
+          stamp: index!.stamps.get(source.uri),
+          data: cache ? summaryCache.get(cache) : undefined,
+          full:
+            path.basename(source.file).toLowerCase() === "startup.txt" ||
+            (!!preferredUri && sameFileUri(source.uri, preferredUri)),
+        };
       });
+      jobs.push({ id: project.id, documents: buffers, sources, index });
+    }
     for (const doc of open)
-      if (!projectFor(projects, doc.uri) && documents.get(doc.uri)?.languageId === "choicescript")
-        jobs.push({ id: doc.uri, documents: [doc] });
+      if (
+        dirtyProjects.has(doc.uri) &&
+        !projectFor(projects, doc.uri) &&
+        documents.get(doc.uri)?.languageId === "choicescript"
+      )
+        jobs.push({ id: doc.uri, documents: [doc], sources: [] });
     if (version !== revision || disposed) return;
+    jobs.sort((a, b) => Number(b.id === preferredId) - Number(a.id === preferredId));
+    const activeIds = new Set([
+      ...projects.map((project) => project.id),
+      ...open
+        .filter((doc) => !projectFor(projects, doc.uri) && documents.get(doc.uri)?.languageId === "choicescript")
+        .map((doc) => doc.uri),
+    ]);
+    for (const id of dirtyProjects) if (!activeIds.has(id)) dirtyProjects.delete(id);
     for (const [id, previous] of analyses)
-      if (!jobs.some((job) => job.id === id)) {
-        for (const uri of previous.documents.keys()) await connection.sendDiagnostics({ uri, diagnostics: [] });
+      if (!activeIds.has(id)) {
+        for (const uri of previous.documents.keys()) publish(connection.sendDiagnostics({ uri, diagnostics: [] }));
         analyses.delete(id);
         analysisVersions.delete(id);
+        const index = sceneIndexes.get(id);
+        sceneIndexes.delete(id);
+        if (index) await index.dispose();
       }
-    await Promise.all(
-      jobs.map(
-        (job) =>
-          new Promise<void>((resolve) => {
-            const worker = new Worker(path.join(bundle, "analysis-worker.cjs"));
-            workers.add(worker);
-            worker.once("message", ({ analysis, error }: { analysis?: Analysis; error?: string }) => {
-              if (version === revision && !disposed) {
-                if (error) connection.console.error(error);
-                if (analysis) {
-                  for (const oldUri of analyses.get(job.id)?.documents.keys() ?? [])
-                    if (!analysis.documents.has(oldUri))
-                      publish(
-                        connection.sendDiagnostics({
-                          uri: oldUri,
-                          diagnostics: [],
-                        }),
-                      );
-                  analyses.set(job.id, analysis);
-                  analysisVersions.set(job.id, version);
-                  for (const uri of analysis.diagnostics.keys()) publishDiagnostics(uri);
-                  if (analysis.truncated)
-                    connection.window.showWarningMessage(
-                      "ChoiceScript analysis reached its work limit; some results are incomplete.",
-                    );
-                }
+    for (const job of jobs) {
+      if (version !== revision || disposed) return;
+      if (activeAnalysis && activeAnalysis.id !== job.id) await stopWorker(activeAnalysis.worker);
+      if (version !== revision || disposed) return;
+      await new Promise<void>((resolve) => {
+        const worker = activeAnalysis?.id === job.id ? activeAnalysis.worker : createWorker(job.id);
+        activeAnalysis!.busy = true;
+        worker.once("message", async ({ snapshot, error }: { snapshot?: AnalysisSnapshot; error?: string }) => {
+          try {
+            if (version !== revision || disposed) {
+              await stopWorker(worker);
+              return;
+            }
+            if (activeAnalysis?.worker === worker) activeAnalysis.busy = false;
+            if (error) connection.console.error(error);
+            if (snapshot) {
+              const previous = analyses.get(job.id);
+              snapshot = mergeSnapshot(previous, snapshot);
+              for (const oldUri of analyses.get(job.id)?.documents.keys() ?? [])
+                if (!snapshot.documents.has(oldUri))
+                  publish(connection.sendDiagnostics({ uri: oldUri, diagnostics: [] }));
+              analyses.set(job.id, snapshot);
+              analysisVersions.set(job.id, version);
+              dirtyProjects.delete(job.id);
+              notifyAnalysis();
+              for (const [uri, current] of snapshot.diagnostics) {
+                const old = previous?.diagnostics.get(uri);
+                const unchanged =
+                  old &&
+                  previous?.documents.get(uri)?.version === snapshot.documents.get(uri)?.version &&
+                  ((old.length === 0 && current.length === 0) || JSON.stringify(old) === JSON.stringify(current));
+                if (!unchanged) publishDiagnostics(uri);
               }
-              void worker.terminate();
-              workers.delete(worker);
-              resolve();
-            });
-            worker.once("error", (error) => {
-              connection.console.error(error.message);
-              workers.delete(worker);
-              resolve();
-            });
-            worker.once("exit", () => {
-              workers.delete(worker);
-              resolve();
-            });
-            worker.postMessage({
-              documents: job.documents,
-              options: { quoteWarnings },
-            });
-          }),
-      ),
-    );
-    if (version === revision && !disposed) connection.languages.semanticTokens.refresh();
+              connection.languages.semanticTokens.refresh();
+              if (snapshot.truncated)
+                connection.window.showWarningMessage(
+                  "ChoiceScript analysis reached its work limit; some results are incomplete.",
+                );
+            }
+          } catch (error) {
+            connection.console.error(String(error));
+            await stopWorker(worker);
+          } finally {
+            resolve();
+          }
+        });
+        const failed = (error: Error) => {
+          connection.console.error(error.message);
+          void stopWorker(worker).then(() => resolve());
+        };
+        const exited = () => resolve();
+        worker.once("error", failed);
+        worker.once("exit", exited);
+        // Reused workers must not accumulate handlers from completed generations.
+        worker.once("message", () => {
+          worker.off("error", failed);
+          worker.off("exit", exited);
+        });
+        worker.postMessage({ documents: job.documents, sources: job.sources, options: { quoteWarnings } });
+      });
+    }
+    // Only one worker exists at a time; foreground edits interrupt background indexing.
+    for (const index of sceneIndexes.values()) {
+      if (version !== revision || disposed) return;
+      await indexScenes(index, version);
+    }
   } catch (error) {
     connection.console.error(String(error));
   }
@@ -304,6 +532,7 @@ connection.onInitialized(async () => {
   } catch {}
 });
 const bufferTexts = new Map<string, string>();
+const bufferVersions = new Map<string, number>();
 const pendingDiskChecks = new Set<Promise<void>>();
 function checkDiskDifference(document: TextDocument) {
   const project = projectFor(projects, document.uri);
@@ -318,20 +547,49 @@ function checkDiskDifference(document: TextDocument) {
   void check.finally(() => pendingDiskChecks.delete(check));
 }
 documents.onDidChangeContent(({ document }) => {
+  preferredUri = document.uri;
   const previous = bufferTexts.get(document.uri);
+  const previousVersion = bufferVersions.get(document.uri);
   const text = document.getText();
   bufferTexts.set(document.uri, text);
+  bufferVersions.set(document.uri, document.version);
   if (previous === undefined) checkDiskDifference(document);
   else if (previous !== text) {
     const project = projectFor(projects, document.uri);
     if (project) runner.markStale(project.id);
   }
-  schedule();
+  const id = projectFor(projects, document.uri)?.id ?? document.uri,
+    snapshot = analyses.get(id);
+  if (
+    previous !== undefined &&
+    previousVersion !== undefined &&
+    snapshot &&
+    analysisVersions.get(id) === revision &&
+    !dirtyProjects.has(id)
+  ) {
+    const updated = updatePlainProse(
+      snapshot,
+      analysisUri(snapshot, document.uri),
+      previous,
+      text,
+      previousVersion,
+      document.version,
+    );
+    if (updated) {
+      analyses.set(id, updated);
+      publishDiagnostics(document.uri);
+      notifyAnalysis();
+      connection.languages.semanticTokens.refresh();
+      return;
+    }
+  }
+  schedule([document.uri]);
 });
 documents.onDidClose(({ document }) => {
   bufferTexts.delete(document.uri);
+  bufferVersions.delete(document.uri);
   checkDiskDifference(document);
-  schedule();
+  schedule([document.uri]);
 });
 connection.onDidChangeWatchedFiles(async ({ changes }) => {
   const changedSources: string[] = [];
@@ -344,6 +602,7 @@ connection.onDidChangeWatchedFiles(async ({ changes }) => {
       name = path.basename(file).toLowerCase();
     if (affected.length > 0 && /\.txt$/i.test(file)) {
       changedSources.push(change.uri);
+      for (const project of affected) sceneIndexes.get(project.id)?.invalidate(change.uri);
     }
     discoveryChanged ||=
       (name === "startup.txt" && change.type !== 2) ||
@@ -351,7 +610,7 @@ connection.onDidChangeWatchedFiles(async ({ changes }) => {
       (change.type !== 2 && projects.some((project) => contains(file, project.sceneDir)));
   }
   // Owned logs/build output and asset-only events must not cancel language analysis.
-  if (changedSources.length) schedule();
+  if (changedSources.length) schedule(changedSources);
   if (discoveryChanged) {
     await refreshProjects();
     schedule();
@@ -374,36 +633,36 @@ connection.onDidChangeConfiguration((e) => {
   quoteWarnings = e.settings?.bifoil?.choicescript?.quoteWarnings ?? true;
   schedule();
 });
-connection.onCompletion((p) => {
-  const a = get(p.textDocument.uri);
+connection.onCompletion(async (p, token) => {
+  const a = await get(p.textDocument.uri, [p.position], false, token);
   return a ? completions(a, analysisUri(a, p.textDocument.uri), p.position) : [];
 });
-connection.onHover((p) => {
-  const a = get(p.textDocument.uri);
+connection.onHover(async (p, token) => {
+  const a = await get(p.textDocument.uri, [p.position], false, token);
   return a ? hover(a, analysisUri(a, p.textDocument.uri), p.position) : null;
 });
-connection.onDefinition((p) => {
-  const a = get(p.textDocument.uri);
+connection.onDefinition(async (p, token) => {
+  const a = await get(p.textDocument.uri, [p.position], false, token);
   return a ? definition(a, analysisUri(a, p.textDocument.uri), p.position) : null;
 });
-connection.onReferences((p) => {
-  const a = get(p.textDocument.uri);
+connection.onReferences(async (p, token) => {
+  const a = await get(p.textDocument.uri, [p.position], true, token);
   return a ? references(a, analysisUri(a, p.textDocument.uri), p.position, p.context.includeDeclaration) : [];
 });
-connection.onPrepareRename((p) => {
-  const a = get(p.textDocument.uri);
+connection.onPrepareRename(async (p, token) => {
+  const a = await get(p.textDocument.uri, [p.position], false, token);
   return a ? prepareRename(a, analysisUri(a, p.textDocument.uri), p.position) : null;
 });
-connection.onRenameRequest((p) => {
-  const a = get(p.textDocument.uri);
+connection.onRenameRequest(async (p, token) => {
+  const a = await get(p.textDocument.uri, [p.position], true, token);
   try {
     return a ? rename(a, analysisUri(a, p.textDocument.uri), p.position, p.newName) : null;
   } catch (e) {
     throw new ResponseError(ErrorCodes.InvalidParams, String(e));
   }
 });
-connection.onDocumentSymbol((p) => {
-  const a = get(p.textDocument.uri);
+connection.onDocumentSymbol(async (p, token) => {
+  const a = await get(p.textDocument.uri, [], false, token);
   return a ? documentSymbols(a, analysisUri(a, p.textDocument.uri)) : [];
 });
 connection.onWorkspaceSymbol((p) =>
@@ -419,22 +678,37 @@ connection.onWorkspaceSymbol((p) =>
         })),
     ),
 );
-connection.onFoldingRanges((p) => {
-  const a = get(p.textDocument.uri);
-  return a ? folding(a, analysisUri(a, p.textDocument.uri)) : [];
+connection.onFoldingRanges(async (p, token) => {
+  const snapshot = await snapshotForRequest(p.textDocument.uri, token);
+  return snapshot ? snapshotFolding(snapshot, analysisUri(snapshot, p.textDocument.uri)) : [];
 });
-connection.onSelectionRanges((p) => {
-  const a = get(p.textDocument.uri);
+connection.onSelectionRanges(async (p, token) => {
+  const a = await get(p.textDocument.uri, p.positions, false, token);
   return a ? selections(a, analysisUri(a, p.textDocument.uri), p.positions) : [];
 });
-connection.languages.semanticTokens.on((p) => {
-  const a = get(p.textDocument.uri);
-  return a ? encodeTokens(a, analysisUri(a, p.textDocument.uri)) : { data: [] };
+connection.languages.semanticTokens.on(async (p, token) => {
+  const snapshot = await snapshotForRequest(p.textDocument.uri, token);
+  return snapshot ? snapshotTokens(snapshot, analysisUri(snapshot, p.textDocument.uri)) : { data: [] };
 });
 connection.onRequest("choicescript/projects", () => projects);
-connection.onRequest("choicescript/wordCount", (p: { uri: string }) => {
-  const a = get(p.uri);
-  return a?.wordCounts.get(analysisUri(a, p.uri)) ?? 0;
+connection.onRequest("choicescript/indexStatus", (): IndexStatus[] =>
+  projects.map((project) => {
+    const index = sceneIndexes.get(project.id),
+      snapshot = analyses.get(project.id);
+    return {
+      projectId: project.id,
+      scenes: index?.sources?.length ?? 0,
+      indexed: index?.cached.size ?? 0,
+      words: [...(snapshot?.wordCounts.values() ?? [])].reduce((total, words) => total + words, 0),
+      failures: index?.failed.size ?? 0,
+      complete: !!snapshot && !snapshot.incomplete && !snapshot.truncated && !dirtyProjects.has(project.id),
+      limited: !!snapshot?.truncated,
+    };
+  }),
+);
+connection.onRequest("choicescript/wordCount", async (p: { uri: string }, token) => {
+  const snapshot = await snapshotForRequest(p.uri, token);
+  return snapshot?.wordCounts.get(analysisUri(snapshot, p.uri)) ?? 0;
 });
 const pendingStarts = new Map<string, { projectId: string; cancelled: boolean }>();
 async function execute(request: JobRequest) {
@@ -478,11 +752,14 @@ connection.onExecuteCommand((p) => execute(p.arguments?.[0]));
 connection.onRequest("choicescript/job", execute);
 async function dispose() {
   disposed = true;
+  notifyAnalysis();
   if (diagnosticTimer) clearTimeout(diagnosticTimer);
   queuedDiagnostics.clear();
   if (timer) clearTimeout(timer);
-  for (const w of workers) void w.terminate();
+  for (const w of workers) void stopWorker(w);
+  await Promise.all([...workers].map((worker) => stopWorker(worker)));
   await runner.dispose();
+  await Promise.all([...sceneIndexes.values()].map((index) => index.dispose()));
 }
 connection.onShutdown(dispose);
 connection.onExit(() => void dispose());

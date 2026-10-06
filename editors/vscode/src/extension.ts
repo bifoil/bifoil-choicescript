@@ -16,6 +16,7 @@ import {
   PROTOCOL_VERSION,
   SEED_ERROR,
   SEED_RANGE_ERROR,
+  serverNodeArgs,
   validSeedRange
 } from "@bifoil/choicescript-protocol";
 
@@ -51,7 +52,7 @@ export async function activate(context: vscode.ExtensionContext) {
     "Bifoil ChoiceScript",
     {
       command: existsSync(runtime) ? runtime : process.execPath,
-      args: [path.join(bundle, "server.cjs"), "--stdio", "--bundle-root", bundle],
+      args: [...serverNodeArgs, path.join(bundle, "server.cjs"), "--stdio", "--bundle-root", bundle],
       transport: TransportKind.stdio,
       options: {
         env: {

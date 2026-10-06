@@ -5,7 +5,7 @@ import type { Readable } from "node:stream";
 import { cp, lstat, mkdir, mkdtemp, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { StringDecoder } from "node:string_decoder";
 import { createReadStream, createWriteStream } from "node:fs";
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -21,11 +21,13 @@ import {
   PROTOCOL_VERSION,
   SEED_ERROR,
   SEED_RANGE_ERROR,
+  toolNodeArgs,
   validIterations,
   validSeed,
   validSeedRange,
 } from "@bifoil/choicescript-protocol";
 import { contains, exists, projectSources, sameFileUri } from "./projects.js";
+import { ProcessSlot } from "./processes.js";
 
 const enginePaths = new Set(
   runtimeInventory.files.flatMap((file) => {
@@ -74,6 +76,7 @@ export class ToolRunner {
   private readonly starts = new Map<string, Promise<void>>();
   private readonly creates = new Map<string, Promise<void>>();
   private readonly revisions = new Map<string, number>();
+  private readonly toolSlot = new ProcessSlot();
   private closing = false;
   private readonly cleanupPaths = new Set<string>();
   constructor(
@@ -180,9 +183,11 @@ export class ToolRunner {
   }
   async capture(cwd: string, script: string, args: string[], job?: Job) {
     this.check(job);
+    const release = await this.toolSlot.acquire(job?.controller.signal);
+    try {
       this.check(job);
       return await new Promise<string>((resolve, reject) => {
-        const child = spawn(this.node, [script, ...args], { cwd, windowsHide: true });
+        const child = spawn(this.node, [...toolNodeArgs, script, ...args], { cwd, windowsHide: true });
         if (job) job.child = child;
         const out: Buffer[] = [],
           err: Buffer[] = [];
@@ -224,6 +229,9 @@ export class ToolRunner {
           else resolve(Buffer.concat(out).toString());
         });
       });
+    } finally {
+      release();
+    }
   }
   async stopProject(projectId?: string, jobId?: string): Promise<JobResult> {
     if (jobId) {
@@ -526,10 +534,20 @@ export class ToolRunner {
         }
       };
       this.check(job);
-      const child = spawn(this.node, nodeArgs, {
-        cwd: stage,
-        windowsHide: true,
-      });
+      const release = await this.toolSlot.acquire(job.controller.signal);
+      let child: ChildProcessWithoutNullStreams;
+      let acquired = true;
+      try {
+        this.check(job);
+        child = spawn(this.node, [...toolNodeArgs, ...nodeArgs], {
+          cwd: stage,
+          windowsHide: true,
+        });
+        child.once("close", release);
+        acquired = false;
+      } finally {
+        if (acquired) release();
+      }
       job.child = child;
       const streams = [child.stdout, child.stderr].map((stream) => {
         const decoder = new StringDecoder("utf8");

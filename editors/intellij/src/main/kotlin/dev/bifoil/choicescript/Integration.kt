@@ -69,6 +69,8 @@ class ChoiceDescriptor(project: Project) : ProjectWideLspClientDescriptor(projec
 		val server = root.resolve("server")
 		return GeneralCommandLine(
 			BundledRuntime.node(root),
+			"--max-old-space-size=96",
+			"--max-semi-space-size=2",
 			server.resolve("server.cjs").toString(),
 			"--stdio",
 			"--bundle-root",

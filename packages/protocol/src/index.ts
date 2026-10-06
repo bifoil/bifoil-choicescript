@@ -55,3 +55,13 @@ export const commands = [
 
 export * from "./options.js";
 export { CoverageStore } from "./coverage.js";
+export * from "./runtime.js";
+export interface IndexStatus {
+  projectId: string;
+  scenes: number;
+  indexed: number;
+  words: number;
+  failures: number;
+  complete: boolean;
+  limited: boolean;
+}
