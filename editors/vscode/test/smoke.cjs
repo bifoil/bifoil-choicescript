@@ -3,16 +3,25 @@
 const vscode = require("vscode");
 const assert = require("node:assert/strict");
 exports.run = async () => {
-  const extension = vscode.extensions.getExtension("chinay.bifoil-choicescript");
+  const extension = vscode.extensions.getExtension("bifoil.choicescript");
   assert(extension);
   const api = await extension.activate();
   const events = [];
+  const interactionTimings = [];
+  const timed = async (name, action) => {
+    const start = performance.now(),
+      result = await action();
+    const ms = performance.now() - start;
+    interactionTimings.push({ name, ms });
+    assert(ms < 1000, `${name} exceeded the one-second interaction deadline: ${ms} ms`);
+    return result;
+  };
   const subscription = api.onJobEvent((e) => events.push(e));
   const waitFor = async (read) => {
     for (let i = 0; i < 600; i++) {
       const value = await read();
       if (value) return value;
-      await new Promise((r) => setTimeout(r, 50));
+      await new globalThis.Promise((r) => setTimeout(r, 50));
     }
     throw new Error("Editor workflow timed out");
   };
@@ -20,7 +29,8 @@ exports.run = async () => {
   const uri = vscode.Uri.joinPath(folder, "scenes", "startup.txt");
   const document = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(document);
-  for (let i = 0; i < 100 && document.languageId !== "choicescript"; i++) await new Promise((r) => setTimeout(r, 100));
+  for (let i = 0; i < 100 && document.languageId !== "choicescript"; i++)
+    await new globalThis.Promise((r) => setTimeout(r, 100));
   assert.equal(document.languageId, "choicescript");
   const config = vscode.workspace.getConfiguration("workbench");
   const previous = config.inspect("colorTheme")?.workspaceValue;
@@ -31,7 +41,7 @@ exports.run = async () => {
       for (let i = 0; i < 100; i++) {
         tokens = await vscode.commands.executeCommand("vscode.provideDocumentSemanticTokens", uri);
         if (tokens?.data.length) break;
-        await new Promise((r) => setTimeout(r, 100));
+        await new globalThis.Promise((r) => setTimeout(r, 100));
       }
       assert(tokens?.data.length);
       const legend = await vscode.commands.executeCommand("vscode.provideDocumentSemanticTokensLegend", uri);
@@ -60,23 +70,20 @@ exports.run = async () => {
   } finally {
     await config.update("colorTheme", previous, vscode.ConfigurationTarget.Workspace);
   }
-  const definitions = await vscode.commands.executeCommand(
-    "vscode.executeDefinitionProvider",
-    uri,
-    new vscode.Position(5, 5),
+  const hover = await timed("hover", () =>
+    vscode.commands.executeCommand("vscode.executeHoverProvider", uri, new vscode.Position(5, 5)),
+  );
+  assert(hover?.some((item) => item.contents.some((content) => content.value?.includes("gender"))));
+  const definitions = await timed("definition", () =>
+    vscode.commands.executeCommand("vscode.executeDefinitionProvider", uri, new vscode.Position(5, 5)),
   );
   assert(definitions?.length);
-  const completion = await vscode.commands.executeCommand(
-    "vscode.executeCompletionItemProvider",
-    uri,
-    new vscode.Position(5, 5),
+  const completion = await timed("completion", () =>
+    vscode.commands.executeCommand("vscode.executeCompletionItemProvider", uri, new vscode.Position(5, 5)),
   );
   assert(completion.items.some((i) => i.label === "gender"));
-  const rename = await vscode.commands.executeCommand(
-    "vscode.executeDocumentRenameProvider",
-    uri,
-    new vscode.Position(5, 5),
-    "identity",
+  const rename = await timed("rename", () =>
+    vscode.commands.executeCommand("vscode.executeDocumentRenameProvider", uri, new vscode.Position(5, 5), "identity"),
   );
   assert(rename.entries().some(([, edits]) => edits.length === 2));
   const editor = await vscode.window.showTextDocument(document);
@@ -86,6 +93,18 @@ exports.run = async () => {
     editor.selection = new vscode.Selection(0, 0, 0, 0);
   };
   try {
+    await timed("typing-to-current-hover-and-highlighting", async () => {
+      await setText(original.replace('*create gender "male"', "*create gender 7"));
+      const hover = await vscode.commands.executeCommand("vscode.executeHoverProvider", uri, new vscode.Position(5, 5));
+      assert(
+        hover.some((item) =>
+          item.contents.some((content) => content.value?.includes("Type: " + String.fromCharCode(96) + "number")),
+        ),
+      );
+      const tokens = await vscode.commands.executeCommand("vscode.provideDocumentSemanticTokens", uri);
+      assert(tokens?.data.length);
+    });
+    await setText(original);
     await setText("Hello");
     editor.selection = new vscode.Selection(0, 0, 0, 5);
     await vscode.commands.executeCommand("bifoil.choicescript.bold");
@@ -122,12 +141,12 @@ exports.run = async () => {
     const command = async (name, extra = {}) => {
       let timer;
       try {
-        return await Promise.race([
+        return await globalThis.Promise.race([
           vscode.commands.executeCommand("bifoil.choicescript." + name, {
             ...options,
             ...extra,
           }),
-          new Promise((_, reject) => {
+          new globalThis.Promise((_, reject) => {
             timer = setTimeout(() => reject(new Error(`Command timed out: ${name}`)), 60000);
           }),
         ]);
@@ -184,6 +203,7 @@ exports.run = async () => {
         JSON.stringify(
           {
             events,
+            interactionTimings,
             editor: vscode.version,
             platform: process.platform,
             arch: process.arch,

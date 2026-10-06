@@ -23,7 +23,7 @@ function send(message) {
 }
 function request(method, params) {
   const id = ++serial;
-  return new Promise((resolve, reject) => {
+  return new globalThis.Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("Timeout: " + method)), 30000);
     pending.set(id, {
       resolve: (v) => {
@@ -64,7 +64,7 @@ async function waitFor(get) {
   for (let i = 0; i < 600; i++) {
     const value = get();
     if (value) return value;
-    await new Promise((r) => setTimeout(r, 50));
+    await new globalThis.Promise((r) => setTimeout(r, 50));
   }
   throw new Error("Timed out waiting for server event");
 }

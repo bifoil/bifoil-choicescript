@@ -1,6 +1,7 @@
 package dev.bifoil.choicescript
 
 import com.intellij.execution.configurations.GeneralCommandLine
+import com.intellij.execution.process.BaseProcessHandler
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
@@ -12,7 +13,7 @@ import org.eclipse.lsp4j.jsonrpc.services.JsonNotification
 import org.eclipse.lsp4j.jsonrpc.services.JsonRequest
 import java.util.concurrent.CompletableFuture
 
-data class RandomTestOptions(val iterations: Int = 1000, val seed: Int = 0)
+data class RandomTestOptions(val iterations: Int = 1000, val seed: Long = 0)
 data class GameProject(
 	val id: String = "",
 	val root: String = "",
@@ -35,10 +36,13 @@ data class JobEvent(
 	val line: Int? = null,
 	val url: String? = null,
 	val exitCode: Int? = null,
-	val coverage: Map<String, List<Int>>? = null
+	val coverage: Map<String, List<Long>>? = null,
+	val stale: Boolean = false
 )
 
 interface ChoiceServer : Lsp4jServer {
+	@JsonNotification("choicescript/assetChanged")
+	fun assetChanged(request: Map<String, String>)
 	@JsonRequest("choicescript/projects")
 	fun projects(): CompletableFuture<List<GameProject>>
 
@@ -72,6 +76,13 @@ class ChoiceDescriptor(project: Project) : ProjectWideLspClientDescriptor(projec
 		)
 	}
 
+	override fun startServerProcess(): BaseProcessHandler<*> {
+		val handler = super.startServerProcess()
+		val ui = ChoiceUi.get(project)
+		val session = ui.sessionStarted()
+		handler.process.onExit().thenRun { ui.sessionEnded(session) }
+		return handler
+	}
 	override fun createInitializationOptions(): Any =
 		mapOf("quoteWarnings" to project.service<ChoiceSettings>().state.quoteWarnings)
 

@@ -12,5 +12,6 @@ internal object BifoilBundle {
 	private val bundle = DynamicBundle(BifoilBundle::class.java, BUNDLE)
 
 	@Nls
-	fun message(@PropertyKey(resourceBundle = BUNDLE) key: String): String = bundle.getMessage(key)
+	fun message(@PropertyKey(resourceBundle = BUNDLE) key: String, vararg params: Any): String =
+		bundle.getMessage(key, *params)
 }

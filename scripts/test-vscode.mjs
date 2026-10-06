@@ -1,5 +1,5 @@
 import { runTests } from "@vscode/test-electron";
-import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { installedExtension } from "./installed-extension.mjs";
@@ -9,6 +9,7 @@ import { installedExtension } from "./installed-extension.mjs";
 const launchPath = (value) => (process.platform === "win32" ? `"${value}"` : value);
 const profile = await mkdtemp(path.join(os.tmpdir(), "bifoil-choicescript-editor-"));
 const reports = path.resolve("dist/test-results/editor");
+await rm(reports, { recursive: true, force: true });
 await mkdir(reports, { recursive: true });
 try {
   const game = path.join(profile, "game Ω");
@@ -31,13 +32,14 @@ try {
       launchPath(path.join(profile, "extensions")),
     ],
   });
+  const workflow = JSON.parse(await readFile(path.join(reports, "workflows.json"), { encoding: "utf8" }));
   await writeFile(
     path.join(reports, "result.json"),
     JSON.stringify({
       status: "passed",
       platform: process.platform,
       arch: process.arch,
-      editor: "1.109.0",
+      editor: workflow.editor,
       packaged: true,
     }),
   );

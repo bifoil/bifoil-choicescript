@@ -61,7 +61,7 @@ class ChoiceIntegrationTest : BasePlatformTestCase() {
 		assertTrue(ChoiceProjects.supports(project, file))
 		assertFalse(ChoiceProjects.supports(project, notes))
 		assertEquals(ChoiceLanguage, PsiManager.getInstance(project).findFile(file)!!.language)
-		val process = ChoiceDescriptor(project).createCommandLine().createProcess()
+		val process = ChoiceDescriptor(project).startServerProcess().process
 		val diagnostics = LinkedBlockingQueue<PublishDiagnosticsParams>()
 		val client = object : LanguageClient {
 			override fun telemetryEvent(value: Any?) {}
@@ -153,6 +153,28 @@ class ChoiceIntegrationTest : BasePlatformTestCase() {
 		} finally {
 			listening.cancel(true)
 			process.destroyForcibly()
+			FileUtil.delete(directory.toFile())
+		}
+	}
+	fun testConfiguredScenesRequireStartupAndSupportUppercaseExtension() {
+		val directory = Files.createTempDirectory("bifoil detection ")
+		try {
+			Files.createDirectories(directory.resolve("chapters"))
+			Files.writeString(directory.resolve("choicescript.json"), """{"scenes":"chapters"}""")
+			val scenePath = directory.resolve("chapters/CHAPTER.TXT")
+			Files.writeString(scenePath, "Original scene.")
+			val scene = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(scenePath)!!
+			assertFalse(ChoiceProjects.supports(project, scene))
+			Files.writeString(directory.resolve("chapters/startup.txt"), "*ending")
+			LocalFileSystem.getInstance().refreshAndFindFileByNioFile(directory.resolve("chapters/startup.txt"))
+			assertTrue(ChoiceProjects.supports(project, scene))
+			Files.delete(directory.resolve("chapters/startup.txt"))
+			scene.parent.refresh(false, true)
+			Files.writeString(directory.resolve("choicescript.json"), """{"scenes":7}""")
+			LocalFileSystem.getInstance().refreshAndFindFileByNioFile(directory.resolve("choicescript.json"))
+				?.refresh(false, false)
+			assertFalse(ChoiceProjects.supports(project, scene))
+		} finally {
 			FileUtil.delete(directory.toFile())
 		}
 	}

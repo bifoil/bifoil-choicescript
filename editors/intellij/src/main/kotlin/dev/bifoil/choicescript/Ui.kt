@@ -6,10 +6,12 @@ import com.intellij.execution.ui.ConsoleView
 import com.intellij.execution.ui.ConsoleViewContentType
 import com.intellij.ide.BrowserUtil
 import com.intellij.ide.trustedProjects.TrustedProjects
+import com.intellij.ide.util.ChooseElementsDialog
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.*
+import com.intellij.openapi.components.Service.Level.PROJECT
 import com.intellij.openapi.fileChooser.FileChooser
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.fileChooser.FileChooserFactory
@@ -35,14 +37,17 @@ import org.eclipse.lsp4j.DidChangeConfigurationParams
 import java.awt.BorderLayout
 import java.net.URI
 import java.nio.file.Path
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap.newKeySet
+import java.util.concurrent.atomic.AtomicLong
+import javax.swing.Icon
 import javax.swing.JButton
 import javax.swing.JPanel
 
 data class ChoiceState(var quoteWarnings: Boolean = true)
 
-@State(name = "BifoilChoiceScript", storages = [Storage("bifoil.choicescript.xml")])
-@Service(Service.Level.PROJECT)
+@State(name = "BifoilChoiceScript", storages = [Storage("bifoil-choicescript.xml")])
+@Service(PROJECT)
 class ChoiceSettings : PersistentStateComponent<ChoiceState> {
 	private var data = ChoiceState()
 	override fun getState() = data
@@ -51,7 +56,7 @@ class ChoiceSettings : PersistentStateComponent<ChoiceState> {
 	}
 }
 
-@Service(Service.Level.PROJECT)
+@Service(PROJECT)
 class ChoiceUi(private val project: Project) : Disposable {
 	companion object {
 		fun get(project: Project) = project.service<ChoiceUi>()
@@ -59,11 +64,45 @@ class ChoiceUi(private val project: Project) : Disposable {
 
 	@Volatile
 	var projects = emptyList<GameProject>()
+		set(value) {
+			field = value
+			project.service<ChoiceCoverage>().projectsChanged(value)
+		}
 	val console: ConsoleView = TextConsoleBuilderFactory.getInstance().createBuilder(project).console
 	val completed: MutableSet<String> = newKeySet()
+	private val trackedJobs = newKeySet<String>()
 	private val previews = mutableMapOf<String, Content>()
+	private val previewProjects = mutableMapOf<String, String>()
+	private val sessions = AtomicLong()
+	@Volatile
+	private var sessionActive = false
+	fun sessionStarted(): Long {
+		sessionActive = true
+		return sessions.incrementAndGet()
+	}
+	fun sessionEnded(session: Long) {
+		if (sessions.get() != session) return
+		sessionActive = false
+		ApplicationManager.getApplication().invokeLater {
+			if (!project.isDisposed && sessions.get() == session) {
+				project.service<ChoiceCoverage>().sessionEnded()
+				for (id in previews.keys.toList()) closePreview(id)
+				console.print(
+					"Language server stopped; rerun active operations.\n", ConsoleViewContentType.ERROR_OUTPUT
+				)
+			}
+		}
+	}
+	private fun closePreview(id: String) {
+		val content = previews.remove(id) ?: return
+		previewProjects.remove(id)
+		ToolWindowManager.getInstance(project).getToolWindow("Bifoil ChoiceScript")?.contentManager?.removeContent(
+			content, true
+		)
+	}
 	fun event(event: JobEvent) = ApplicationManager.getApplication().invokeLater {
 		if (project.isDisposed) return@invokeLater
+		project.service<ChoiceCoverage>().event(event)
 		if (event.message != null) console.print(
 			"[${event.kind}] ${event.message}\n", ConsoleViewContentType.NORMAL_OUTPUT
 		)
@@ -75,12 +114,16 @@ class ChoiceUi(private val project: Project) : Disposable {
 				"${file.name}:${(event.line ?: 0) + 1}\n", OpenFileHyperlinkInfo(project, file, event.line ?: 0)
 			)
 		}
-		if (event.kind == "stale") previews[event.jobId]?.displayName = BifoilBundle.message("preview.source.changed.title")
+		if (event.kind == "stale") previews[event.jobId]?.displayName =
+			BifoilBundle.message("preview.source.changed.title")
 		if (event.kind == "coverage") console.print(
 			"Coverage: ${event.coverage?.mapValues { (_, counts) -> "${counts.count { it > 0 }}/${counts.size} lines" }}\n",
 			ConsoleViewContentType.NORMAL_OUTPUT
 		)
-		if (event.kind == "completed") completed.add(event.jobId)
+		if (event.kind == "completed") {
+			if (event.jobId in trackedJobs) completed.add(event.jobId)
+			closePreview(event.jobId)
+		}
 		if (event.kind == "completed") console.print(
 			"Exit: ${event.exitCode}\n",
 			if (event.exitCode == 0) ConsoleViewContentType.NORMAL_OUTPUT else ConsoleViewContentType.ERROR_OUTPUT
@@ -88,10 +131,13 @@ class ChoiceUi(private val project: Project) : Disposable {
 	}
 
 	fun track(result: JobResult) {
+		trackedJobs.add(result.jobId)
+		val session = sessions.get()
 		ProgressManager.getInstance().run(object : Task.Backgroundable(project, "Bifoil ChoiceScript operation", true) {
-				override fun run(indicator: ProgressIndicator) {
-					indicator.isIndeterminate = true
-					while (!completed.remove(result.jobId) && !project.isDisposed) {
+			override fun run(indicator: ProgressIndicator) {
+				indicator.isIndeterminate = true
+				try {
+					while (!completed.remove(result.jobId) && !project.isDisposed && sessionActive && sessions.get() == session) {
 						if (indicator.isCanceled) {
 							request(
 								project, {
@@ -109,8 +155,12 @@ class ChoiceUi(private val project: Project) : Disposable {
 						}
 						Thread.sleep(100)
 					}
+				} finally {
+					trackedJobs.remove(result.jobId)
+					completed.remove(result.jobId)
 				}
-			})
+			}
+		})
 	}
 
 	fun preview(result: JobResult) {
@@ -120,6 +170,7 @@ class ChoiceUi(private val project: Project) : Disposable {
 			BrowserUtil.browse(url)
 			return
 		}
+		for (id in previewProjects.filterValues { it == result.projectId }.keys.toList()) closePreview(id)
 		val browser = JBCefBrowser(url)
 		val panel = JPanel(BorderLayout())
 		panel.add(browser.component, BorderLayout.CENTER)
@@ -130,7 +181,8 @@ class ChoiceUi(private val project: Project) : Disposable {
 		content.setDisposer {
 			Disposer.dispose(browser)
 			previews.remove(result.jobId)
-			request(project, {
+			previewProjects.remove(result.jobId)
+			if (!project.isDisposed && sessionActive) request(project, {
 				it.job(
 					mapOf(
 						"protocolVersion" to 1,
@@ -143,10 +195,10 @@ class ChoiceUi(private val project: Project) : Disposable {
 			})
 		}
 		previews[result.jobId] = content
+		previewProjects[result.jobId] = result.projectId
 		window.contentManager.addContent(content)
 		// Kotlin exposes this property as read-only against the 2026.1 baseline.
-		@Suppress("UsePropertyAccessSyntax")
-		window.contentManager.setSelectedContent(content)
+		@Suppress("UsePropertyAccessSyntax") window.contentManager.setSelectedContent(content)
 		window.show()
 	}
 
@@ -176,7 +228,10 @@ class ChoiceToolWindow : ToolWindowFactory {
 }
 
 fun <T> request(
-	project: Project, callback: (ChoiceServer) -> java.util.concurrent.CompletableFuture<T>, done: (T?) -> Unit = {}
+	project: Project,
+	callback: (ChoiceServer) -> java.util.concurrent.CompletableFuture<T>,
+	onError: () -> Unit = {},
+	done: (T?) -> Unit = {}
 ) {
 	ApplicationManager.getApplication().executeOnPooledThread {
 		try {
@@ -192,6 +247,7 @@ fun <T> request(
 			val result = client.sendRequestSync { callback(it as ChoiceServer) }
 			ApplicationManager.getApplication().invokeLater { if (!project.isDisposed) done(result) }
 		} catch (error: Exception) {
+			onError()
 			ApplicationManager.getApplication().invokeLater {
 				if (!project.isDisposed) Messages.showErrorDialog(
 					project, error.message ?: error.toString(), "Bifoil ChoiceScript"
@@ -223,6 +279,10 @@ open class ToolAction(private val operation: String) : AnAction() {
 		}
 		request(project, { it.projects() }) { games ->
 			if (games.isNullOrEmpty()) {
+				if (operation == "stop") {
+					execute(project, args)
+					return@request
+				}
 				Messages.showInfoMessage(
 					project, "Open a folder containing scenes/startup.txt.", "Bifoil ChoiceScript"
 				)
@@ -231,11 +291,11 @@ open class ToolAction(private val operation: String) : AnAction() {
 			val active = FileEditorManager.getInstance(project).selectedFiles.firstOrNull()
 			val selected = games.firstOrNull { active != null && active.toNioPath().startsWith(Path.of(it.sceneDir)) }
 				?: if (games.size == 1) games.first() else {
-					val dialog = object : com.intellij.ide.util.ChooseElementsDialog<GameProject>(
+					val dialog = object : ChooseElementsDialog<GameProject>(
 						project, games, "Bifoil ChoiceScript", "Select a game"
 					) {
 						override fun getItemText(item: GameProject) = item.name + " — " + item.root
-						override fun getItemIcon(item: GameProject): javax.swing.Icon? = null
+						override fun getItemIcon(item: GameProject): Icon? = null
 
 						init {
 							myChooser.setSingleSelectionMode()
@@ -251,11 +311,16 @@ open class ToolAction(private val operation: String) : AnAction() {
 					"RandomTest",
 					null,
 					(selected.randomtest?.iterations ?: 1000).toString(),
-					null
-				)?.toIntOrNull() ?: return@request
+					RandomTestInput.iterationsValidator
+				)?.let(RandomTestInput::iterations) ?: return@request
 				val seed = Messages.showInputDialog(
-					project, "Seed", "RandomTest", null, (selected.randomtest?.seed ?: 0).toString(), null
-				)?.toIntOrNull() ?: return@request
+					project,
+					"Seed",
+					"RandomTest",
+					null,
+					(selected.randomtest?.seed ?: 0).toString(),
+					RandomTestInput.seedValidator(count)
+				)?.let(RandomTestInput::seed) ?: return@request
 				args["iterations"] = count
 				args["seed"] = seed
 			}
@@ -269,18 +334,21 @@ open class ToolAction(private val operation: String) : AnAction() {
 		}
 	}
 
-	private fun execute(project: Project, args: Map<String, Any>) {
+	private fun execute(project: Project, options: Map<String, Any>) {
+		val tracked = operation in listOf("quicktest", "randomtest", "exportHtml")
+		val args = if (tracked) options + ("jobId" to UUID.randomUUID().toString()) else options
 		ToolWindowManager.getInstance(project).getToolWindow("Bifoil ChoiceScript")?.show()
-		request(
-			project, { server ->
-				if (operation == "run") server.job(args + ("operation" to "stop"))
-					.thenCompose { server.job(args) } else server.job(args)
-			}) { result ->
+		request(project, { server ->
+			if (tracked) ChoiceUi.get(project).track(JobResult(args["jobId"] as String, args["projectId"] as String))
+			if (operation == "run") server.job(args + ("operation" to "stop"))
+				.thenCompose { server.job(args) } else server.job(args)
+		}, onError = { (args["jobId"] as? String)?.let { ChoiceUi.get(project).completed.add(it) } }) { result ->
 			if (result != null) {
 				ChoiceUi.get(project).preview(result)
-				if (operation in listOf("quicktest", "randomtest", "exportHtml")) ChoiceUi.get(project).track(result)
 				if (operation == "createProject") Messages.showInfoMessage(
-					project, "Created ${args["destination"]}. Open that folder to edit your game.", "Bifoil ChoiceScript"
+					project,
+					"Created ${args["destination"]}. Open that folder to edit your game.",
+					"Bifoil ChoiceScript"
 				)
 			}
 		}

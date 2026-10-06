@@ -8,6 +8,11 @@ import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
 class ChoiceEditingTest : BasePlatformTestCase() {
+	override fun setUp() {
+		super.setUp()
+		// Keep coverage active so temporary editor files exercise its document listener.
+		project.getService(ChoiceCoverage::class.java)
+	}
 	fun testActionAndTemplateMessagesAreRegistered() {
 		val manager = ActionManager.getInstance()
 		val actions = listOf(

@@ -1,6 +1,7 @@
 package dev.bifoil.choicescript
 
 import com.intellij.lexer.LexerBase
+import com.intellij.openapi.diff.DiffColors
 import com.intellij.openapi.editor.HighlighterColors
 import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.editor.colors.TextAttributesKey
@@ -19,6 +20,7 @@ import javax.swing.Icon
 import com.intellij.openapi.editor.DefaultLanguageHighlighterColors as C
 
 object ChoiceColors {
+	val coverage = TextAttributesKey.createTextAttributesKey("BIFOIL_CHOICESCRIPT_COVERAGE", DiffColors.DIFF_INSERTED)
 	val names = listOf(
 		"keyword",
 		"comment",
@@ -191,7 +193,9 @@ class ChoiceColorsPage : ColorSettingsPage {
 
 	override fun getAdditionalHighlightingTagToDescriptorMap() = ChoiceColors.keys
 	override fun getAttributeDescriptors() =
-		ChoiceColors.names.map { AttributesDescriptor(it, ChoiceColors.keys.getValue(it)) }.toTypedArray()
+		(ChoiceColors.names.map { AttributesDescriptor(it, ChoiceColors.keys.getValue(it)) } + AttributesDescriptor(
+			BifoilBundle.message("coverage.color.description"), ChoiceColors.coverage
+		)).toTypedArray()
 
 	override fun getColorDescriptors(): Array<ColorDescriptor> = ColorDescriptor.EMPTY_ARRAY
 	override fun getDisplayName() = "Bifoil ChoiceScript"
