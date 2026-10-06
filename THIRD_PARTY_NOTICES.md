@@ -22,6 +22,10 @@ Each packaged runtime includes `NODE-LICENSE` and `provenance.json`, which ident
 
 `pnpm-lock.yaml` records resolved dependency versions and integrity information. Packaging collects dependency licenses and includes them with the server distribution. Each library remains subject to its own license.
 
+Development VSIX packaging uses Microsoft's `@vscode/vsce` 4.0.0, with `tinyglobby` and `picomatch` for file discovery
+and the Secretlint core/rules for secret detection. The legacy `braces` dependency chain has been removed; no local
+dependency patch is required.
+
 ## JetBrains and JVM build dependencies
 
 The JetBrains platform, Kotlin, Gradle, Plugin Verifier, and other JVM dependencies are obtained through their respective distributions and repositories. The plugin does not bundle an IDE or JetBrains Runtime.

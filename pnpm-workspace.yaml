@@ -5,8 +5,6 @@ packages:
 allowBuilds:
   "@vscode/vsce-sign": true
   esbuild: true
-  # Marketplace credential storage is unused by local packaging.
-  keytar: false
 
 overrides:
   esbuild@>=0.27.3 <0.28.1: ">=0.28.1"
