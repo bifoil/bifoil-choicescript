@@ -28,10 +28,3 @@ const grammar = {
 };
 await mkdir("editors/vscode/syntaxes", { recursive: true });
 await writeFile("editors/vscode/syntaxes/choicescript.tmLanguage.json", JSON.stringify(grammar, null, 2) + "\n");
-await mkdir("editors/intellij/src/main/resources/choicescript", {
-  recursive: true,
-});
-await writeFile(
-  "editors/intellij/src/main/resources/choicescript/commands.json",
-  JSON.stringify(commands, null, 2) + "\n",
-);

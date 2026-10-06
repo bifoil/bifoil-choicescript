@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -54,8 +54,15 @@ test("engine verification handles submodule metadata, modified files, revision m
   }
 });
 
-test("bundled engines retain the pinned bytes and exclude Git metadata", async () => {
-  const expected = JSON.parse(await readFile(path.join(root, "vendor/checksums.json"), "utf8"));
+test("bundled engines retain the selected pinned runtime bytes and exclude development files", async () => {
+  const checksums = JSON.parse(await readFile(path.join(root, "vendor/checksums.json"), "utf8"));
+  const inventory = JSON.parse(await readFile(path.join(root, "vendor/runtime-files.json"), "utf8"));
+  const lock = JSON.parse(await readFile(path.join(root, "vendor/choicescript.lock.json"), "utf8"));
+  assert.equal(inventory.engineCommit, lock.commit);
+  assert(inventory.files.includes("LICENSE.txt"));
+  assert(inventory.files.includes("editor/embeddable-autotester.js"));
+  assert(!inventory.files.includes("js.jar"));
+  const expected = Object.fromEntries(inventory.files.map((file: string) => [file, checksums[file]]));
   for (const relative of ["dist/server/vendor/choicescript", "editors/vscode/server/vendor/choicescript"]) {
     const directory = path.join(root, relative);
     const actual: Record<string, string> = {};

@@ -1,10 +1,12 @@
 import { zipSync } from "fflate";
 import { createHash } from "node:crypto";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { provision } from "./runtime.mjs";
 
 const base = "editors/intellij/src/main/resources/bundle";
+const serverOnly = process.argv.includes("--server-only");
+if (!serverOnly) await rm(base, { recursive: true, force: true });
 await mkdir(base, { recursive: true });
 async function zipDir(source, name) {
   const files = {};
@@ -12,7 +14,8 @@ async function zipDir(source, name) {
     for (const file of await readdir(dir, { withFileTypes: true })) {
       const rel = prefix + file.name;
       if (file.isDirectory()) await walk(path.join(dir, file.name), rel + "/");
-      else files[rel] = new Uint8Array(await readFile(path.join(dir, file.name)));
+      else if (name !== "server.zip" || !rel.endsWith(".map"))
+        files[rel] = new Uint8Array(await readFile(path.join(dir, file.name)));
     }
   }
   await walk(source);
@@ -20,7 +23,6 @@ async function zipDir(source, name) {
   await writeFile(path.join(base, name), buffer);
   return createHash("sha256").update(buffer).digest("hex");
 }
-const serverOnly = process.argv.includes("--server-only");
 const manifest = serverOnly ? JSON.parse(await readFile(path.join(base, "manifest.json"), { encoding: "utf8" })) : {};
 manifest["server.zip"] = await zipDir("dist/server", "server.zip");
 const lock = JSON.parse(await readFile("runtime-lock.json", { encoding: "utf8" }));

@@ -8,7 +8,7 @@ Bifoil ChoiceScript is an unofficial personal project by chinay, unaffiliated wi
 - Pinned revision: `60a6c3ee7393c9ee7e42650b8e1642ae38e3cb6a`.
 - License: ChoiceScript License 1.0, preserved as `vendor/choicescript/LICENSE.txt` in source and with the bundled engine in distributions.
 
-The engine is an unmodified Git submodule at `vendor/choicescript`. Original source comments and notices are retained. `vendor/choicescript.lock.json` records the repository, revision, and original archive provenance; `vendor/checksums.json` records per-file hashes checked by the build.
+The engine is an unmodified Git submodule at `vendor/choicescript`. Original source comments and notices are retained. `vendor/choicescript.lock.json` records the repository, revision, and original archive provenance; `vendor/checksums.json` records per-file hashes checked by the build. `vendor/runtime-files.json` selects the original runtime, official test runners, template, and license files shipped in plugins and staged games; upstream development files remain in the source submodule.
 
 New games use the pinned upstream template and include `CHOICESCRIPT-LICENSE.txt` and `UPSTREAM-TEMPLATE.md`. Bifoil ChoiceScript's MIT license does not replace the license for that material.
 

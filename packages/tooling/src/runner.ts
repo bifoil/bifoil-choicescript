@@ -1,4 +1,5 @@
 import { URI } from "vscode-uri";
+import runtimeInventory from "../../../vendor/runtime-files.json" with { type: "json" };
 import { finished as streamFinished } from "node:stream/promises";
 import { cp, mkdir, mkdtemp, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { createReadStream, createWriteStream } from "node:fs";
@@ -17,6 +18,13 @@ import {
   PROTOCOL_VERSION,
 } from "@bifoil/choicescript-protocol";
 import { contains, exists, sameFileUri } from "./projects.js";
+
+const enginePaths = new Set(
+  runtimeInventory.files.flatMap((file) => {
+    const parts = file.split("/");
+    return parts.map((_, index) => parts.slice(0, index + 1).join("/"));
+  }),
+);
 
 type Job = {
   id: string;
@@ -84,7 +92,10 @@ export class ToolRunner {
     try {
       await cp(this.engine, dir, {
         recursive: true,
-        filter: (source) => path.basename(source) !== ".git",
+        filter: (source) => {
+          const relative = path.relative(this.engine, source).split(path.sep).join("/");
+          return relative === "" || enginePaths.has(relative);
+        },
       });
       const game = path.join(dir, "web/mygame");
       await rm(path.join(game, "scenes"), { recursive: true, force: true });
