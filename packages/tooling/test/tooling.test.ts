@@ -135,6 +135,9 @@ test("official template, QuickTest, RandomTest, snapshot preview, export, cancel
     ]);
     const stage = runner.jobs.get(preview.jobId)!.stage;
     await assert.rejects(readFile(path.join(stage, ".git")), { code: "ENOENT" });
+    await assert.rejects(readFile(path.join(stage, "js.jar")), { code: "ENOENT" });
+    await assert.rejects(readFile(path.join(stage, "tests/autotest.html")), { code: "ENOENT" });
+    assert((await readFile(path.join(stage, "editor/embeddable-autotester.js"), "utf8")).length > 0);
     assert(preview.url);
     assert.equal((await fetch(preview.url!)).status, 200);
     const scene = new URL("scenes/startup.txt", preview.url);

@@ -64,12 +64,12 @@ test(
       assert(events.some((e) => e.jobId === recovered.jobId && e.kind === "stale" && e.stale));
       const pending = start("run");
       runner.markStale(project.id);
-      const disposed = runner.dispose();
-      const preview = await pending;
-      await disposed;
+      const pendingId = events.findLast((event) => event.kind === "started")!.jobId;
+      const aborted = assert.rejects(pending, /aborted|cancelled/i);
+      await runner.dispose();
+      await aborted;
       assert.equal(runner.jobs.size, 0);
-      assert(events.some((e) => e.jobId === preview.jobId && e.kind === "started" && e.stale));
-      await assert.rejects(fetch(preview.url!));
+      assert(events.some((e) => e.jobId === pendingId && e.kind === "completed" && e.stale && e.exitCode === 130));
       await assert.rejects(start("run"), /shutting down/);
     } finally {
       await runner.dispose();
@@ -92,7 +92,7 @@ test("invalid tooling options fail before staging or publishing a started job", 
     runner.start({ protocolVersion: 1, operation: "randomtest", trusted: true, ...options }, project, []);
   try {
     await assert.rejects(request({ iterations: 0 }), /Iterations must be an integer/);
-    await assert.rejects(request({ seed: Number.NaN }), /seed must be an integer/);
+    await assert.rejects(request({ seed: Number.NaN }), /Seed must be an integer/);
     await assert.rejects(request({ operation: "exportHtml" }), /Choose an export destination/);
     assert.equal(stages, 0);
     assert.equal(runner.jobs.size, 0);

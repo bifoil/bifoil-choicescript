@@ -1,10 +1,40 @@
 import { URI } from "vscode-uri";
-import { access, readdir, readFile } from "node:fs/promises";
+import { access, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { BufferSnapshot, Project } from "@bifoil/choicescript-protocol";
+import {
+  type BufferSnapshot,
+  type Project,
+  validIterations,
+  validSeed,
+  validSeedRange,
+} from "@bifoil/choicescript-protocol";
 
 const excluded = new Set([".git", "node_modules", "vendor", "dist", "build", ".cache", ".idea", ".gradle"]);
+type ProjectConfiguration = {
+  scenes?: string;
+  assets?: string;
+  randomtest?: Project["randomtest"];
+};
+function validateConfiguration(value: unknown): asserts value is ProjectConfiguration {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Expected a JSON object.");
+  const config = value as Record<string, unknown>;
+  for (const key of ["scenes", "assets"]) {
+    const directory = config[key];
+    if (directory !== undefined && (typeof directory !== "string" || path.isAbsolute(directory)))
+      throw new Error(key + " must be a relative directory.");
+  }
+  if (config.randomtest !== undefined) {
+    const value = config.randomtest;
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("randomtest must be an object.");
+    const options = value as Record<string, unknown>;
+    const iterations = options.iterations === undefined ? 1000 : options.iterations;
+    const seed = options.seed === undefined ? 0 : options.seed;
+    if (!validIterations(iterations)) throw new Error("Invalid RandomTest iterations.");
+    if (!validSeed(seed)) throw new Error("Invalid RandomTest seed.");
+    if (!validSeedRange(seed, iterations)) throw new Error("RandomTest seed range exceeds safe integers.");
+  }
+}
 export async function exists(file: string) {
   try {
     await access(file);
@@ -13,7 +43,17 @@ export async function exists(file: string) {
     return false;
   }
 }
-export async function discoverProjects(roots: string[]): Promise<Project[]> {
+async function regularFile(file: string) {
+  try {
+    return (await stat(file)).isFile();
+  } catch {
+    return false;
+  }
+}
+export async function discoverProjects(
+  roots: string[],
+  report: (uri: string, message: string) => void = () => {},
+): Promise<Project[]> {
   const projects = new Map<string, Project>();
   async function walk(dir: string, depth: number) {
     if (depth > 8) return;
@@ -24,23 +64,28 @@ export async function discoverProjects(roots: string[]): Promise<Project[]> {
       return;
     }
     if (entries.some((e) => e.name === "choicescript.json")) {
-      const config = JSON.parse(await readFile(path.join(dir, "choicescript.json"), "utf8"));
-      config.scenes ??= "scenes";
-      if (typeof config.scenes !== "string")
-        throw new Error(`choicescript.json in ${dir}: scenes must be a relative directory.`);
-      const scenes = path.resolve(dir, config.scenes);
-      if (await exists(path.join(scenes, "startup.txt")))
-        projects.set(scenes, {
-          id: URI.file(scenes).toString(),
-          root: dir,
-          sceneDir: scenes,
-          assetDir: path.resolve(dir, config.assets ?? "."),
-          name: path.basename(dir),
-          randomtest: config.randomtest,
-        });
-      return;
+      const configFile = path.join(dir, "choicescript.json");
+      try {
+        const config = JSON.parse(await readFile(configFile, "utf8"));
+        validateConfiguration(config);
+        const scenes = path.resolve(dir, config.scenes ?? "scenes");
+        if (await regularFile(path.join(scenes, "startup.txt")))
+          projects.set(scenes, {
+            id: URI.file(scenes).toString(),
+            root: dir,
+            sceneDir: scenes,
+            assetDir: path.resolve(dir, config.assets ?? "."),
+            name: path.basename(dir),
+            randomtest: config.randomtest,
+          });
+        return;
+      } catch (error) {
+        report(pathToFileURL(configFile).href, "Invalid choicescript.json: " + String(error));
+        // A bad configuration must not hide healthy games in this workspace.
+      }
     }
-    if (entries.some((e) => e.name.toLowerCase() === "startup.txt")) {
+    const startup = entries.find((e) => e.name.toLowerCase() === "startup.txt");
+    if (startup && (await regularFile(path.join(dir, startup.name)))) {
       const game = path.basename(dir) === "scenes" ? path.dirname(dir) : dir;
       projects.set(dir, {
         id: URI.file(dir).toString(),
@@ -73,26 +118,69 @@ export function sameFileUri(left: string, right: string) {
     b = path.resolve(fileURLToPath(right));
   return process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
 }
-export async function readProject(project: Project, buffers: BufferSnapshot[] = []) {
-  const files: BufferSnapshot[] = [];
+export interface ProjectSource {
+  uri: string;
+  file: string;
+  buffer?: BufferSnapshot;
+}
+export async function projectSources(
+  project: Project,
+  buffers: BufferSnapshot[] = [],
+  signal?: AbortSignal,
+): Promise<ProjectSource[]> {
+  const sources: ProjectSource[] = [];
+  const key = (file: string) => (process.platform === "win32" ? path.resolve(file).toLowerCase() : path.resolve(file));
+  const open = new Map(
+    buffers
+      .filter((buffer) => projectFor([project], buffer.uri))
+      .map((buffer) => [key(fileURLToPath(buffer.uri)), { ...buffer }]),
+  );
+  const seen = new Set<string>();
   async function walk(dir: string) {
-    for (const e of await readdir(dir, { withFileTypes: true })) {
-      const file = path.join(dir, e.name);
-      if (e.isDirectory() && !excluded.has(e.name)) await walk(file);
-      else if (e.isFile() && e.name.endsWith(".txt")) {
-        const uri = pathToFileURL(file).href;
-        files.push(
-          buffers.find((b) => sameFileUri(b.uri, uri)) ?? {
-            uri,
-            text: await readFile(file, "utf8"),
-            version: 0,
-          },
-        );
+    signal?.throwIfAborted();
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      signal?.throwIfAborted();
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory() && !excluded.has(entry.name) && !entry.name.startsWith(".")) await walk(file);
+      else if (entry.isFile() && /\.txt$/i.test(entry.name)) {
+        const identity = key(file),
+          buffer = open.get(identity);
+        sources.push({ file, uri: buffer?.uri ?? pathToFileURL(file).href, buffer });
+        seen.add(identity);
       }
     }
   }
   await walk(project.sceneDir);
-  for (const b of buffers)
-    if (projectFor([project], b.uri) && !files.some((f) => sameFileUri(f.uri, b.uri))) files.push(b);
+  for (const [identity, buffer] of open)
+    if (!seen.has(identity) && /\.txt$/i.test(fileURLToPath(buffer.uri))) {
+      sources.push({ file: fileURLToPath(buffer.uri), uri: buffer.uri, buffer });
+      seen.add(identity);
+    }
+  return sources;
+}
+export async function readProject(project: Project, buffers: BufferSnapshot[] = [], signal?: AbortSignal) {
+  const files: BufferSnapshot[] = [];
+  for (const source of await projectSources(project, buffers, signal)) {
+    signal?.throwIfAborted();
+    files.push(
+      source.buffer ?? { uri: source.uri, text: await readFile(source.file, { encoding: "utf8", signal }), version: 0 },
+    );
+  }
   return files;
+}
+export function affectedProjects(projects: Project[], uri: string): Project[] {
+  if (!uri.startsWith("file:")) return [];
+  const file = fileURLToPath(uri);
+  return projects.filter((project) => {
+    if (contains(project.sceneDir, file)) {
+      const relative = path.relative(project.sceneDir, file);
+      return !relative.split(path.sep).some((name) => name.startsWith(".") || excluded.has(name));
+    }
+    if (sameFileUri(uri, pathToFileURL(path.join(project.root, "choicescript.json")).href)) return true;
+    if (!contains(project.assetDir, file)) return false;
+    return !path
+      .relative(project.assetDir, file)
+      .split(path.sep)
+      .some((name) => excluded.has(name) || name.startsWith(".") || name === "export");
+  });
 }
