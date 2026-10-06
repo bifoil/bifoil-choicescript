@@ -27,6 +27,7 @@ export interface JobEvent {
   message?: string;
   uri?: string;
   line?: number;
+  severity?: 1 | 2;
   url?: string;
   exitCode?: number;
   coverage?: Record<string, number[]>;
@@ -51,3 +52,6 @@ export const commands = [
   "bifoil.choicescript.server.randomtest",
   "bifoil.choicescript.server.exportHtml",
 ];
+
+export * from "./options.js";
+export { CoverageStore } from "./coverage.js";

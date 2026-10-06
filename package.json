@@ -10,7 +10,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test --test-isolation=none packages/core/test/*.test.ts packages/tooling/test/*.test.ts packages/server/test/*.test.ts",
+    "test": "node --import tsx --test --test-isolation=none packages/protocol/test/*.test.ts packages/core/test/*.test.ts packages/tooling/test/*.test.ts packages/server/test/*.test.ts",
     "test:corpus": "node --import tsx scripts/test-corpus.mjs",
     "check": "pnpm build && pnpm typecheck && pnpm test",
     "generate": "node scripts/generate.mjs",
