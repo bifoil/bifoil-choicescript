@@ -83,11 +83,16 @@ class ChoiceLexer : LexerBase() {
 	private var limit = 0
 	private var start = 0
 	private var end = 0
+	private var lineStart = -1
+	private var lineEnd = -1
+	private var commandLine = false
 	private var type: IElementType? = null
 	override fun start(buffer: CharSequence, startOffset: Int, endOffset: Int, initialState: Int) {
 		this.buffer = buffer
 		limit = endOffset
 		end = startOffset
+		lineStart = -1
+		lineEnd = -1
 		advance()
 	}
 
@@ -97,53 +102,73 @@ class ChoiceLexer : LexerBase() {
 	override fun getTokenEnd() = end
 	override fun getBufferSequence() = buffer
 	override fun getBufferEnd() = limit
+	private fun word(char: Char) = char in 'a'..'z' || char in 'A'..'Z' || char in '0'..'9' || char == '_'
+	private fun token(name: String, stop: Int) {
+		end = stop.coerceAtLeast(start + 1).coerceAtMost(limit)
+		type = ChoiceColors.tokens[name]
+	}
 	override fun advance() {
 		start = end
 		if (start >= limit) {
 			type = null
 			return
 		}
-		val lineStart = buffer.subSequence(0, start).lastIndexOf('\n') + 1
-		val lineEnd = buffer.indexOf('\n', start).let { if (it !in 0..limit) limit else it }
-		val text = buffer.subSequence(start, lineEnd).toString()
-		val commandLine = buffer.subSequence(lineStart, lineEnd).trimStart().startsWith("*")
 		if (buffer[start].isWhitespace()) {
 			end++
 			while (end < limit && buffer[end].isWhitespace()) end++
 			type = TokenType.WHITE_SPACE
 			return
 		}
-		fun token(name: String, length: Int) {
-			end = start + length.coerceAtLeast(1)
-			type = ChoiceColors.tokens[name]
+		if (start !in lineStart until lineEnd) {
+			lineStart = start
+			while (lineStart > 0 && buffer[lineStart - 1] != '\n' && buffer[lineStart - 1] != '\r') lineStart--
+			lineEnd = start
+			while (lineEnd < limit && buffer[lineEnd] != '\n' && buffer[lineEnd] != '\r') lineEnd++
+			var first = lineStart
+			while (first < lineEnd && buffer[first].isWhitespace()) first++
+			commandLine = first < lineEnd && buffer[first] == '*'
 		}
-		if (commandLine && text.startsWith("*comment")) {
-			token("comment", text.length)
+		if (!commandLine) {
+			token("narrative", lineEnd)
 			return
 		}
-		if (commandLine && text.startsWith("*")) {
-			token("keyword", Regex("^\\*\\w+").find(text)?.value?.length ?: 1)
+		if (buffer[start] == '*') {
+			var stop = start + 1
+			while (stop < lineEnd && word(buffer[stop])) stop++
+			val command = buffer.subSequence(start + 1, stop).toString()
+			token(
+				if (command.equals("comment", ignoreCase = true)) "comment" else "keyword",
+				if (command.equals("comment", ignoreCase = true)) lineEnd else stop
+			)
 			return
 		}
-		if (commandLine && text.startsWith('"')) {
-			var n = 1
-			while (n < text.length) if (text[n] == '\\') n += 2 else if (text[n++] == '"') break
-			token("string", n.coerceAtMost(text.length))
-			return
-		}
-		if (commandLine) {
-			Regex("^\\d+(?:\\.\\d+)?").find(text)?.let {
-				token("number", it.value.length)
-				return
+		if (buffer[start] == '"') {
+			var stop = start + 1
+			while (stop < lineEnd) {
+				if (buffer[stop] == '\\') stop = (stop + 2).coerceAtMost(lineEnd)
+				else if (buffer[stop++] == '"') break
 			}
-			Regex("^\\w+").find(text)?.let {
-				token(if (it.value in listOf("true", "false")) "boolean" else "variable", it.value.length)
-				return
-			}
-			token("operator", 1)
+			token("string", stop)
 			return
 		}
-		token("narrative", text.length)
+		if (buffer[start] in '0'..'9') {
+			var stop = start + 1
+			while (stop < lineEnd && buffer[stop] in '0'..'9') stop++
+			if (stop + 1 < lineEnd && buffer[stop] == '.' && buffer[stop + 1] in '0'..'9') {
+				stop++
+				while (stop < lineEnd && buffer[stop] in '0'..'9') stop++
+			}
+			token("number", stop)
+			return
+		}
+		if (word(buffer[start])) {
+			var stop = start + 1
+			while (stop < lineEnd && word(buffer[stop])) stop++
+			val value = buffer.subSequence(start, stop).toString()
+			token(if (value.equals("true", true) || value.equals("false", true)) "boolean" else "variable", stop)
+			return
+		}
+		token("operator", start + 1)
 	}
 }
 

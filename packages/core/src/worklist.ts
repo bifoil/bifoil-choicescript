@@ -1,4 +1,3 @@
-/** Process earlier branches before propagating their merged state into long continuations. */
 export class Worklist<T> {
   private heap: { priority: number; order: number; value: T }[] = [];
   private sequence = 0;
@@ -6,8 +5,8 @@ export class Worklist<T> {
     return this.heap.length;
   }
 
-  private before(a: { priority: number; order: number }, b: { priority: number; order: number }): boolean {
-    return a.priority < b.priority || (a.priority === b.priority && a.order < b.order);
+  peek(): T | undefined {
+    return this.heap[0]?.value;
   }
 
   push(value: T, priority: number): void {
@@ -38,5 +37,8 @@ export class Worklist<T> {
       this.heap[i] = last;
     }
     return first?.value;
+  }
+  private before(a: { priority: number; order: number }, b: { priority: number; order: number }): boolean {
+    return a.priority < b.priority || (a.priority === b.priority && a.order < b.order);
   }
 }

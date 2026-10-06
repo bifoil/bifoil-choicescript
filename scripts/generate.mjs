@@ -5,9 +5,9 @@ const grammar = {
   name: "ChoiceScript",
   scopeName: "source.choicescript",
   patterns: [
-    { name: "comment.line.choicescript", match: "^\\s*\\*comment\\b.*$" },
+    { name: "comment.line.choicescript", match: "(?i)^\\s*\\*comment\\b.*$" },
     {
-      begin: "^\\s*(\\*(?:" + Object.keys(commands).join("|") + "))\\b",
+      begin: "(?i)^\\s*(\\*(?:" + Object.keys(commands).join("|") + "))\\b",
       end: "$",
       beginCaptures: { 1: { name: "keyword.control.choicescript" } },
       patterns: [

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
-import { analyzeProject, parseDocument } from "@bifoil/choicescript-core";
+import { analyzeProject, evaluate, literal, parseDocument } from "@bifoil/choicescript-core";
 
 const uri = "file:///differential/scenes/startup.txt";
 function engine() {
@@ -110,5 +110,74 @@ test("static parsing does not mistake runtime-only failures for syntax errors", 
       vm.runInContext(`scene.evaluateExpr(scene.tokenizeExpr(${JSON.stringify(expression)}))`, context),
     );
     assert(!parseDocument(uri, "*print " + expression).diagnostics.some((d) => d.code.startsWith("expression-")));
+  }
+});
+test("assignment targets and setref shorthand agree with pinned interpreter commands", () => {
+  const context = engine();
+  vm.runInContext('scene.warning = function() {}; scene.stats.suffix = "ore";', context);
+  for (const [command, args, type] of [
+    ["set", "score (score + 1)", "number"],
+    ["setref", "pointer -1", "number"],
+    ["setref", "pointer +1", "number"],
+    ["setref", '("score") 3', "number"],
+    ["setref", '("sc" & suffix) *2', "number"],
+    ["setref", '("score") &"!"', "string"],
+    ["setref", "pointer %+20", "number"],
+    ["setref", "pointer %-20", "number"],
+  ]) {
+    vm.runInContext("scene.stats.score = 40; scene.temps = {};", context);
+    vm.runInContext("scene[" + JSON.stringify(command) + "](" + JSON.stringify(args) + ")", context);
+    const expected = vm.runInContext('scene.getVar("score")', context);
+    const a = analyzeProject([
+      {
+        uri,
+        text:
+          '*create score 40\n*create pointer "score"\n*create suffix "ore"\n*' +
+          command +
+          " " +
+          args +
+          "\n*print score",
+      },
+    ]);
+    assert(!a.diagnostics.get(uri)!.some((d) => d.severity === 1), command + " " + args);
+    assert.equal(
+      a.tokens.get(uri)!.find((t) => t.line === 4 && t.start === 7)?.type,
+      type + "Variable",
+      command + " " + args + " => " + JSON.stringify(expected),
+    );
+    // The engine preserves bare NUMBER token text as strings; compare semantic values.
+    const value = evaluate(a.documents.get(uri)!.lines[3].expr, (n) =>
+      literal(n === "score" ? 40 : n === "pointer" ? "score" : "ore"),
+    );
+    if (value.constant !== undefined) assert.equal(String(value.constant), String(expected), command + " " + args);
+  }
+  for (const name of ["score", "round", "length", "not"]) {
+    vm.runInContext("scene.temp(" + JSON.stringify(name + " (1 + 2)") + ")", context);
+    assert.equal(vm.runInContext("scene.temps[" + JSON.stringify(name) + "]", context), 3);
+    assert(!parseDocument(uri, "*temp " + name + " (1 + 2)").diagnostics.some((d) => d.severity === 1));
+    if (name !== "score") {
+      assert.throws(
+        () => vm.runInContext("scene.set(" + JSON.stringify(name + " (" + name + " + 1)") + ")", context),
+        /expected name, found FUNCTION/,
+      );
+      assert(
+        parseDocument(uri, "*set " + name + " (" + name + " + 1)").diagnostics.some(
+          (d) => d.code === "expression-reference",
+        ),
+      );
+    }
+    vm.runInContext("scene.set(" + JSON.stringify(name + " +1") + ")", context);
+    assert.equal(vm.runInContext("scene.temps[" + JSON.stringify(name) + "]", context), 4);
+    const analyzed = analyzeProject([
+      { uri, text: "*temp " + name + " (1 + 2)\n*set " + name + " +1\n*print " + name },
+    ]);
+    assert.equal(
+      analyzed.tokens.get(uri)!.find((token) => token.line === 2 && token.start === 7)?.type,
+      "numberVariable",
+    );
+    assert.deepEqual(
+      analyzed.diagnostics.get(uri)!.filter((d) => d.severity === 1),
+      [],
+    );
   }
 });

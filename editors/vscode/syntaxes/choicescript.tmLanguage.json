@@ -4,10 +4,10 @@
   "patterns": [
     {
       "name": "comment.line.choicescript",
-      "match": "^\\s*\\*comment\\b.*$"
+      "match": "(?i)^\\s*\\*comment\\b.*$"
     },
     {
-      "begin": "^\\s*(\\*(?:comment|goto|gotoref|label|looplimit|finish|abort|choice|create|create_array|temp|temp_array|delete|delete_array|set|setref|print|if|rand|page_break|line_break|script|else|elseif|elsif|reset|goto_scene|fake_choice|input_text|ending|share_this_game|stat_chart|subscribe|show_password|gosub|return|hide_reuse|disable_reuse|allow_reuse|check_purchase|restore_purchases|purchase|restore_game|advertisement|kindle_search|kindle_product|feedback|save_game|delay_break|image|kindle_image|link|input_number|goto_random_scene|restart|more_games|delay_ending|end_trial|login|achieve|scene_list|title|bug|link_button|check_registration|sound|author|gosub_scene|achievement|check_achievements|redirect_scene|print_discount|purchase_discount|track_event|timer|youtube|product|text_image|ai|params|config|ifid|page_break_advertisement|finish_advertisement|save_checkpoint|restore_checkpoint|selectable_if))\\b",
+      "begin": "(?i)^\\s*(\\*(?:comment|goto|gotoref|label|looplimit|finish|abort|choice|create|create_array|temp|temp_array|delete|delete_array|set|setref|print|if|rand|page_break|line_break|script|else|elseif|elsif|reset|goto_scene|fake_choice|input_text|ending|share_this_game|stat_chart|subscribe|show_password|gosub|return|hide_reuse|disable_reuse|allow_reuse|check_purchase|restore_purchases|purchase|restore_game|advertisement|kindle_search|kindle_product|feedback|save_game|delay_break|image|kindle_image|link|input_number|goto_random_scene|restart|more_games|delay_ending|end_trial|login|achieve|scene_list|title|bug|link_button|check_registration|sound|author|gosub_scene|achievement|check_achievements|redirect_scene|print_discount|purchase_discount|track_event|timer|youtube|product|text_image|ai|params|config|ifid|page_break_advertisement|finish_advertisement|save_checkpoint|restore_checkpoint|selectable_if))\\b",
       "end": "$",
       "beginCaptures": {
         "1": {

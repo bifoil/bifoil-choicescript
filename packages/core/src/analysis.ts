@@ -1,4 +1,5 @@
 import { Worklist } from "./worklist.js";
+import { overlaySegments } from "./spans.js";
 import { Environment, sameValue } from "./environment.js";
 import { matching, parseDocument } from "./parser.js";
 import { evaluate, lex, parseExpression, referenceGroups, valueGroups } from "./expression.js";
@@ -13,8 +14,23 @@ import {
   type Span,
   type SymbolInfo,
   unknown,
-  type Value,
+  type Value
 } from "./types.js";
+
+function advance(mask: number, char: string, continuation = false): number {
+  // Unknown generated text cannot become a provable branch disagreement simply
+  // because later punctuation eliminates one of the possible quote styles.
+  if (mask === 7) return 7;
+  let next = 0;
+  for (const bit of [1, 2, 4])
+    if (mask & bit) {
+      if (char === '"') next |= bit === 2 ? (continuation ? 2 : 1) : bit === 1 ? 2 : bit;
+      else if (char === "“") next |= bit === 1 ? 4 : bit;
+      else if (char === "”") next |= bit === 4 ? 1 : bit;
+      else next |= bit;
+    }
+  return next;
+}
 
 type State = { quote: number; paragraph: boolean; env: Environment };
 type Node = { line: Line; next: string[] };
@@ -31,8 +47,9 @@ const clone = (s: State): State => ({
   env: s.env.clone(),
 });
 function merge(a: State | undefined, b: State): State {
-  if (!a) return clone(b);
-  const env = a.env.clone();
+  // Inputs are immutable snapshots; transfer clones before any variable write.
+  if (!a) return b;
+  const env = a.env.shares(b.env) ? a.env : a.env.clone();
   if (!a.env.shares(b.env)) {
     for (const [k, value] of a.env) {
       const other = b.env.get(k) ?? unknown();
@@ -53,20 +70,6 @@ function equal(a: State | undefined, b: State): boolean {
     a.paragraph === b.paragraph &&
     (a.env.shares(b.env) || (a.env.size === b.env.size && [...a.env].every(([k, v]) => sameValue(v, b.env.get(k)))))
   );
-}
-function advance(mask: number, char: string, continuation = false): number {
-  // Unknown generated text cannot become a provable branch disagreement simply
-  // because later punctuation eliminates one of the possible quote styles.
-  if (mask === 7) return 7;
-  let next = 0;
-  for (const bit of [1, 2, 4])
-    if (mask & bit) {
-      if (char === '"') next |= bit === 2 ? (continuation ? 2 : 1) : bit === 1 ? 2 : bit;
-      else if (char === "“") next |= bit === 1 ? 4 : bit;
-      else if (char === "”") next |= bit === 4 ? 1 : bit;
-      else next |= bit;
-    }
-  return next;
 }
 function graph(doc: Document, nodes: Map<string, Node>): string | undefined {
   function block(lines: Line[], after: string[]): string[] {
@@ -124,12 +127,13 @@ export interface AnalyzeOptions {
   quoteWarnings?: boolean;
   signal?: AbortSignal;
   maxSteps?: number;
+  incompleteProject?: boolean;
 }
 export function analyzeProject(
-  input: { uri: string; text: string; version?: number }[],
+  input: Array<{ uri: string; text: string; version?: number } | Document>,
   options: AnalyzeOptions = {},
 ): Analysis {
-  const documents = new Map(input.map((d) => [d.uri, parseDocument(d.uri, d.text, d.version)]));
+  const documents = new Map(input.map((d) => [d.uri, "lines" in d ? d : parseDocument(d.uri, d.text, d.version)]));
   const result: Analysis = {
     documents,
     tokens: new Map(),
@@ -146,7 +150,13 @@ export function analyzeProject(
     labels = new Map<string, string>();
   const globals = new Map<string, SymbolInfo>(),
     locals = new Map<string, SymbolInfo>();
+  const sourceScopes = new Map<string, number>();
+  let documentId = 0;
   for (const doc of documents.values()) {
+    sourceScopes.set(doc.uri, documentId);
+    // Graph identities are analysis-local; source locations remain in uri/line/range fields.
+    for (const line of doc.lines) line.id = documentId + ":" + line.line;
+    documentId++;
     result.diagnostics.set(doc.uri, [...doc.diagnostics]);
     scenes.set(doc.scene, doc);
     const entry = graph(doc, nodes);
@@ -203,18 +213,45 @@ export function analyzeProject(
         local: l.command === "temp_array",
       })),
   );
-  const resolve = (uri: string, name: string): string =>
-    locals.get(uri + ":" + name)?.id ??
-    (locals.has(uri + ":" + name.replace(/_(?:\d+(?:_\d+)*|count|\*)$/, ""))
-      ? "local:" + uri + ":" + name
-      : (globals.get(name)?.id ?? "global:" + name));
+  const localPrefix = (uri: string) => "local:" + sourceScopes.get(uri) + ":";
+  const environmentKeys = new Map<string, string>();
+  const environmentId = (id: string) => environmentKeys.get(id) ?? id;
+  const identifiers = new Map<string, Map<string, { local: string; environment: string; resolved?: string }>>();
+  function identifier(uri: string, name: string) {
+    let names = identifiers.get(uri);
+    if (!names) {
+      names = new Map();
+      identifiers.set(uri, names);
+    }
+    let id = names.get(name);
+    if (!id) {
+      id = { local: "local:" + uri + ":" + name, environment: localPrefix(uri) + name };
+      environmentKeys.set(id.local, id.environment);
+      names.set(name, id);
+    }
+    return id;
+  }
+  const resolve = (uri: string, name: string): string => {
+    const id = identifier(uri, name);
+    return (id.resolved ??=
+      locals.get(uri + ":" + name)?.id ??
+      (locals.has(uri + ":" + name.replace(/_(?:\d+(?:_\d+)*|count|\*)$/, ""))
+        ? id.local
+        : (globals.get(name)?.id ?? "global:" + name)));
+  };
   const activeResolve = (state: State, uri: string, name: string): string => {
+    const local = identifier(uri, name).local;
+    if (state.env.has(environmentId(local)) || state.env.has(identifier(uri, name + "_*").environment)) return local;
     const id = resolve(uri, name);
-    return id.startsWith("local:") && !state.env.has(id) && !state.env.has(id + "_*") ? "global:" + name : id;
+    return id.startsWith("local:") &&
+      !state.env.has(environmentId(id)) &&
+      !state.env.has(identifier(uri, name + "_*").environment)
+      ? "global:" + name
+      : id;
   };
   const lookup = (state: State, uri: string, name: string): Value =>
-    state.env.get(activeResolve(state, uri, name)) ??
-    state.env.get(activeResolve(state, uri, name + "_*")) ??
+    state.env.get(environmentId(activeResolve(state, uri, name))) ??
+    state.env.get(environmentId(activeResolve(state, uri, name + "_*"))) ??
     unknown();
   const assignmentName = (line: Line, state: State): string | undefined => {
     const e = line.targetExpr;
@@ -257,8 +294,8 @@ export function analyzeProject(
   function deliver(w: Waiting, summary: State) {
     const state = clone(summary);
     if (w.restore) {
-      for (const k of state.env.keys()) if (k.startsWith("local:" + w.callerUri + ":")) state.env.delete(k);
-      for (const [k, v] of w.caller.env) if (k.startsWith("local:" + w.callerUri + ":")) state.env.set(k, v);
+      for (const k of state.env.keys()) if (k.startsWith("local:")) state.env.delete(k);
+      for (const [k, v] of w.caller.env) if (k.startsWith(localPrefix(w.callerUri))) state.env.set(k, v);
     }
     for (const next of w.next) schedule(w.context, next, state);
   }
@@ -279,6 +316,7 @@ export function analyzeProject(
           .replace(/^\$\S+\s+/, "")
           .toLowerCase(),
       ) ?? [];
+  if (orderedScenes[0] !== "startup") orderedScenes.unshift("startup");
   const initial: State = {
     quote: 1,
     paragraph: true,
@@ -313,89 +351,93 @@ export function analyzeProject(
           type: runType,
         });
     };
-    for (let i = start; i < limit; i++) {
-      const match = /^([$@])!{0,2}\{/.exec(line.raw.slice(i));
-      if (match) {
-        const open = i + match[0].length - 1,
-          end = matching(line.raw, open);
-        if (end < 0 || end >= limit) break;
-        emit(i);
-        const body = line.raw.slice(open + 1, end);
-        if (match[1] === "$") {
-          const expr = parseExpression(lex(body, line.line, open + 1, []), []),
-            v = evaluate(expr, (n) => lookup(state, line.uri, n));
-          if (v.constant !== undefined) {
-            for (const char of String(v.constant)) mask = advance(mask, char);
-          } else if (v.types.includes("string") || v.types.includes("unknown")) mask = 7;
-        } else {
-          let cut = body.search(/\s/);
-          if (body.startsWith("(")) {
-            let depth = 0;
-            for (let p = 0; p < body.length; p++) {
-              if (body[p] === "(") depth++;
-              if (body[p] === ")" && --depth === 0) {
-                cut = p + 1;
-                break;
+    // Plain prose cannot change quote state; avoid scanning every character twice.
+    if (/["“”$@\[]/.test(line.raw.slice(start, limit))) {
+      for (let i = start; i < limit; i++) {
+        const match = line.raw[i] === "$" || line.raw[i] === "@" ? /^([$@])!{0,2}\{/.exec(line.raw.slice(i)) : null;
+        if (match) {
+          const open = i + match[0].length - 1,
+            end = matching(line.raw, open);
+          if (end < 0 || end >= limit) break;
+          emit(i);
+          const body = line.raw.slice(open + 1, end);
+          if (match[1] === "$") {
+            const expr = parseExpression(lex(body, line.line, open + 1, []), []),
+              v = evaluate(expr, (n) => lookup(state, line.uri, n));
+            if (v.constant !== undefined) {
+              for (const char of String(v.constant)) mask = advance(mask, char);
+            } else if (v.types.includes("string") || v.types.includes("unknown")) mask = 7;
+          } else {
+            let cut = body.search(/\s/);
+            if (body.startsWith("(")) {
+              let depth = 0;
+              for (let p = 0; p < body.length; p++) {
+                if (body[p] === "(") depth++;
+                if (body[p] === ")" && --depth === 0) {
+                  cut = p + 1;
+                  break;
+                }
               }
             }
+            let union = 0,
+              position = open + cut + 2;
+            for (const alternative of body.slice(cut + 1).split("|")) {
+              const branch = {
+                ...state,
+                quote: mask,
+                paragraph: state.paragraph && first,
+              };
+              spans.push(...textTransfer(line, branch, collect, position, position + alternative.length, true));
+              union |= branch.quote;
+              position += alternative.length + 1;
+            }
+            mask = union || 7;
           }
-          let union = 0,
-            position = open + cut + 2;
-          for (const alternative of body.slice(cut + 1).split("|")) {
-            const branch = {
-              ...state,
-              quote: mask,
-              paragraph: state.paragraph && first,
-            };
-            spans.push(...textTransfer(line, branch, collect, position, position + alternative.length, true));
-            union |= branch.quote;
-            position += alternative.length + 1;
-          }
-          mask = union || 7;
-        }
-        i = end;
-        run = i + 1;
-        runType = mask === 2 || mask === 4 ? "dialogue" : "narrative";
-        first = false;
-        continue;
-      }
-      if (line.raw[i] === "[") {
-        const tag = /^\[[^\]]*]/.exec(line.raw.slice(i));
-        if (tag) {
-          i += tag[0].length - 1;
+          i = end;
+          run = i + 1;
+          runType = mask === 2 || mask === 4 ? "dialogue" : "narrative";
+          first = false;
           continue;
         }
-      }
-      const ch = line.raw[i];
-      if (/\S/.test(ch) && !['"', "“", "”"].includes(ch)) first = false;
-      if (collect && options.quoteWarnings !== false && ch === "”" && mask === 1)
-        result.diagnostics
-          .get(line.uri)!
-          .push(
-            diagnostic(
-              line.line,
-              i,
-              1,
-              "quote-unexpected-close",
-              "Closing curly dialogue quote has no opening quote on this path.",
-              2,
-            ),
-          );
-      if (['"', "“", "”"].includes(ch)) {
-        const next = advance(mask, ch, state.paragraph && first);
-        const before = mask === 2 || mask === 4,
-          after = next === 2 || next === 4;
-        if (!before && after) {
-          emit(i);
-          run = i;
-          runType = "dialogue";
-        } else if (before && !after) {
-          emit(i + 1);
-          run = i + 1;
-          runType = "narrative";
+        if (line.raw[i] === "[") {
+          const tag = /^\[[^\]]*]/.exec(line.raw.slice(i));
+          if (tag) {
+            i += tag[0].length - 1;
+            continue;
+          }
         }
-        mask = next;
-        first = false;
+        const ch = line.raw[i];
+        const quote = ch === '"' || ch === "“" || ch === "”";
+        if (/\S/.test(ch) && !quote) first = false;
+        if (collect && options.quoteWarnings !== false && ch === "”" && mask === 1)
+          result.diagnostics
+            .get(line.uri)!
+            .push(
+              diagnostic(
+                line.line,
+                i,
+                1,
+                "quote-unexpected-close",
+                "Closing curly dialogue quote has no opening quote on this path.",
+                2,
+              ),
+            );
+        if (quote) {
+          const next = advance(mask, ch, state.paragraph && first);
+          const before = mask === 2 || mask === 4,
+            after = next === 2 || next === 4;
+          if (!before && after) {
+            emit(i);
+            run = i;
+            runType = "dialogue";
+          } else if (before && !after) {
+            emit(i + 1);
+            run = i + 1;
+            runType = "narrative";
+          }
+          mask = next;
+          first = false;
+        }
       }
     }
     emit(limit);
@@ -405,6 +447,31 @@ export function analyzeProject(
     }
     return spans;
   }
+  // Keep this set aligned with transfer cases below: an omitted writer could mutate
+  // an environment still shared by sibling paths through the quotation-only fast path.
+  const writesEnvironment = new Set([
+    "create",
+    "temp",
+    "set",
+    "rand",
+    "input_text",
+    "input_number",
+    "create_array",
+    "temp_array",
+    "params",
+    "delete",
+    "delete_array",
+    "setref",
+    "script",
+    "goto",
+    "gotoref",
+    "gosub",
+    "goto_scene",
+    "gosub_scene",
+    "redirect_scene",
+    "goto_random_scene",
+    "finish",
+  ]);
   function processQueue() {
     while (queue.size) {
       if (options.signal?.aborted) throw new Error("Analysis cancelled");
@@ -417,9 +484,10 @@ export function analyzeProject(
       pending.delete(key);
       const node = nodes.get(id)!,
         line = node.line,
-        s = clone(states.get(key)!);
-      observed.set(id, merge(observed.get(id), s));
-      const c = line.command ?? "";
+        c = line.command ?? "",
+        input = states.get(key)!;
+      const s = writesEnvironment.has(c) || !node.next.length ? clone(input) : { ...input };
+      observed.set(id, merge(observed.get(id), input));
       if (line.kind === "blank") s.paragraph = true;
       if (line.kind === "prose" || line.kind === "option" || line.inlineText !== undefined) textTransfer(line, s);
       if (["create", "temp", "set", "rand", "input_text", "input_number"].includes(c) && line.target) {
@@ -435,8 +503,8 @@ export function analyzeProject(
             c === "create"
               ? "global:" + name
               : c === "temp"
-                ? "local:" + line.uri + ":" + name
-                : activeResolve(s, line.uri, name);
+                ? localPrefix(line.uri) + name
+                : environmentId(activeResolve(s, line.uri, name));
           if (name.endsWith("_*")) {
             const prefix = id.slice(0, -1);
             for (const [key, prior] of s.env)
@@ -446,7 +514,7 @@ export function analyzeProject(
           if (name.includes("_")) {
             const base = name.replace(/_\d+(?:_\d+)*$/, "");
             if (base !== name) {
-              const key = resolve(line.uri, base + "_*");
+              const key = environmentId(resolve(line.uri, base + "_*"));
               s.env.set(
                 key,
                 joinValue(s.env.get(key) ?? unknown(), {
@@ -462,8 +530,7 @@ export function analyzeProject(
         const name = line.target ?? "",
           values = (line.expressions ?? []).slice(1).map((e) => evaluate(e, (n) => lookup(s, line.uri, n))),
           v = values.reduce((a, b) => joinValue(a, b), values[0] ?? unknown());
-        const arrayKey = (suffix: string) =>
-          (c === "create_array" ? "global:" : "local:" + line.uri + ":") + name + suffix;
+        const arrayKey = (suffix: string) => (c === "create_array" ? "global:" : localPrefix(line.uri)) + name + suffix;
         s.env.set(arrayKey("_*"), v);
         const len = evaluate(line.expressions?.[0], (n) => lookup(s, line.uri, n));
         s.env.set(arrayKey("_count"), len);
@@ -472,19 +539,40 @@ export function analyzeProject(
             s.env.set(arrayKey("_" + i), values.length > 1 ? (values[i - 1] ?? unknown()) : v);
       }
       if (c === "params") {
+        const count = s.env.get("@param_count");
+        s.env.set(localPrefix(line.uri) + "param_count", count ?? unknown());
         let p = 0;
-        for (const t of line.tokens.filter((t) => t.type === "variable"))
-          s.env.set(
-            resolve(line.uri, line.raw.slice(t.start, t.start + t.length).toLowerCase()),
-            s.env.get("@param" + p++) ?? unknown(),
-          );
+        for (const t of line.tokens.filter((t) => t.type === "variable")) {
+          const value = s.env.get("@param" + p) ?? unknown();
+          s.env.set(environmentId(resolve(line.uri, line.raw.slice(t.start, t.start + t.length).toLowerCase())), value);
+          s.env.set(localPrefix(line.uri) + "param_" + ++p, value);
+        }
+        if (typeof count?.constant === "number")
+          for (; p < count.constant; p++)
+            s.env.set(localPrefix(line.uri) + "param_" + (p + 1), s.env.get("@param" + p) ?? unknown());
+        // The interpreter consumes all supplied parameters at *params.
+        for (const key of s.env.keys()) if (/^@param(?:\d+|_count)$/.test(key)) s.env.delete(key);
       }
-      if (c === "delete" || c === "delete_array") s.env.delete(resolve(line.uri, line.target ?? ""));
+      if (c === "delete" || c === "delete_array") {
+        const name = assignmentName(line, s);
+        if (name) {
+          if (c === "delete") s.env.delete(environmentId(activeResolve(s, line.uri, name)));
+          else {
+            const key = environmentId(activeResolve(s, line.uri, name + "_count")).replace(/_count$/, "");
+            for (const candidate of s.env.keys())
+              if (
+                candidate.startsWith(key + "_") &&
+                /^(?:\d+(?:_\d+)*|count|\*)$/.test(candidate.slice(key.length + 1))
+              )
+                s.env.delete(candidate);
+          }
+        } else for (const key of s.env.keys()) s.env.set(key, unknown());
+      }
       if (c === "setref") {
         const name = evaluate(line.targetExpr, (n) => lookup(s, line.uri, n));
         if (typeof name.constant === "string")
           s.env.set(
-            activeResolve(s, line.uri, name.constant.toLowerCase()),
+            environmentId(activeResolve(s, line.uri, name.constant.toLowerCase())),
             evaluate(line.expr, (n) => lookup(s, line.uri, n)),
           );
         else for (const [k] of s.env) s.env.set(k, unknown());
@@ -543,15 +631,16 @@ export function analyzeProject(
           : undefined;
         if (target && scene) {
           const isCall = c.startsWith("gosub");
-          if (c.endsWith("_scene"))
-            for (const k of s.env.keys()) if (k.startsWith("local:" + scene.uri + ":")) s.env.delete(k);
           const argOffset = c.endsWith("_scene") ? (groups[1] ? 2 : 1) : 1;
-          const argumentsList = groups.slice(argOffset);
-          for (let p = 0; p < argumentsList.length; p++)
-            s.env.set(
-              "@param" + p,
-              evaluate(parseExpression(argumentsList[p], []), (n) => lookup(s, line.uri, n)),
-            );
+          // Capture arguments in the caller before a recursive scene call clears
+          // that scene's local environment, or parameter registers are replaced.
+          const argumentsList = groups
+            .slice(argOffset)
+            .map((group) => evaluate(parseExpression(group, []), (n) => lookup(s, line.uri, n)));
+          if (c.endsWith("_scene")) for (const k of s.env.keys()) if (k.startsWith("local:")) s.env.delete(k);
+          for (const key of s.env.keys()) if (/^@param(?:\d+|_count)$/.test(key)) s.env.delete(key);
+          s.env.set("@param_count", literal(argumentsList.length));
+          for (let p = 0; p < argumentsList.length; p++) s.env.set("@param" + p, argumentsList[p]);
           if (isCall) {
             const callee = "call:" + target + ":" + s.quote;
             const waits = waiting.get(callee) ?? new Map<string, Waiting>();
@@ -592,27 +681,36 @@ export function analyzeProject(
       }
       if (c === "goto_random_scene") {
         for (const child of line.children) {
-          const name = /([\w-]+)\s*$/.exec(child.raw)?.[1]?.toLowerCase();
-          const dest = scenes.get(name ?? "");
-          if (dest && entries.has(dest.uri)) schedule(context, entries.get(dest.uri)!, s);
+          const dest = scenes.get(child.target ?? "");
+          if (dest && entries.has(dest.uri)) {
+            const next = clone(s);
+            for (const key of next.env.keys()) if (key.startsWith("local:")) next.env.delete(key);
+            schedule(context, entries.get(dest.uri)!, next);
+          }
         }
+        if (/\ballow_no_selection\b/.test(line.args)) for (const next of node.next) schedule(context, next, s);
         continue;
       }
-      if (c === "finish") {
+      if (c === "finish" || !node.next.length) {
         const index = orderedScenes.indexOf(documents.get(line.uri)!.scene),
           scene = scenes.get(orderedScenes[index + 1]);
-        if (index >= 0 && scene && entries.has(scene.uri)) schedule(context, entries.get(scene.uri)!, s);
-        else returnState(context, s);
+        if (index >= 0 && scene && entries.has(scene.uri)) {
+          for (const key of s.env.keys()) if (key.startsWith("local:")) s.env.delete(key);
+          schedule(context, entries.get(scene.uri)!, s);
+        } else returnState(context, s);
         continue;
       }
-      if (!node.next.length) returnState(context, s);
       for (const next of node.next) schedule(context, next, s);
     }
   }
   processQueue();
   for (const doc of documents.values())
     if (!doc.lines.some((l) => observed.has(l.id)) && entries.has(doc.uri)) {
-      schedule("isolated:" + doc.uri, entries.get(doc.uri)!, initial);
+      schedule(
+        "isolated:" + doc.uri,
+        entries.get(doc.uri)!,
+        options.incompleteProject ? { ...initial, quote: 7 } : initial,
+      );
       processQueue();
     }
   for (const doc of documents.values()) {
@@ -623,13 +721,14 @@ export function analyzeProject(
       const state = observed.get(line.id) ?? { ...initial, quote: 7 };
       let base: Span[] = [];
       if (line.kind === "prose" || line.kind === "option" || line.inlineText !== undefined) {
-        base = textTransfer(line, clone(state), true);
-        words += (
-          line.raw
-            .slice(line.inlineText ?? line.indent)
-            .replace(/\[[^\]]*]/g, "")
-            .match(/[\p{L}\p{N}]+(?:['’]\p{L}+)*/gu) ?? []
-        ).length;
+        base = textTransfer(line, { ...state }, true);
+        words +=
+          (
+            line.raw
+              .slice(line.inlineText ?? line.indent)
+              .replace(/\[[^\]]*]/g, "")
+              .match(/[\p{L}\p{N}]+(?:['’]\p{L}+)*/gu) ?? []
+          ).length;
       }
       if (
         options.quoteWarnings !== false &&
@@ -651,13 +750,18 @@ export function analyzeProject(
       for (const t of overlays) {
         const name = line.raw.slice(t.start, t.start + t.length).toLowerCase();
         if (t.type === "variable") {
-          const alias = arrays.find(
-            (a) =>
-              (!a.local || a.uri === doc.uri) &&
-              name.startsWith(a.name + "_") &&
-              /^(?:\d+(?:_\d+)*|count)$/.test(name.slice(a.name.length + 1)),
-          );
-          const id = t.symbol ?? activeResolve(state, doc.uri, alias?.name ?? name);
+          const directId = t.symbol ?? activeResolve(state, doc.uri, name);
+          const alias =
+            !result.symbols.has(directId) &&
+            arrays.find(
+              (a) =>
+                (!a.local || a.uri === doc.uri) &&
+                activeResolve(state, doc.uri, a.name) ===
+                  (a.local ? "local:" + a.uri + ":" + a.name : "global:" + a.name) &&
+                name.startsWith(a.name + "_") &&
+                /^(?:\d+(?:_\d+)*|count)$/.test(name.slice(a.name.length + 1)),
+            );
+          const id = alias ? activeResolve(state, doc.uri, alias.name) : directId;
           t.symbol = id;
           if (alias) t.referenceLength = alias.name.length;
           let value = lookup(state, doc.uri, name);
@@ -676,7 +780,7 @@ export function analyzeProject(
           if (type && type !== "unknown") t.type = type + "Variable";
         } else if (t.type === "label" && !t.symbol) {
           if (
-            line.parent?.command === "scene_list" ||
+            ["scene_list", "goto_random_scene"].includes(line.parent?.command ?? "") ||
             (line.command?.endsWith("_scene") && t === overlays.find((x) => x.type === "label"))
           )
             t.symbol = "scene:" + name;
@@ -714,31 +818,33 @@ export function analyzeProject(
           );
       }
       // Overlay code and markup spans over prose without emitting overlapping LSP tokens.
-      const boundaries = [...new Set([...base, ...overlays].flatMap((t) => [t.start, t.start + t.length]))].sort(
-        (a, b) => a - b,
-      );
       let bold = false,
         italic = false;
-      for (let i = 0; i < boundaries.length - 1; i++) {
-        const a = boundaries[i],
-          b = boundaries[i + 1],
-          t =
-            overlays.find((t) => t.start <= a && t.start + t.length >= b) ??
-            base.find((t) => t.start <= a && t.start + t.length >= b);
-        if (!t || b <= a) continue;
-        const raw = line.raw.slice(a, b).toLowerCase();
+      let previousEnd = -1;
+      const disjoint =
+        !base.length &&
+        overlays.every((token) => {
+          if (token.start < previousEnd) return false;
+          previousEnd = token.start + token.length;
+          return true;
+        });
+      for (const t of disjoint ? overlays : overlaySegments(base, overlays)) {
         if (t.type === "markup") {
+          const raw = line.raw.slice(t.start, t.start + t.length).toLowerCase();
           if (raw === "[b]") bold = true;
           if (raw === "[/b]") bold = false;
           if (raw === "[i]") italic = true;
           if (raw === "[/i]") italic = false;
         }
-        const modifiers = [
-          ...(t.modifiers ?? []),
-          ...(bold && t.type !== "markup" ? ["bold"] : []),
-          ...(italic && t.type !== "markup" ? ["italic"] : []),
-        ];
-        all.push({ ...t, start: a, length: b - a, modifiers });
+        if (bold || italic) {
+          const modifiers = [...(t.modifiers ?? [])];
+          if (t.type !== "markup") {
+            if (bold) modifiers.push("bold");
+            if (italic) modifiers.push("italic");
+          }
+          t.modifiers = modifiers;
+        } else t.modifiers ??= [];
+        all.push(t);
       }
     }
     const dedup = new Map(diagnostics.map((d) => [JSON.stringify(d), d]));
@@ -752,19 +858,25 @@ export function analyzeProject(
         const doc = context === "root" ? start : documents.get(context.slice(9));
         if (doc) {
           const last = doc.lines.findLast((l) => l.kind === "prose");
-          if (last)
+          if (last) {
+            const location = {
+              line: last.line,
+              indent: last.indent,
+              length: last.raw.length - last.indent,
+            };
             result.diagnostics
               .get(doc.uri)!
               .push(
                 diagnostic(
-                  last.line,
-                  last.indent,
-                  Math.max(1, last.raw.length - last.indent),
+                  location.line,
+                  location.indent,
+                  Math.max(1, location.length),
                   "quote-unclosed",
                   "Dialogue is still open at the end of a resolved story path.",
                   2,
                 ),
               );
+          }
         }
       }
   return result;

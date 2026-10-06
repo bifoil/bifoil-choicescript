@@ -1,6 +1,7 @@
 import commands from "./commands.json" with { type: "json" };
 import { diagnostic, type Document, type Expr, type Line, sceneName } from "./types.js";
-import { lex, parseExpression, referenceGroups, valueGroups } from "./expression.js";
+import { validVariableName } from "./names.js";
+import { lex, type Lexeme, parseExpression, referenceGroups, valueGroups } from "./expression.js";
 
 export const commandDocs: Record<string, string> = commands;
 const blocks = new Set([
@@ -18,9 +19,41 @@ const blocks = new Set([
 const metadata = new Set(["scene_list", "stat_chart", "achievement", "goto_random_scene"]);
 const expressions = new Set(["if", "elseif", "elsif", "selectable_if", "print", "looplimit"]);
 const declaration = new Set(["create", "temp", "create_array", "temp_array"]);
+function addTokens(doc: Document, node: Line, tokens: Lexeme[]) {
+  for (const token of tokens) {
+    if (token.kind === "string") {
+      // Runtime STRING evaluation unescapes before expanding substitutions.
+      // Preserve a map back to the original UTF-16 columns for rename and tokens.
+      const raw = token.text;
+      const limit = raw.endsWith('"') && raw.length > 1 ? raw.length - 1 : raw.length;
+      let decoded = "";
+      const offsets: number[] = [];
+      for (let i = 1; i < limit; i++) {
+        offsets.push(token.start + i);
+        if (raw[i] === "\\" && i + 1 < limit) i++;
+        decoded += raw[i];
+      }
+      offsets.push(token.start + limit);
+      const inner: Line = { ...node, raw: decoded, tokens: [] };
+      const nested: Document = { ...doc, diagnostics: [] };
+      narrative(nested, inner, 0);
+      for (const span of inner.tokens) {
+        const start = offsets[span.start],
+          end = offsets[span.start + span.length];
+        node.tokens.push({ ...span, start, length: end - start });
+      }
+      for (const diagnostic of nested.diagnostics) {
+        diagnostic.range.start.character = offsets[diagnostic.range.start.character] ?? offsets.at(-1)!;
+        diagnostic.range.end.character = offsets[diagnostic.range.end.character] ?? offsets.at(-1)!;
+        doc.diagnostics.push(diagnostic);
+      }
+    }
+    node.tokens.push(token.span);
+  }
+}
 function addExpression(doc: Document, node: Line, text: string, start: number, partial = false): Expr {
   const tokens = lex(text, node.line, start, doc.diagnostics);
-  node.tokens.push(...tokens.map((t) => t.span));
+  addTokens(doc, node, tokens);
   return parseExpression(tokens, doc.diagnostics, partial);
 }
 export function matching(text: string, start: number): number {
@@ -36,7 +69,7 @@ export function matching(text: string, start: number): number {
 export function narrative(doc: Document, node: Line, start: number, end = node.raw.length): void {
   const text = node.raw;
   for (let i = start; i < end; ) {
-    const substitution = /^([$@])(!{0,2})\{/.exec(text.slice(i));
+    const substitution = text[i] === "$" || text[i] === "@" ? /^([$@])(!{0,2})\{/.exec(text.slice(i)) : null;
     if (substitution) {
       const open = i + substitution[0].length - 1,
         close = matching(text, open);
@@ -101,7 +134,7 @@ export function narrative(doc: Document, node: Line, start: number, end = node.r
       i = close + 1;
       continue;
     }
-    const tag = /^\[\/?(?:b|i|u|s|url|n|c)(?:=[^\]]*)?\/?]/i.exec(text.slice(i));
+    const tag = text[i] === "[" ? /^\[\/?(?:b|i|u|s|url|n|c)(?:=[^\]]*)?\/?]/i.exec(text.slice(i)) : null;
     if (tag) {
       node.tokens.push({
         line: node.line,
@@ -119,7 +152,7 @@ function command(doc: Document, node: Line): void {
   const c = node.command!,
     a = node.args,
     s = node.argStart;
-  if (!commandDocs[c] && !["selectable_if"].includes(c))
+  if (!Object.hasOwn(commandDocs, c) && !["selectable_if"].includes(c))
     doc.diagnostics.push(
       diagnostic(node.line, node.indent, c.length + 1, "unknown-command", `Unknown ChoiceScript command *${c}.`),
     );
@@ -147,8 +180,25 @@ function command(doc: Document, node: Line): void {
     ["set", "setref", "delete", "delete_array", "rand", "input_text", "input_number"].includes(c)
   ) {
     const ts = lex(a, node.line, s, doc.diagnostics);
+    // Declarations consume a plain name before tokenizing their initializer as a value.
+    // Builtin function names are legal declaration names in the pinned interpreter.
+    if (declaration.has(c) && ts[0] && /^\w+$/.test(ts[0].text)) {
+      ts[0].kind = "variable";
+      ts[0].span.type = "variable";
+    }
+    if (c !== "setref" && ts[0]?.kind === "function")
+      doc.diagnostics.push(
+        diagnostic(
+          node.line,
+          ts[0].span.start,
+          ts[0].span.length,
+          "expression-reference",
+          "Expected a variable reference before the value expression.",
+        ),
+      );
     let end = 1;
-    if (ts[0]?.text === "{") {
+    if (c === "setref") end = valueGroups(ts)[0]?.length ?? 0;
+    else if (ts[0]?.text === "{") {
       let depth = 1;
       while (end < ts.length && depth) {
         if (ts[end].text === "{") depth++;
@@ -165,9 +215,9 @@ function command(doc: Document, node: Line): void {
           end++;
         }
       }
-    node.tokens.push(...ts.map((t) => t.span));
+    addTokens(doc, node, ts);
     if (ts[0]) {
-      node.targetExpr = parseExpression(ts.slice(0, end), [], true);
+      node.targetExpr = parseExpression(ts.slice(0, end), c === "setref" ? doc.diagnostics : [], c !== "setref");
       node.target = ts
         .slice(0, end)
         .map((t) => t.text)
@@ -177,20 +227,27 @@ function command(doc: Document, node: Line): void {
       if (declaration.has(c)) node.targetToken.modifiers = ["declaration"];
     }
     if (!ts[0]) doc.diagnostics.push(diagnostic(node.line, s, 1, "missing-variable", "Expected a variable name."));
-    if (declaration.has(c) && ts[0] && !/^[a-z]\w*$/i.test(ts[0].text))
+    if (declaration.has(c) && ts[0] && !validVariableName(ts[0].text))
       doc.diagnostics.push(
-        diagnostic(node.line, s, ts[0].text.length, "variable-name", "Variable names must start with a letter."),
+        diagnostic(
+          node.line,
+          s,
+          ts[0].text.length,
+          "variable-name",
+          "Use a nonreserved variable name starting with a letter.",
+        ),
       );
     let rest = ts.slice(end);
-    if (c === "set" && rest[0]?.kind === "operator" && !["(", "{"].includes(rest[0].text) && node.targetToken)
+    if (
+      (c === "set" || c === "setref") &&
+      rest[0] &&
+      /^(?:[+\-*/&^#%]|%[+-]|and|or|modulo)$/.test(rest[0].text) &&
+      node.targetExpr
+    )
       node.expr = {
         kind: "binary",
-        op: rest[0].text,
-        left: {
-          kind: "variable",
-          name: node.target ?? "",
-          token: node.targetToken,
-        },
+        op: rest[0].text === "%" ? "modulo" : rest[0].text,
+        left: c === "setref" ? { kind: "indirect", expr: node.targetExpr } : node.targetExpr,
         right: parseExpression(rest.slice(1), doc.diagnostics),
       };
     else if (!c.endsWith("_array") && !["rand", "input_text", "input_number", "delete", "delete_array"].includes(c))
@@ -211,7 +268,7 @@ function command(doc: Document, node: Line): void {
           "*create requires a simple number, boolean, or string literal.",
         ),
       );
-    if ((c === "create" || c === "set") && !rest.length)
+    if ((c === "create" || c === "set" || c === "setref") && !rest.length)
       doc.diagnostics.push(diagnostic(node.line, s + a.length, 1, "missing-value", "Expected a value."));
     if (c.endsWith("_array")) {
       node.expressions = valueGroups(rest).map((t) => parseExpression(t, doc.diagnostics));
@@ -280,6 +337,7 @@ export function parseDocument(uri: string, text: string, version = 0): Document 
     diagnostics: [],
   };
   const stack: Line[] = [];
+  const previousSibling = new Map<Line | undefined, Line>();
   let indentStyle = "";
   for (const [line, raw] of text.split(/\r\n|\n|\r/).entries()) {
     const whitespace = /^[ \t]*/.exec(raw)![0],
@@ -293,7 +351,7 @@ export function parseDocument(uri: string, text: string, version = 0): Document 
       indent,
       kind: !body
         ? "blank"
-        : body.startsWith("*comment")
+        : /^\*(\w+)/.exec(body)?.[1].toLowerCase() === "comment"
           ? "comment"
           : body.startsWith("*")
             ? "command"
@@ -337,7 +395,18 @@ export function parseDocument(uri: string, text: string, version = 0): Document 
         command(doc, node);
       } else doc.diagnostics.push(diagnostic(line, indent, body.length, "command-syntax", "Expected a command name."));
     } else if (node.kind === "metadata") {
-      if (node.parent?.command === "scene_list") {
+      if (node.parent?.command === "goto_random_scene") {
+        const target = /\S+\s*$/.exec(body);
+        if (target) {
+          node.target = target[0].trim().toLowerCase();
+          node.tokens.push({ line, start: indent + target.index, length: target[0].trim().length, type: "label" });
+        }
+        const conditional = /\*if\s+\((.*)\)\s+\S+\s*$/.exec(body);
+        if (conditional) {
+          const open = body.indexOf("(", conditional.index);
+          addExpression(doc, node, conditional[1], indent + open + 1);
+        }
+      } else if (node.parent?.command === "scene_list") {
         const m = /^(?:\$\S+\s+)?(\S+)/.exec(body);
         if (m)
           node.tokens.push({
@@ -364,6 +433,23 @@ export function parseDocument(uri: string, text: string, version = 0): Document 
     } else if (node.kind === "prose" || node.kind === "option") {
       if (node.kind === "option") node.tokens.push({ line, start: indent, length: 1, type: "operator" });
       narrative(doc, node, indent + (node.kind === "option" ? 1 : 0));
+    }
+    if (!["blank", "comment"].includes(node.kind)) {
+      const previous = previousSibling.get(node.parent);
+      if (
+        ["else", "elseif", "elsif"].includes(node.command ?? "") &&
+        !["if", "elseif", "elsif"].includes(previous?.command ?? "")
+      )
+        doc.diagnostics.push(
+          diagnostic(
+            line,
+            node.indent,
+            node.raw.length - node.indent,
+            "orphan-alternative",
+            "This alternative has no matching *if at the same indentation.",
+          ),
+        );
+      previousSibling.set(node.parent, node);
     }
     doc.lines.push(node);
     if (body && node.kind !== "comment") {
@@ -401,20 +487,6 @@ export function parseDocument(uri: string, text: string, version = 0): Document 
           "Expected an indented block.",
         ),
       );
-    if (["else", "elseif", "elsif"].includes(node.command ?? "")) {
-      const siblings = (node.parent?.children ?? doc.roots).filter((n) => !["blank", "comment"].includes(n.kind));
-      const previous = siblings[siblings.indexOf(node) - 1];
-      if (!["if", "elseif", "elsif"].includes(previous?.command ?? ""))
-        doc.diagnostics.push(
-          diagnostic(
-            node.line,
-            node.indent,
-            node.raw.length - node.indent,
-            "orphan-alternative",
-            "This alternative has no matching *if at the same indentation.",
-          ),
-        );
-    }
   }
   return doc;
 }

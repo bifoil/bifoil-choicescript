@@ -56,7 +56,7 @@ export function lex(text: string, line: number, offset: number, diagnostics: Dia
         ? "boolean"
         : /^(and|or|modulo)$/.test(word)
           ? "operator"
-          : /^\s*\(/.test(text.slice(i))
+          : /^(not|round|timestamp|log|length|auto)$/.test(m[0]) && /^\s*\(/.test(text.slice(i))
             ? "function"
             : "variable";
     } else if (/^(%[+-]|[!<>]=)/.test(text.slice(i))) i += 2;
@@ -228,7 +228,6 @@ export function evaluate(expr: Expr | undefined, lookup: (name: string) => Value
   }
 }
 
-/** Split argument lists into ChoiceScript value expressions, preserving quoted spaces and groups. */
 export function valueGroups(tokens: Lexeme[]): Lexeme[][] {
   const groups: Lexeme[][] = [];
   let i = 0;
@@ -261,7 +260,6 @@ export function valueGroups(tokens: Lexeme[]): Lexeme[][] {
   return groups;
 }
 
-/** Scene/label words are not expression identifiers (they may start with digits). */
 export function referenceGroups(
   text: string,
   line: number,

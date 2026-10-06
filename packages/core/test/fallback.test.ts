@@ -30,5 +30,11 @@ test("TextMate fallback strings end on the same line and never capture prose or 
     if (line === 0 || line === 2) assert(!result.tokens.some((t) => t.scopes.some((s) => s.startsWith("string."))));
     if (line === 3) assert(result.tokens.some((t) => t.scopes.includes("keyword.control.choicescript")));
   }
+  const comment = grammar.tokenizeLine('*CoMmEnT "literal prose', textmate.INITIAL);
+  assert(comment.tokens.every((token) => token.scopes.includes("comment.line.choicescript")));
+  const command = grammar.tokenizeLine("*SET score (score + 1)", textmate.INITIAL);
+  assert(command.tokens.some((token) => token.scopes.includes("keyword.control.choicescript")));
+  const prefix = grammar.tokenizeLine("*commentary Text", textmate.INITIAL);
+  assert(!prefix.tokens.some((token) => token.scopes.includes("comment.line.choicescript")));
   registry.dispose();
 });

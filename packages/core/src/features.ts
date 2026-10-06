@@ -1,11 +1,12 @@
 import {
   type Analysis,
   type Position,
-  type Range,
   range,
+  type Range,
   tokenModifiers as modifiers,
-  tokenTypes as legend,
+  tokenTypes as legend
 } from "./types.js";
+import { validVariableName } from "./names.js";
 import { commandDocs } from "./parser.js";
 
 export function tokenAt(a: Analysis, uri: string, p: Position) {
@@ -18,9 +19,16 @@ export function definition(a: Analysis, uri: string, p: Position) {
     s = id ? a.symbols.get(id) : undefined;
   return s ? { uri: s.uri, range: s.range } : null;
 }
-export function references(a: Analysis, uri: string, p: Position) {
+export function references(a: Analysis, uri: string, p: Position, includeDeclaration = true) {
   const id = tokenAt(a, uri, p)?.symbol;
-  return id ? (a.references.get(id) ?? []) : [];
+  const declaration = id ? a.symbols.get(id) : undefined;
+  return (id ? (a.references.get(id) ?? []) : []).filter(
+    (ref) =>
+      includeDeclaration ||
+      !declaration ||
+      ref.uri !== declaration.uri ||
+      JSON.stringify(ref.range) !== JSON.stringify(declaration.range),
+  );
 }
 export function prepareRename(a: Analysis, uri: string, p: Position) {
   const t = tokenAt(a, uri, p);
@@ -33,12 +41,61 @@ export function rename(a: Analysis, uri: string, p: Position, name: string) {
   if (!prepareRename(a, uri, p)) return null;
   const id = tokenAt(a, uri, p)!.symbol!,
     old = a.symbols.get(id)!;
+  if ((old.kind === "global" || old.kind === "local") && !validVariableName(name))
+    throw new Error("That name is reserved by ChoiceScript.");
+  const affected = new Set(references(a, uri, p).map((ref) => ref.uri));
+  const variable = old.kind === "global" || old.kind === "local";
+  const visible = (kind: string, sourceUri: string) =>
+    kind === "global" || (old.kind === "global" ? affected.has(sourceUri) : sourceUri === old.uri);
+  const arraySymbols = new Set(
+    [...a.documents.values()].flatMap((doc) =>
+      doc.lines
+        .filter((line) => line.command === "create_array" || line.command === "temp_array")
+        .flatMap((line) => (line.targetToken?.symbol ? [line.targetToken.symbol] : [])),
+    ),
+  );
+  const generatedBy = (base: string, candidate: string) =>
+    candidate.startsWith(base + "_") && /^(?:\d+(?:_\d+)*|count)$/.test(candidate.slice(base.length + 1));
+  const target = name.toLowerCase();
   if (
     [...a.symbols.values()].some(
-      (s) => s.id !== id && s.name === name.toLowerCase() && (s.kind === "global" || s.uri === old.uri),
-    )
+      (s) =>
+        s.id !== id &&
+        (old.kind === "label"
+          ? s.kind === "label" && s.uri === old.uri && s.name === target
+          : variable &&
+            (s.kind === "global" || s.kind === "local") &&
+            visible(s.kind, s.uri) &&
+            (s.name === target ||
+              (arraySymbols.has(id) && generatedBy(target, s.name)) ||
+              (arraySymbols.has(s.id) && generatedBy(s.name, target)))),
+    ) ||
+    (variable &&
+      (generatedBy("param", target) || (arraySymbols.has(id) && target === "param")) &&
+      [...a.documents.values()].some(
+        (doc) =>
+          (old.kind === "global" ? affected.has(doc.uri) : doc.uri === old.uri) &&
+          doc.lines.some((line) => line.command === "params"),
+      ))
   )
     throw new Error("That name already exists in this scope.");
+  // Implicit runtime names cannot be rewritten at a source declaration.
+  const explicitOverlap =
+    variable &&
+    [...a.symbols.values()].some(
+      (s) =>
+        s.id !== id &&
+        (s.kind === "global" || s.kind === "local") &&
+        visible(s.kind, s.uri) &&
+        ((arraySymbols.has(id) && generatedBy(old.name, s.name)) ||
+          (arraySymbols.has(s.id) && generatedBy(s.name, old.name))),
+    );
+  const parameterOverlap =
+    old.kind === "local" &&
+    generatedBy("param", old.name) &&
+    a.documents.get(old.uri)?.lines.some((line) => line.command === "params");
+  if (explicitOverlap || parameterOverlap)
+    throw new Error("This name overlaps an implicit runtime variable; rename it manually.");
   const changes: Record<string, { range: Range; newText: string }[]> = {};
   for (const ref of references(a, uri, p)) (changes[ref.uri] ??= []).push({ range: ref.range, newText: name });
   return { changes };
@@ -52,17 +109,23 @@ export function hover(a: Analysis, uri: string, p: Position) {
     return {
       contents: {
         kind: "markdown" as const,
-        value: "**`*" + line.command + "`**\n\n" + (commandDocs[line.command] ?? "ChoiceScript command."),
+        value:
+          "**`*" +
+          line.command +
+          "`**\n\n" +
+          (Object.hasOwn(commandDocs, line.command) ? commandDocs[line.command] : "ChoiceScript command."),
       },
     };
   if (t?.symbol) {
     const s = a.symbols.get(t.symbol),
-      v = a.values.get(t.symbol);
+      v = a.values.get(t.symbol),
+      inferred = /^(number|string|boolean)Variable$/.exec(t.type)?.[1],
+      types = inferred ? [inferred] : t.type === "variable" ? ["unknown"] : v?.types;
     if (s)
       return {
         contents: {
           kind: "markdown" as const,
-          value: "**" + s.name + "** — " + s.kind + (v ? "\n\nType: `" + v.types.join(" | ") + "`" : ""),
+          value: "**" + s.name + "** — " + s.kind + (types ? "\n\nType: `" + types.join(" | ") + "`" : ""),
         },
       };
   }
