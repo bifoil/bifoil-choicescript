@@ -1,5 +1,6 @@
 import {
   type Analysis,
+  lineAt,
   type Position,
   range,
   type Range,
@@ -102,7 +103,7 @@ export function rename(a: Analysis, uri: string, p: Position, name: string) {
 }
 export function hover(a: Analysis, uri: string, p: Position) {
   const doc = a.documents.get(uri),
-    line = doc?.lines[p.line],
+    line = lineAt(doc, p.line),
     t = tokenAt(a, uri, p);
   if (!line) return null;
   if (t?.type === "keyword" && line.command)
@@ -132,7 +133,7 @@ export function hover(a: Analysis, uri: string, p: Position) {
   return null;
 }
 export function completions(a: Analysis, uri: string, p: Position) {
-  const line = a.documents.get(uri)?.lines[p.line],
+  const line = lineAt(a.documents.get(uri), p.line),
     before = line?.raw.slice(0, p.character) ?? "";
   if (/^\s*\*\w*$/.test(before))
     return Object.entries(commandDocs).map(([name, documentation]) => ({
@@ -176,7 +177,7 @@ export function folding(a: Analysis, uri: string) {
         let end = l.line;
         const visit = (nodes: typeof l.children) => {
           for (const n of nodes) {
-            end = Math.max(end, n.line);
+            end = Math.max(end, n.endLine ?? n.line);
             visit(n.children);
           }
         };
@@ -193,12 +194,12 @@ export function folding(a: Analysis, uri: string) {
 export function selections(a: Analysis, uri: string, positions: Position[]) {
   return positions.map((p) => {
     const doc = a.documents.get(uri),
-      line = doc?.lines[p.line];
+      line = lineAt(doc, p.line);
     const full: Range = {
       start: { line: 0, character: 0 },
       end: {
-        line: Math.max(0, (doc?.lines.length ?? 1) - 1),
-        character: doc?.lines.at(-1)?.raw.length ?? 0,
+        line: Math.max(0, (doc?.lineCount ?? doc?.lines.length ?? 1) - 1),
+        character: doc?.endCharacter ?? doc?.lines.at(-1)?.raw.length ?? 0,
       },
     };
     const parent = {

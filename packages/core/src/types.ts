@@ -35,6 +35,14 @@ export type Expr =
   | { kind: "call"; name: string; args: Expr[] }
   | { kind: "binary"; op: string; left: Expr; right: Expr }
   | { kind: "unknown" };
+export interface NarrativeSummary {
+  identity?: { paragraph: boolean; range?: Range };
+  quotes: number[];
+  paragraphs: boolean[];
+  unexpectedClose: Array<{ at: Position; count: number } | undefined>;
+  disagreements: Array<Range | undefined>;
+  lastProse?: { line: number; indent: number; length: number };
+}
 export interface Line {
   id: string;
   uri: string;
@@ -54,6 +62,9 @@ export interface Line {
   targetToken?: Span;
   targetExpr?: Expr;
   inlineText?: number;
+  narrativeSummary?: NarrativeSummary;
+  wordCount?: number;
+  endLine?: number;
 }
 export interface Document {
   uri: string;
@@ -63,6 +74,9 @@ export interface Document {
   roots: Line[];
   diagnostics: Diagnostic[];
   scene: string;
+  lineCount?: number;
+  endCharacter?: number;
+  compact?: boolean;
 }
 export interface SymbolInfo {
   id: string;
@@ -138,4 +152,17 @@ export function joinValue(a: Value, b: Value): Value {
     types,
     ...(a.constant !== undefined && a.constant === b.constant ? { constant: a.constant } : {}),
   };
+}
+export function lineAt(document: Document | undefined, line: number): Line | undefined {
+  if (!document) return undefined;
+  let low = 0,
+    high = document.lines.length - 1;
+  while (low <= high) {
+    const mid = (low + high) >>> 1,
+      candidate = document.lines[mid];
+    if (candidate.line === line) return candidate;
+    if (candidate.line < line) low = mid + 1;
+    else high = mid - 1;
+  }
+  return undefined;
 }

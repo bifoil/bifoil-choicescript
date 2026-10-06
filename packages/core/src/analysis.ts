@@ -1,6 +1,7 @@
 import { Worklist } from "./worklist.js";
 import { overlaySegments } from "./spans.js";
 import { Environment, sameValue } from "./environment.js";
+import { advanceQuote as advance } from "./projection.js";
 import { matching, parseDocument } from "./parser.js";
 import { evaluate, lex, parseExpression, referenceGroups, valueGroups } from "./expression.js";
 import {
@@ -16,21 +17,6 @@ import {
   unknown,
   type Value
 } from "./types.js";
-
-function advance(mask: number, char: string, continuation = false): number {
-  // Unknown generated text cannot become a provable branch disagreement simply
-  // because later punctuation eliminates one of the possible quote styles.
-  if (mask === 7) return 7;
-  let next = 0;
-  for (const bit of [1, 2, 4])
-    if (mask & bit) {
-      if (char === '"') next |= bit === 2 ? (continuation ? 2 : 1) : bit === 1 ? 2 : bit;
-      else if (char === "“") next |= bit === 1 ? 4 : bit;
-      else if (char === "”") next |= bit === 4 ? 1 : bit;
-      else next |= bit;
-    }
-  return next;
-}
 
 type State = { quote: number; paragraph: boolean; env: Environment };
 type Node = { line: Line; next: string[] };
@@ -337,6 +323,57 @@ export function analyzeProject(
     replacement = false,
   ): Span[] {
     const spans: Span[] = [];
+    if (line.narrativeSummary) {
+      const summary = line.narrativeSummary;
+      if (summary.identity) {
+        if (
+          collect &&
+          options.quoteWarnings !== false &&
+          summary.identity.range &&
+          state.quote !== 7 &&
+          (state.quote & (state.quote - 1)) !== 0
+        )
+          result.diagnostics.get(line.uri)!.push({
+            range: summary.identity.range,
+            code: "quote-branch",
+            source: "ChoiceScript dialogue",
+            severity: 2,
+            message: "Incoming paths disagree about whether dialogue is open.",
+          });
+        state.paragraph = summary.identity.paragraph;
+        return spans;
+      }
+      const index = (state.quote - 1) * 2 + Number(state.paragraph);
+      if (collect && options.quoteWarnings !== false) {
+        const problem = summary.unexpectedClose[index],
+          disagreement = summary.disagreements[index];
+        if (problem)
+          result.diagnostics
+            .get(line.uri)!
+            .push(
+              diagnostic(
+                problem.at.line,
+                problem.at.character,
+                1,
+                "quote-unexpected-close",
+                "Closing curly dialogue quote has no opening quote on this path." +
+                  (problem.count > 1 ? " (" + problem.count + " occurrences in this passage.)" : ""),
+                2,
+              ),
+            );
+        if (disagreement)
+          result.diagnostics.get(line.uri)!.push({
+            range: disagreement,
+            code: "quote-branch",
+            source: "ChoiceScript dialogue",
+            severity: 2,
+            message: "Incoming paths disagree about whether dialogue is open.",
+          });
+      }
+      state.quote = summary.quotes[index];
+      state.paragraph = summary.paragraphs[index];
+      return spans;
+    }
     let mask = state.quote;
     if (!replacement && (line.kind === "option" || line.inlineText !== undefined)) mask = 1;
     let run = start,
@@ -723,6 +760,7 @@ export function analyzeProject(
       if (line.kind === "prose" || line.kind === "option" || line.inlineText !== undefined) {
         base = textTransfer(line, { ...state }, true);
         words +=
+          line.wordCount ??
           (
             line.raw
               .slice(line.inlineText ?? line.indent)
@@ -731,6 +769,7 @@ export function analyzeProject(
           ).length;
       }
       if (
+        !line.narrativeSummary &&
         options.quoteWarnings !== false &&
         state.quote !== 7 &&
         (state.quote & (state.quote - 1)) !== 0 &&
@@ -859,7 +898,7 @@ export function analyzeProject(
         if (doc) {
           const last = doc.lines.findLast((l) => l.kind === "prose");
           if (last) {
-            const location = {
+            const location = last.narrativeSummary?.lastProse ?? {
               line: last.line,
               indent: last.indent,
               length: last.raw.length - last.indent,
