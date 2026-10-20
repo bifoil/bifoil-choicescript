@@ -54,6 +54,9 @@ export async function startServer(roots: string[], options: { legacyRootUri?: bo
   return {
     rpc,
     child,
+    get stderr() {
+      return errors;
+    },
     diagnostics,
     events,
     refreshes,
@@ -70,6 +73,7 @@ export async function startServer(roots: string[], options: { legacyRootUri?: bo
       });
     },
     async close() {
+      let transportError: unknown;
       try {
         await rpc.sendRequest("shutdown");
         await rpc.sendNotification("exit");
@@ -79,12 +83,15 @@ export async function startServer(roots: string[], options: { legacyRootUri?: bo
         if (child.exitCode === null) await once(child, "exit");
 
         clearTimeout(timer);
+      } catch (error) {
+        transportError = error;
       } finally {
         rpc.dispose();
         if (child.exitCode === null) child.kill();
       }
 
-      if (child.exitCode) throw new Error(errors || `Server exited ${child.exitCode}`);
+      if (child.exitCode) throw new Error(errors || `Server exited ${child.exitCode}`, { cause: transportError });
+      if (transportError) throw transportError;
     },
   };
 }

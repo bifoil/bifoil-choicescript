@@ -9,6 +9,7 @@ import {
   type Line,
   type Position,
   type Span,
+  tokenTypes,
 } from "@bifoil/choicescript-core";
 
 type FeatureLine = Pick<Line, "line" | "raw" | "kind" | "command" | "targetToken">;
@@ -94,12 +95,20 @@ export function packAnalysis(
     targetToken: line.targetToken,
   });
 
-  const fingerprint = (doc: Document, tokens: Span[]) =>
-    doc.version +
-    ":" +
-    (doc.compact ? "compact" : createHash("sha256").update(doc.text).digest("base64")) +
-    ":" +
-    createHash("sha256").update(JSON.stringify(tokens)).digest("base64");
+  const fingerprint = (doc: Document, tokens: Span[]) => {
+    // Hash bounded batches: a whole-array JSON string can be larger than the
+    // source and its AST together when many tokens repeat long symbol URIs.
+    const hash = createHash("sha256");
+    for (let start = 0; start < tokens.length; start += 256)
+      hash.update(JSON.stringify(tokens.slice(start, start + 256))).update("\n");
+    return (
+      doc.version +
+      ":" +
+      (doc.compact ? "compact" : createHash("sha256").update(doc.text).digest("base64")) +
+      ":" +
+      hash.digest("base64")
+    );
+  };
 
   for (const doc of analysis.documents.values()) {
     const tokens = analysis.tokens.get(doc.uri) ?? [];
@@ -321,8 +330,8 @@ export function snapshotFolding(snapshot: AnalysisSnapshot, uri: string): Return
 }
 
 /**
- * Attempt a version-checked request-index update for one semantics-preserving prose edit.
- * Requires unchanged indentation/line count and excludes quotes, commands, substitutions,
+ * Update request indexes for one semantics-preserving prose edit or appended root comment.
+ * Prose edits require unchanged indentation/line count and exclude quotes, commands, substitutions,
  * and markup. Returns undefined when full analysis is needed; never force this fast path.
  * A text-identical version bump is accepted, so callers measuring edits must exclude no-ops.
  * Returns new affected maps/chunks while borrowing untouched snapshot data.
@@ -342,7 +351,42 @@ export function updatePlainProse(
   const oldLines = before.split(/\r\n|\n|\r/),
     newLines = after.split(/\r\n|\n|\r/);
 
-  if (oldLines.length !== feature.lineCount || newLines.length !== oldLines.length) return undefined;
+  if (oldLines.length !== feature.lineCount) return undefined;
+
+  // Appending a single root comment changes no existing source position or flow
+  // state. In particular it must not insert an extra blank line that changes
+  // continued-dialogue state at a scene's EOF.
+  const suffix = after.startsWith(before) ? after.slice(before.length) : "";
+  if (!feature.compact && newLines.length === oldLines.length + 1 && /^\r?\n\*comment\b[^\r\n]*$/i.test(suffix)) {
+    const row = oldLines.length,
+      raw = newLines[row];
+    const comment: FeatureLine = { line: row, raw, kind: "comment", command: "comment", targetToken: undefined };
+    const span: Span = { line: row, start: 0, length: raw.length, type: "comment", modifiers: [] };
+    const index = Math.floor(row / chunkSize);
+    const chunks = new Map(feature.chunks);
+    const chunk = chunks.has(index) ? decode<Chunk>(chunks.get(index)!) : { lines: [], tokens: [] };
+    chunk.lines.push(comment);
+    chunk.tokens.push(span);
+    chunks.set(index, encode(chunk));
+    const tokens = snapshotTokens(snapshot, uri);
+    let lastRow = 0;
+    for (let i = 0; i < tokens.data.length; i += 5) lastRow += tokens.data[i];
+    tokens.data.push(row - lastRow, 0, raw.length, tokenTypes.indexOf("comment"), 0);
+    return {
+      ...snapshot,
+      documents: new Map(snapshot.documents).set(uri, { version }),
+      features: new Map(snapshot.features).set(uri, {
+        ...feature,
+        version,
+        lineCount: newLines.length,
+        last: { ...comment, raw: " ".repeat(raw.length) },
+        chunks,
+        tokens: encode(tokens),
+      }),
+    };
+  }
+
+  if (newLines.length !== oldLines.length) return undefined;
 
   let changed = -1;
 

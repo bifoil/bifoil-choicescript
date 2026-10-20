@@ -239,3 +239,33 @@ test("ordinary requests decode only their source while rename keeps every collis
   assert.deepEqual(hover(one, uri, position), hover(analysis, uri, position));
   assert.equal(requestAnalysis(snapshot, uri, [position], true).documents.size, 2);
 });
+
+test("appending one root comment preserves current features and EOF dialogue transfer", () => {
+  const uri = "file:///original/scenes/startup.txt",
+    next = "file:///original/scenes/next.txt";
+  for (const ending of ["", "\n", "\r\n"]) {
+    const before = '*create value 7\n*scene_list\n  next\n"Hello.' + ending;
+    const after = before + '\n*comment "ignored ${value}';
+    const inputs = [
+      { uri, text: before, version: 1 },
+      { uri: next, text: '"Still speaking."\n*print value\n*ending', version: 0 },
+    ];
+    const original = packAnalysis(analyzeProject(inputs), false);
+    const updated = updatePlainProse(original, uri, before, after, 1, 2)!;
+    assert(updated);
+    const fresh = packAnalysis(analyzeProject([{ ...inputs[0], text: after, version: 2 }, inputs[1]]), false);
+    assert.deepEqual(snapshotTokens(updated, uri), snapshotTokens(fresh, uri));
+    assert.deepEqual(snapshotTokens(updated, next), snapshotTokens(fresh, next));
+    assert.deepEqual(updated.diagnostics, fresh.diagnostics);
+    assert.deepEqual(updated.symbols, fresh.symbols);
+    assert.deepEqual(updated.wordCounts, fresh.wordCounts);
+    assert.deepEqual(snapshotFolding(updated, uri), snapshotFolding(fresh, uri));
+    const position = { line: after.split(/\r\n|\n|\r/).length - 1, character: 2 };
+    assert.deepEqual(
+      hover(requestAnalysis(updated, uri, [position]), uri, position),
+      hover(requestAnalysis(fresh, uri, [position]), uri, position),
+    );
+    assert.equal(updatePlainProse(original, uri, before, before + "\n\n*comment extra blank", 1, 2), undefined);
+    assert.equal(updatePlainProse(original, uri, before, before + "\n*set value false", 1, 2), undefined);
+  }
+});

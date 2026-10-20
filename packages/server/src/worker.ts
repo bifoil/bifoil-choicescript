@@ -3,7 +3,9 @@
  * Index mode reads stable regular files and writes compressed projections atomically.
  * Analysis mode prefers exact open buffers, then full foreground sources, then cached
  * projections, with identity-only placeholders for not-yet-indexed scenes.
- * Caches belong to this worker lifetime; emitted buffers are transferred, not shared.
+ * Source caches belong to one project and clear before switching games; keeping the
+ * isolate alive preserves initialized code without retaining another project's ASTs.
+ * Emitted buffers are transferred, not shared.
  * Do not pipeline messages without adding serialization around these mutable caches.
  */
 import { parentPort } from "node:worker_threads";
@@ -13,23 +15,28 @@ import { createHash } from "node:crypto";
 import { deserialize, serialize } from "node:v8";
 import { deflateSync, inflateSync } from "node:zlib";
 import { analyzeProject, type Document, parseDocument, projectDocument } from "@bifoil/choicescript-core";
-import { sameFileUri } from "@bifoil/choicescript-tooling";
+import { sourceUri } from "@bifoil/choicescript-tooling";
 import type { BufferSnapshot } from "@bifoil/choicescript-protocol";
 import type { IndexedSource } from "./scene-index.js";
 import { type FeatureCache, packAnalysis, snapshotBuffers } from "./snapshots.js";
 
 const parsedCache = new Map<string, { stamp?: number; version: number; full: boolean; doc: Document }>();
 const featureCache: FeatureCache = new Map();
+let cacheProject: string | undefined;
 parentPort!.on(
   "message",
   async ({
     mode,
+    projectId,
+    limited = false,
     sources = [],
     directory,
     documents = [],
     options = {},
   }: {
     mode?: "index";
+    projectId?: string;
+    limited?: boolean;
     sources?: IndexedSource[];
     directory?: string;
     documents?: BufferSnapshot[];
@@ -70,14 +77,27 @@ parentPort!.on(
         return;
       }
 
+      if (cacheProject !== projectId) {
+        parsedCache.clear();
+        featureCache.clear();
+        cacheProject = projectId;
+      }
+
       const started = performance.now();
       const parsed: Document[] = [];
+      const inventory = sources.map((source) => source.uri);
+      const buffers = new Map<string, BufferSnapshot>();
+      for (const document of documents) {
+        const uri =
+          sourceUri(inventory, document.uri) ?? sourceUri(buffers.keys(), document.uri, false) ?? document.uri;
+        buffers.set(uri, document);
+      }
       let incomplete = false;
 
       for (const source of sources) {
-        const buffer = documents.find((document) => sameFileUri(document.uri, source.uri));
+        const buffer = buffers.get(source.uri);
 
-        if (buffer) {
+        if (buffer && (!limited || source.full)) {
           const previous = parsedCache.get(buffer.uri);
           const doc =
             previous?.full && previous.version === buffer.version && previous.doc.text === buffer.text
@@ -85,6 +105,17 @@ parentPort!.on(
               : parseDocument(buffer.uri, buffer.text, buffer.version);
           parsedCache.set(buffer.uri, { stamp: source.stamp, version: buffer.version, full: true, doc });
           parsed.push(doc);
+          continue;
+        }
+
+        if (limited && !source.full) {
+          const placeholder = parseDocument(source.uri, "");
+          placeholder.roots = [];
+          placeholder.lines = [];
+          placeholder.compact = true;
+          parsed.push(placeholder);
+          parsedCache.delete(source.uri);
+          incomplete = true;
           continue;
         }
 
@@ -126,9 +157,8 @@ parentPort!.on(
         incomplete = true;
       }
 
-      for (const buffer of documents)
-        if (!sources.some((source) => sameFileUri(buffer.uri, source.uri)))
-          parsed.push(parseDocument(buffer.uri, buffer.text, buffer.version));
+      for (const buffer of buffers.values())
+        if (!sourceUri(inventory, buffer.uri)) parsed.push(parseDocument(buffer.uri, buffer.text, buffer.version));
 
       const included = new Set(parsed.map((doc) => doc.uri));
 
@@ -166,7 +196,8 @@ parentPort!.on(
         );
 
       snapshot.incomplete = incomplete;
-      parentPort!.postMessage({ snapshot }, snapshotBuffers(snapshot));
+      snapshot.truncated ||= limited;
+      parentPort!.postMessage({ snapshot, exhausted: analysis.truncated }, snapshotBuffers(snapshot));
     } catch (error) {
       parentPort!.postMessage({ error: String(error) });
     }

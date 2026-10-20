@@ -43,7 +43,7 @@ import {
   contains,
   discoverProjects,
   projectFor,
-  sameFileUri,
+  sourceUri,
   ToolRunner,
 } from "@bifoil/choicescript-tooling";
 import {
@@ -165,59 +165,64 @@ function queueDiagnostics(uri: string) {
     }, 20);
 }
 
-const runner = new ToolRunner(path.join(bundle, "vendor", "choicescript"), (event) => {
-  publish(connection.sendNotification("choicescript/jobEvent", event));
+const runner = new ToolRunner(
+  path.join(bundle, "vendor", "choicescript"),
+  (event) => {
+    publish(connection.sendNotification("choicescript/jobEvent", event));
 
-  const previous = testResults.get(event.projectId);
+    const previous = testResults.get(event.projectId);
 
-  if (event.kind === "started") {
-    testResults.set(event.projectId, { jobId: event.jobId, stale: !!event.stale, diagnostics: new Map() });
-    for (const uri of previous?.diagnostics.keys() ?? []) publishDiagnostics(uri);
+    if (event.kind === "started") {
+      testResults.set(event.projectId, { jobId: event.jobId, stale: !!event.stale, diagnostics: new Map() });
+      for (const uri of previous?.diagnostics.keys() ?? []) publishDiagnostics(uri);
 
-    return;
-  }
-
-  if (!previous || previous.jobId !== event.jobId) return;
-
-  if (
-    event.kind === "stale" ||
-    event.stale ||
-    (event.kind === "completed" && (event.exitCode === 0 || event.exitCode === 130))
-  ) {
-    const uris = [...previous.diagnostics.keys()];
-    previous.stale ||= event.kind === "stale" || !!event.stale;
-
-    for (const uri of uris) {
-      const warnings =
-        event.kind === "completed" && event.exitCode === 0 && !previous.stale && !event.stale
-          ? previous.diagnostics.get(uri)!.filter((diagnostic) => diagnostic.severity === 2)
-          : [];
-
-      if (warnings.length) previous.diagnostics.set(uri, warnings);
-      else previous.diagnostics.delete(uri);
-
-      publishDiagnostics(uri);
+      return;
     }
-  }
 
-  if (event.kind === "diagnostic" && event.uri && !previous.stale) {
-    const diagnostics = previous.diagnostics.get(event.uri) ?? [];
-    diagnostics.push({
-      severity: event.severity ?? 1,
-      source: "ChoiceScript test",
-      message: event.message ?? "Test failure",
-      range: {
-        start: { line: event.line ?? 0, character: 0 },
-        end: {
-          line: event.line ?? 0,
-          character: Math.max(1, sourceLineLength(event.uri, event.line ?? 0)),
+    if (!previous || previous.jobId !== event.jobId) return;
+
+    if (
+      event.kind === "stale" ||
+      event.stale ||
+      (event.kind === "completed" && (event.exitCode === 0 || event.exitCode === 130))
+    ) {
+      const uris = [...previous.diagnostics.keys()];
+      previous.stale ||= event.kind === "stale" || !!event.stale;
+
+      for (const uri of uris) {
+        const warnings =
+          event.kind === "completed" && event.exitCode === 0 && !previous.stale && !event.stale
+            ? previous.diagnostics.get(uri)!.filter((diagnostic) => diagnostic.severity === 2)
+            : [];
+
+        if (warnings.length) previous.diagnostics.set(uri, warnings);
+        else previous.diagnostics.delete(uri);
+
+        publishDiagnostics(uri);
+      }
+    }
+
+    if (event.kind === "diagnostic" && event.uri && !previous.stale) {
+      const diagnostics = previous.diagnostics.get(event.uri) ?? [];
+      diagnostics.push({
+        severity: event.severity ?? 1,
+        source: "ChoiceScript test",
+        message: event.message ?? "Test failure",
+        range: {
+          start: { line: event.line ?? 0, character: 0 },
+          end: {
+            line: event.line ?? 0,
+            character: Math.max(1, sourceLineLength(event.uri, event.line ?? 0)),
+          },
         },
-      },
-    });
-    previous.diagnostics.set(event.uri, diagnostics);
-    queueDiagnostics(event.uri);
-  }
-});
+      });
+      previous.diagnostics.set(event.uri, diagnostics);
+      queueDiagnostics(event.uri);
+    }
+  },
+  process.execPath,
+  path.join(bundle, "tool-source-preload.cjs"),
+);
 
 function publish(promise: Promise<unknown>) {
   void promise.catch((error) => {
@@ -232,7 +237,7 @@ function publish(promise: Promise<unknown>) {
 function analysisUri(a: { documents: ReadonlyMap<string, unknown> } | undefined, uri: string) {
   if (!a || a.documents.has(uri)) return uri;
 
-  return [...a.documents.keys()].find((candidate) => sameFileUri(candidate, uri)) ?? uri;
+  return sourceUri(a.documents.keys(), uri) ?? uri;
 }
 
 /**
@@ -331,10 +336,12 @@ async function snapshotForRequest(uri: string, token?: CancellationToken): Promi
 async function get(uri: string, positions: Position[] = [], withReferences = false, token?: CancellationToken) {
   const snapshot = await snapshotForRequest(uri, token);
 
-  if (withReferences && snapshot?.incomplete)
+  if (withReferences && (snapshot?.incomplete || snapshot?.truncated))
     throw new ResponseError(
       LSPErrorCodes.ContentModified,
-      "Project indexing is still pending; retry navigation or rename when it finishes.",
+      snapshot?.truncated
+        ? "Project analysis reached its work limit; complete references and safe rename are unavailable."
+        : "Project indexing is still pending; retry navigation or rename when it finishes.",
     );
 
   return snapshot ? requestAnalysis(snapshot, analysisUri(snapshot, uri), positions, withReferences) : undefined;
@@ -406,6 +413,30 @@ function schedule(changedUris?: string[]) {
   if (timer) clearTimeout(timer);
 
   timer = setTimeout(() => void analyze(revision), 25);
+}
+
+// A failed whole-project flow pass must not disable ordinary editing. Retire
+// its worker and retry with the foreground scene and startup only; completeness
+// remains explicit and project-wide refactoring stays unavailable.
+const limitedProjects = new Set<string>();
+const syntaxOnlyProjects = new Set<string>();
+function limitProject(id: string, message: string) {
+  if (disposed || syntaxOnlyProjects.has(id)) return;
+  const syntaxOnly = limitedProjects.has(id);
+  if (syntaxOnly) syntaxOnlyProjects.add(id);
+  limitedProjects.add(id);
+  if (activeAnalysis?.id === id) void stopWorker(activeAnalysis.worker);
+  publish(
+    connection.sendNotification("window/showMessage", {
+      type: 2,
+      message:
+        (syntaxOnly
+          ? "Current-scene flow analysis exceeded its limits. Syntax highlighting and syntax diagnostics remain available; variable types, dialogue flow, and refactoring are unavailable. "
+          : "Whole-project analysis exceeded its resource limits. Editing continues with the current scene; complete references and rename are unavailable. ") +
+        message,
+    }),
+  );
+  schedule([id]);
 }
 
 /**
@@ -519,6 +550,12 @@ async function analyze(version: number) {
 
       const inventory = await index.inventory();
       const buffers = open.filter((document) => projectFor([project], document.uri));
+      const preferredSource = preferredUri
+        ? sourceUri(
+            inventory.map((source) => source.uri),
+            preferredUri,
+          )
+        : undefined;
       const sources = inventory.map((source) => {
         const cache = index!.cached.get(source.uri);
         return {
@@ -526,9 +563,7 @@ async function analyze(version: number) {
           cache,
           stamp: index!.stamps.get(source.uri),
           data: cache ? summaryCache.get(cache) : undefined,
-          full:
-            path.basename(source.file).toLowerCase() === "startup.txt" ||
-            (!!preferredUri && sameFileUri(source.uri, preferredUri)),
+          full: path.basename(source.file).toLowerCase() === "startup.txt" || source.uri === preferredSource,
         };
       });
       jobs.push({ id: project.id, documents: buffers, sources, index });
@@ -555,6 +590,12 @@ async function analyze(version: number) {
 
     for (const id of dirtyProjects) if (!activeIds.has(id)) dirtyProjects.delete(id);
 
+    for (const id of limitedProjects)
+      if (!activeIds.has(id)) {
+        limitedProjects.delete(id);
+        syntaxOnlyProjects.delete(id);
+      }
+
     for (const [id, previous] of analyses)
       if (!activeIds.has(id)) {
         for (const uri of previous.documents.keys()) publish(connection.sendDiagnostics({ uri, diagnostics: [] }));
@@ -569,66 +610,101 @@ async function analyze(version: number) {
 
     for (const job of jobs) {
       if (version !== revision || disposed) return;
-      if (activeAnalysis && activeAnalysis.id !== job.id) await stopWorker(activeAnalysis.worker);
       if (version !== revision || disposed) return;
 
       await new Promise<void>((resolve) => {
-        const worker = activeAnalysis?.id === job.id ? activeAnalysis.worker : createWorker(job.id);
+        const worker = activeAnalysis?.worker ?? createWorker(job.id);
+        activeAnalysis!.id = job.id;
         activeAnalysis!.busy = true;
-        worker.once("message", async ({ snapshot, error }: { snapshot?: AnalysisSnapshot; error?: string }) => {
-          try {
-            if (version !== revision || disposed) {
-              await stopWorker(worker);
-              return;
-            }
-
-            if (activeAnalysis?.worker === worker) activeAnalysis.busy = false;
-            if (error) connection.console.error(error);
-
-            if (snapshot) {
-              const previous = analyses.get(job.id);
-              snapshot = mergeSnapshot(previous, snapshot);
-
-              for (const oldUri of analyses.get(job.id)?.documents.keys() ?? [])
-                if (!snapshot.documents.has(oldUri))
-                  publish(connection.sendDiagnostics({ uri: oldUri, diagnostics: [] }));
-
-              analyses.set(job.id, snapshot);
-              analysisVersions.set(job.id, version);
-              dirtyProjects.delete(job.id);
-              notifyAnalysis();
-
-              for (const [uri, current] of snapshot.diagnostics) {
-                const old = previous?.diagnostics.get(uri);
-                const unchanged =
-                  old &&
-                  previous?.documents.get(uri)?.version === snapshot.documents.get(uri)?.version &&
-                  ((old.length === 0 && current.length === 0) || JSON.stringify(old) === JSON.stringify(current));
-
-                if (!unchanged) publishDiagnostics(uri);
+        const stage = syntaxOnlyProjects.has(job.id) ? 2 : limitedProjects.has(job.id) ? 1 : 0;
+        const recover = (message: string) => {
+          const currentStage = syntaxOnlyProjects.has(job.id) ? 2 : limitedProjects.has(job.id) ? 1 : 0;
+          if (version === revision && !disposed && stage === currentStage) limitProject(job.id, message);
+        };
+        const deadline =
+          stage < 2 && job.documents.length
+            ? setTimeout(
+                () => recover("Foreground analysis exceeded the one-second work budget."),
+                interactionDeadlineMs,
+              )
+            : undefined;
+        const clearDeadline = () => {
+          if (deadline) clearTimeout(deadline);
+        };
+        worker.once(
+          "message",
+          async ({
+            snapshot,
+            error,
+            exhausted,
+          }: {
+            snapshot?: AnalysisSnapshot;
+            error?: string;
+            exhausted?: boolean;
+          }) => {
+            clearDeadline();
+            try {
+              if (version !== revision || disposed) {
+                await stopWorker(worker);
+                return;
               }
 
-              connection.languages.semanticTokens.refresh();
+              if (activeAnalysis?.worker === worker) activeAnalysis.busy = false;
+              if (error) {
+                connection.console.error(error);
+                recover(error);
+                return;
+              }
 
-              if (snapshot.truncated)
-                connection.window.showWarningMessage(
-                  "ChoiceScript analysis reached its work limit; some results are incomplete.",
-                );
+              if (snapshot) {
+                if (exhausted && !syntaxOnlyProjects.has(job.id)) {
+                  recover("The transfer work budget was exhausted.");
+                  return;
+                }
+                const previous = analyses.get(job.id);
+                snapshot = mergeSnapshot(previous, snapshot);
+
+                for (const oldUri of analyses.get(job.id)?.documents.keys() ?? [])
+                  if (!snapshot.documents.has(oldUri))
+                    publish(connection.sendDiagnostics({ uri: oldUri, diagnostics: [] }));
+
+                analyses.set(job.id, snapshot);
+                analysisVersions.set(job.id, version);
+                dirtyProjects.delete(job.id);
+                notifyAnalysis();
+
+                for (const [uri, current] of snapshot.diagnostics) {
+                  const old = previous?.diagnostics.get(uri);
+                  const unchanged =
+                    old &&
+                    previous?.documents.get(uri)?.version === snapshot.documents.get(uri)?.version &&
+                    ((old.length === 0 && current.length === 0) || JSON.stringify(old) === JSON.stringify(current));
+
+                  if (!unchanged) publishDiagnostics(uri);
+                }
+
+                connection.languages.semanticTokens.refresh();
+              }
+            } catch (error) {
+              connection.console.error(String(error));
+              await stopWorker(worker);
+            } finally {
+              resolve();
             }
-          } catch (error) {
-            connection.console.error(String(error));
-            await stopWorker(worker);
-          } finally {
-            resolve();
-          }
-        });
+          },
+        );
 
         const failed = (error: Error) => {
+          clearDeadline();
           connection.console.error(error.message);
+          recover(error.message);
           void stopWorker(worker).then(() => resolve());
         };
 
-        const exited = () => resolve();
+        const exited = () => {
+          clearDeadline();
+          resolve();
+        };
 
         worker.once("error", failed);
         worker.once("exit", exited);
@@ -637,7 +713,13 @@ async function analyze(version: number) {
           worker.off("error", failed);
           worker.off("exit", exited);
         });
-        worker.postMessage({ documents: job.documents, sources: job.sources, options: { quoteWarnings } });
+        worker.postMessage({
+          projectId: job.id,
+          documents: job.documents,
+          sources: job.sources,
+          limited: limitedProjects.has(job.id),
+          options: { quoteWarnings, maxSteps: syntaxOnlyProjects.has(job.id) ? 0 : undefined },
+        });
       });
     }
 

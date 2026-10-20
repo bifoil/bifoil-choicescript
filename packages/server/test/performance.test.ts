@@ -25,7 +25,11 @@ test("current editor interactions finish within one second across six large game
       throw new Error(name + " failed after " + Math.round(performance.now() - start) + " ms", { cause });
     });
 
-    assert(performance.now() - start < interactionDeadlineMs, name + " exceeded one second");
+    const elapsed = performance.now() - start;
+    assert(
+      elapsed < interactionDeadlineMs,
+      `${name} exceeded one second (${Math.round(elapsed)} ms). ${server?.stderr ?? ""}`,
+    );
 
     return result;
   };
