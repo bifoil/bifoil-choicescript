@@ -1,4 +1,5 @@
-import type { Document, Line, NarrativeSummary, Range } from "./types.js";
+import type { Document, Line, NarrativeSummary } from "./types.js";
+import { narrativeWords } from "./plain-text.js";
 
 /**
  * Apply one narrative character to every possible incoming quote state.
@@ -8,29 +9,16 @@ import type { Document, Line, NarrativeSummary, Range } from "./types.js";
  */
 export function advanceQuote(mask: number, char: string, continuation = false): number {
   if (mask === 7) return 7;
-
-  let next = 0;
-
-  for (const bit of [1, 2, 4])
-    if (mask & bit) {
-      if (char === '"') next |= bit === 2 ? (continuation ? 2 : 1) : bit === 1 ? 2 : bit;
-      else if (char === "“") next |= bit === 1 ? 4 : bit;
-      else if (char === "”") next |= bit === 4 ? 1 : bit;
-      else next |= bit;
-    }
-
-  return next;
+  if (char === '\"') return (mask & 4) | (mask & 1 ? 2 : 0) | (mask & 2 ? (continuation ? 2 : 1) : 0);
+  if (char === "“") return (mask & 6) | (mask & 1 ? 4 : 0);
+  if (char === "”") return (mask & 3) | (mask & 4 ? 1 : 0);
+  return mask;
 }
 
 function words(line: Line): number {
   if (line.kind !== "prose" && line.kind !== "option" && line.inlineText === undefined) return 0;
 
-  return (
-    line.raw
-      .slice(line.inlineText ?? line.indent)
-      .replace(/\[[^\]]*]/g, "")
-      .match(/[\p{L}\p{N}]+(?:['’]\p{L}+)*/gu) ?? []
-  ).length;
+  return narrativeWords(line.raw.slice(line.inlineText ?? line.indent));
 }
 
 /**
@@ -59,72 +47,71 @@ function summarize(lines: Line[]): NarrativeSummary {
   }
 
   for (let mask = 1; mask <= 7; mask++)
-    for (const initialParagraph of [false, true]) {
-      let quote = mask,
-        paragraph = initialParagraph;
-      let problem: { at: { line: number; character: number }; count: number } | undefined;
-      let disagreement: Range | undefined;
+    for (const paragraph of [false, true]) {
+      result.quotes.push(mask);
+      result.paragraphs.push(paragraph);
+      result.unexpectedClose.push(undefined);
+      result.disagreements.push(undefined);
+    }
 
-      for (const line of lines) {
-        if (line.kind === "blank") {
-          paragraph = true;
+  // Extract punctuation once, then apply its small transfer to all fourteen
+  // incoming states. Narrative bytes and whitespace are never scanned fourteen times.
+  for (const line of lines) {
+    if (line.kind === "blank") {
+      result.paragraphs.fill(true);
+      continue;
+    }
+    if (line.kind !== "prose") continue;
+    const marks: { char: string; column: number; first: boolean }[] = [];
+    const pattern = /["“”\[]/g;
+    pattern.lastIndex = line.indent;
+    let first = true,
+      previous = line.indent;
+    let unclosedMarkup = false;
+    for (let match = pattern.exec(line.raw); match; match = pattern.exec(line.raw)) {
+      if (/\S/.test(line.raw.slice(previous, match.index))) first = false;
+      if (match[0] === "[") {
+        const close = unclosedMarkup ? -1 : line.raw.indexOf("]", match.index + 1);
+        if (close >= 0) {
+          pattern.lastIndex = close + 1;
+          previous = close + 1;
           continue;
         }
-
-        if (line.kind !== "prose") continue;
-
-        result.lastProse = { line: line.line, indent: line.indent, length: line.raw.length - line.indent };
-
-        if (quote !== 7 && (quote & (quote - 1)) !== 0) {
-          disagreement ??= {
+        unclosedMarkup = true;
+        first = false;
+        previous = match.index + 1;
+        continue;
+      }
+      marks.push({ char: match[0], column: match.index, first });
+      first = false;
+      previous = match.index + 1;
+    }
+    for (let row = 0; row < 14; row++) {
+      let quote = result.quotes[row];
+      if (quote !== 7 && (quote & (quote - 1)) !== 0) {
+        let disagreement = result.disagreements[row];
+        if (!disagreement)
+          result.disagreements[row] = disagreement = {
             start: { line: line.line, character: line.indent },
             end: { line: line.line, character: line.raw.length },
           };
-          disagreement.end = { line: line.line, character: line.raw.length };
-        }
-
-        if (!/[“”"\[]/.test(line.raw)) {
-          paragraph = false;
-          continue;
-        }
-
-        let first = true;
-
-        for (let i = line.indent; i < line.raw.length; i++) {
-          const ch = line.raw[i];
-
-          if (ch === "[") {
-            const tag = /^\[[^\]]*]/.exec(line.raw.slice(i));
-
-            if (tag) {
-              i += tag[0].length - 1;
-              continue;
-            }
-          }
-
-          const mark = ch === '"' || ch === "“" || ch === "”";
-
-          if (/\S/.test(ch) && !mark) first = false;
-
-          if (ch === "”" && quote === 1) {
-            problem ??= { at: { line: line.line, character: i }, count: 0 };
-            problem.count++;
-          }
-
-          if (mark) {
-            quote = advanceQuote(quote, ch, paragraph && first);
-            first = false;
-          }
-        }
-
-        paragraph = false;
+        disagreement.end.line = line.line;
+        disagreement.end.character = line.raw.length;
       }
-
-      result.quotes.push(quote);
-      result.paragraphs.push(paragraph);
-      result.unexpectedClose.push(problem);
-      result.disagreements.push(disagreement);
+      for (const mark of marks) {
+        if (mark.char === "”" && quote === 1) {
+          const problem = (result.unexpectedClose[row] ??= {
+            at: { line: line.line, character: mark.column },
+            count: 0,
+          });
+          problem.count++;
+        }
+        quote = advanceQuote(quote, mark.char, result.paragraphs[row] && mark.first);
+      }
+      result.quotes[row] = quote;
+      result.paragraphs[row] = false;
     }
+  }
 
   return result;
 }

@@ -10,6 +10,7 @@ import { builtinModules, createRequire } from "node:module";
 import path from "node:path";
 
 await import("./check-engine.mjs");
+await import("./check-native.mjs");
 await import("./generate.mjs");
 
 const { writeDependencyNotices } = await import("./notices.mjs");

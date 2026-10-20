@@ -49,8 +49,8 @@ export type ValueType = "number" | "string" | "boolean" | "unknown";
  * Treat instances and their type arrays as immutable: environments share their values.
  */
 export interface Value {
-  types: ValueType[];
-  constant?: string | number | boolean;
+  readonly types: readonly ValueType[];
+  readonly constant?: string | number | boolean;
 }
 
 /**
@@ -204,7 +204,8 @@ export function range(line: number, start: number, length: number): Range {
 }
 
 /**
- * Construct a visible diagnostic range and select the separate narrative-warning source for quote-* codes.
+ * Construct a diagnostic range; zero-width end-of-line anchors stay within the source.
+ * Quote warnings use a separate source.
  */
 export function diagnostic(
   line: number,
@@ -215,7 +216,7 @@ export function diagnostic(
   severity: 1 | 2 | 3 = 1,
 ): Diagnostic {
   return {
-    range: range(line, start, Math.max(1, length)),
+    range: range(line, start, Math.max(0, length)),
     message,
     code,
     severity,
@@ -224,12 +225,10 @@ export function diagnostic(
 }
 
 /**
- * Decode and normalize the final URI segment as the case-insensitive scene name, without a .txt suffix.
+ * Decode the final URI segment as a case-preserving scene name, without a .txt suffix.
  */
 export function sceneName(uri: string): string {
-  return decodeURIComponent(uri.split("/").pop() ?? "")
-    .replace(/\.txt$/i, "")
-    .toLowerCase();
+  return decodeURIComponent(uri.split("/").pop() ?? "").replace(/\.txt$/i, "");
 }
 
 /**
@@ -245,10 +244,16 @@ export const literal = (constant: string | number | boolean): Value => ({
  * have the same known primitive; missing/unknown values must be supplied explicitly by callers.
  */
 export function joinValue(a: Value, b: Value): Value {
-  const types = [...new Set([...a.types, ...b.types])].sort() as ValueType[];
+  if (a === b) return a;
+  const sameConstant = a.constant === b.constant;
+  // Most fixed-point joins have already widened. Reuse a covering immutable value
+  // instead of allocating and sorting the same tiny type set for every binding.
+  if ((a.constant === undefined || sameConstant) && b.types.every((type) => a.types.includes(type))) return a;
+  if ((b.constant === undefined || sameConstant) && a.types.every((type) => b.types.includes(type))) return b;
+  const types = [...new Set([...a.types, ...b.types])].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   return {
     types,
-    ...(a.constant !== undefined && a.constant === b.constant ? { constant: a.constant } : {}),
+    ...(a.constant !== undefined && sameConstant ? { constant: a.constant } : {}),
   };
 }
 

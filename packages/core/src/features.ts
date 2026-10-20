@@ -5,7 +5,7 @@ import {
   range,
   type Range,
   tokenModifiers as modifiers,
-  tokenTypes as legend
+  tokenTypes as legend,
 } from "./types.js";
 import { validVariableName } from "./names.js";
 import { commandDocs } from "./parser.js";
@@ -47,6 +47,7 @@ export function references(a: Analysis, uri: string, p: Position, includeDeclara
  * Return the source identifier range for a resolved non-scene symbol; scene/file rename is deliberately excluded.
  */
 export function prepareRename(a: Analysis, uri: string, p: Position) {
+  if (a.truncated) return null;
   const t = tokenAt(a, uri, p);
 
   if (!t?.symbol || !a.symbols.has(t.symbol) || a.symbols.get(t.symbol)?.kind === "scene") return null;

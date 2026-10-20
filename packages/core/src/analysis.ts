@@ -1,6 +1,8 @@
 import { Worklist } from "./worklist.js";
+import { narrativeWords } from "./plain-text.js";
 import { overlaySegments } from "./spans.js";
-import { Environment, sameValue } from "./environment.js";
+import { Environment } from "./environment.js";
+import { acquireEnvironmentArena, releaseEnvironmentArena, type NativeEnvironmentArena } from "./native-environment.js";
 import { advanceQuote as advance } from "./projection.js";
 import { matching, parseDocument } from "./parser.js";
 import { evaluate, lex, parseExpression, referenceGroups, valueGroups } from "./expression.js";
@@ -15,7 +17,7 @@ import {
   type Span,
   type SymbolInfo,
   unknown,
-  type Value
+  type Value,
 } from "./types.js";
 
 /**
@@ -30,12 +32,21 @@ type Node = { line: Line; next: string[] };
  * Continuation subscribed to a callee summary. Scene calls restore the caller's local
  * scope on return while keeping callee effects on globals and narrative quotation.
  */
+type Effects = {
+  needed: Set<string>;
+  written: Set<string>;
+  arrays: Set<string>;
+  writtenArrays: Set<string>;
+  parameters: Set<string>;
+};
+
 type Waiting = {
   context: string;
   next: string[];
   caller: State;
   callerUri: string;
   restore: boolean;
+  effects?: Effects;
 };
 
 const clone = (s: State): State => ({
@@ -52,17 +63,7 @@ function merge(a: State | undefined, b: State): State {
   // Inputs are immutable snapshots; transfer clones before any variable write.
   if (!a) return b;
 
-  const env = a.env.shares(b.env) ? a.env : a.env.clone();
-
-  if (!a.env.shares(b.env)) {
-    for (const [k, value] of a.env) {
-      const other = b.env.get(k) ?? unknown();
-
-      if (!sameValue(value, other)) env.set(k, joinValue(value, other));
-    }
-
-    for (const [k, value] of b.env) if (!a.env.has(k)) env.set(k, joinValue(unknown(), value));
-  }
+  const env = a.env.shares(b.env) ? a.env : a.env.join(b.env);
 
   return {
     quote: a.quote | b.quote,
@@ -72,12 +73,7 @@ function merge(a: State | undefined, b: State): State {
 }
 
 function equal(a: State | undefined, b: State): boolean {
-  return (
-    !!a &&
-    a.quote === b.quote &&
-    a.paragraph === b.paragraph &&
-    (a.env.shares(b.env) || (a.env.size === b.env.size && [...a.env].every(([k, v]) => sameValue(v, b.env.get(k)))))
-  );
+  return !!a && a.quote === b.quote && a.paragraph === b.paragraph && a.env.equals(b.env);
 }
 
 /**
@@ -92,18 +88,19 @@ function graph(doc: Document, nodes: Map<string, Node>): string | undefined {
 
     let next = after;
 
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i];
+    let cursor = lines.length;
+    while (cursor > 0) {
+      const line = lines[--cursor];
 
       if (line.command === "else" || line.command === "elseif" || line.command === "elsif") {
-        let start = i;
+        let start = cursor;
 
         while (start >= 0 && ["else", "elseif", "elsif"].includes(lines[start].command ?? "")) start--;
 
         if (start >= 0 && lines[start].command === "if") {
           let alternative = next;
 
-          for (let j = i; j >= start; j--) {
+          for (let j = cursor; j >= start; j--) {
             const branch = lines[j];
             const body = block(branch.children, next);
             nodes.set(branch.id, {
@@ -114,7 +111,7 @@ function graph(doc: Document, nodes: Map<string, Node>): string | undefined {
           }
 
           next = alternative;
-          i = start;
+          cursor = start;
           continue;
         }
       }
@@ -151,6 +148,7 @@ function graph(doc: Document, nodes: Map<string, Node>): string | undefined {
 
 /**
  * Controls warning presentation, cooperative cancellation, and the transfer-work budget.
+ * A zero transfer budget retains syntax assistance without constructing the flow graph.
  * `incompleteProject` seeds isolated entry points with uncertain dialogue; callers that
  * lack scene context also control publication of context-dependent diagnostics.
  */
@@ -159,6 +157,8 @@ export interface AnalyzeOptions {
   signal?: AbortSignal;
   maxSteps?: number;
   incompleteProject?: boolean;
+  /** Storage oracle for differential tests; both modes perform the same full analysis. */
+  environment?: "native" | "javascript";
 }
 
 /**
@@ -173,6 +173,22 @@ export function analyzeProject(
   input: Array<{ uri: string; text: string; version?: number } | Document>,
   options: AnalyzeOptions = {},
 ): Analysis {
+  if (options.environment === "javascript") return analyzeWithEnvironment(input, options);
+  if (options.signal?.aborted) throw new Error("Analysis cancelled");
+  const arena = acquireEnvironmentArena();
+  try {
+    return analyzeWithEnvironment(input, options, arena);
+  } finally {
+    releaseEnvironmentArena(arena);
+  }
+}
+
+function analyzeWithEnvironment(
+  input: Array<{ uri: string; text: string; version?: number } | Document>,
+  options: AnalyzeOptions = {},
+  arena?: NativeEnvironmentArena,
+): Analysis {
+  if (options.signal?.aborted) throw new Error("Analysis cancelled");
   const documents = new Map(input.map((d) => [d.uri, "lines" in d ? d : parseDocument(d.uri, d.text, d.version)]));
   const result: Analysis = {
     documents,
@@ -182,7 +198,7 @@ export function analyzeProject(
     references: new Map(),
     values: new Map(),
     wordCounts: new Map(),
-    truncated: false,
+    truncated: options.maxSteps === 0,
   };
   const nodes = new Map<string, Node>(),
     entries = new Map<string, string>(),
@@ -202,7 +218,7 @@ export function analyzeProject(
     result.diagnostics.set(doc.uri, [...doc.diagnostics]);
     scenes.set(doc.scene, doc);
 
-    const entry = graph(doc, nodes);
+    const entry = options.maxSteps === 0 ? undefined : graph(doc, nodes);
 
     if (entry) entries.set(doc.uri, entry);
 
@@ -302,8 +318,21 @@ export function analyzeProject(
         : (globals.get(name)?.id ?? "global:" + name)));
   };
 
+  // During observation, retain only bindings actually needed to color/query this
+  // line. Flow states still carry the full environment between control-flow joins.
+  let reads: Environment | undefined;
+  const read = (state: State, key: string): Value | undefined => {
+    const value = state.env.get(key);
+    if (reads && value !== undefined) reads.set(key, value);
+    return value;
+  };
+
   const activeResolve = (state: State, uri: string, name: string): string => {
     const local = identifier(uri, name).local;
+    if (reads) {
+      read(state, environmentId(local));
+      read(state, identifier(uri, name + "_*").environment);
+    }
 
     if (state.env.has(environmentId(local)) || state.env.has(identifier(uri, name + "_*").environment)) return local;
 
@@ -317,8 +346,8 @@ export function analyzeProject(
   };
 
   const lookup = (state: State, uri: string, name: string): Value =>
-    state.env.get(environmentId(activeResolve(state, uri, name))) ??
-    state.env.get(environmentId(activeResolve(state, uri, name + "_*"))) ??
+    read(state, environmentId(activeResolve(state, uri, name))) ??
+    read(state, environmentId(activeResolve(state, uri, name + "_*"))) ??
     unknown();
 
   const assignmentName = (line: Line, state: State): string | undefined => {
@@ -348,6 +377,28 @@ export function analyzeProject(
 
     return undefined;
   };
+
+  // Only joins and externally reachable entries need a retained input for fixed
+  // point convergence. Single-predecessor chains can consume their queued input.
+  const leaders = new Set([...entries.values(), ...labels.values()]);
+  const incoming = new Map<string, number>();
+  for (const node of nodes.values()) for (const next of node.next) incoming.set(next, (incoming.get(next) ?? 0) + 1);
+  for (const [id, count] of incoming) if (count > 1) leaders.add(id);
+
+  const featureExpressions = new Map<Line, NonNullable<Line["expr"]>[]>();
+  if (options.maxSteps !== 0)
+    for (const doc of documents.values())
+      for (const line of doc.lines) {
+        const expressions = [line.expr, line.targetExpr, ...(line.expressions ?? [])].filter(
+          (expr): expr is NonNullable<Line["expr"]> => !!expr,
+        );
+        for (const token of line.tokens)
+          if (token.type === "variable" && line.raw[token.start + token.length] === "[") {
+            const groups = valueGroups(lex(line.raw.slice(token.start), line.line, token.start, []));
+            expressions.push(parseExpression(groups[0] ?? [], [], true));
+          }
+        if (expressions.length) featureExpressions.set(line, expressions);
+      }
 
   const states = new Map<string, State>(),
     observed = new Map<string, State>(),
@@ -382,10 +433,28 @@ export function analyzeProject(
    */
   function deliver(w: Waiting, summary: State) {
     const state = clone(summary);
+    if (w.effects) {
+      state.env = w.caller.env.clone();
+      const apply = (key: string) => {
+        const value = summary.env.get(key);
+        if (value === undefined) state.env.delete(key);
+        else state.env.set(key, value);
+      };
+      for (const key of w.effects.written) apply(key);
+      if (w.effects.writtenArrays.size)
+        for (const key of new Set([...w.caller.env.keys(), ...summary.env.keys()]))
+          if (arrayKey(w.effects.writtenArrays, key)) apply(key);
+      apply("@param_count");
+      for (let i = 0; i < maximumArguments; i++) apply("@param" + i);
+      for (const scope of w.effects.parameters) {
+        apply(scope + "param_count");
+        for (let i = 1; i <= maximumArguments; i++) apply(scope + "param_" + i);
+      }
+    }
 
     if (w.restore) {
-      for (const k of state.env.keys()) if (k.startsWith("local:")) state.env.delete(k);
-      for (const [k, v] of w.caller.env) if (k.startsWith(localPrefix(w.callerUri))) state.env.set(k, v);
+      state.env.deletePrefix("local:");
+      for (const [k, v] of w.caller.env.entriesWithPrefix(localPrefix(w.callerUri))) state.env.set(k, v);
     }
 
     for (const next of w.next) schedule(w.context, next, state);
@@ -405,20 +474,169 @@ export function analyzeProject(
   const orderedScenes =
     [...documents.values()]
       .find((d) => d.scene === "startup")
-      ?.lines.filter((l) => l.parent?.command === "scene_list")
-      .map((l) =>
-        l.raw
-          .trim()
-          .replace(/^\$\S+\s+/, "")
-          .toLowerCase(),
-      ) ?? [];
+      ?.lines.filter((l) => l.parent?.command === "scene_list" && l.kind === "metadata")
+      .map((l) => l.raw.trim().replace(/^\$\S+\s+/, "")) ?? [];
 
   if (orderedScenes[0] !== "startup") orderedScenes.unshift("startup");
+
+  const effectCache = new Map<string, Effects | undefined>();
+  const arrayKey = (prefixes: Set<string>, key: string): boolean => {
+    for (const prefix of prefixes)
+      if (key.startsWith(prefix) && /^(?:\d+(?:_\d+)*|count|\*)$/.test(key.slice(prefix.length))) return true;
+    return false;
+  };
+
+  /**
+   * A callee summary depends only on bindings its reachable body can inspect or
+   * change. Other caller bindings pass through untouched on return. Unknown host
+   * code or indirection disables this optimization, retaining the full environment.
+   * Walking both nested calls and their continuations includes transitive effects;
+   * visited nodes bound recursion without dropping any reachable body.
+   */
+  function calleeEffects(target: string): Effects | undefined {
+    if (effectCache.has(target)) return effectCache.get(target);
+    effectCache.set(target, undefined);
+    const result: Effects = {
+      needed: new Set(),
+      written: new Set(),
+      arrays: new Set(),
+      writtenArrays: new Set(),
+      parameters: new Set(),
+    };
+    const pending = [target],
+      visited = new Set<string>();
+    const add = (line: Line, name: string, writes = false, local?: boolean) => {
+      const keys =
+        local === true
+          ? [localPrefix(line.uri) + name]
+          : local === false
+            ? ["global:" + name]
+            : ["global:" + name, localPrefix(line.uri) + name];
+      for (const key of keys) {
+        result.needed.add(key);
+        if (writes) result.written.add(key);
+      }
+    };
+    const array = (line: Line, name: string, writes: boolean, local?: boolean) => {
+      const keys =
+        local === true
+          ? [localPrefix(line.uri) + name + "_"]
+          : local === false
+            ? ["global:" + name + "_"]
+            : ["global:" + name + "_", localPrefix(line.uri) + name + "_"];
+      for (const key of keys) {
+        result.arrays.add(key);
+        if (writes) result.writtenArrays.add(key);
+      }
+    };
+    while (pending.length) {
+      const id = pending.pop()!;
+      if (visited.has(id)) continue;
+      visited.add(id);
+      const node = nodes.get(id);
+      if (!node) continue;
+      const line = node.line,
+        c = line.command ?? "";
+      if (
+        c === "script" ||
+        c === "setref" ||
+        line.tokens.some((t) => t.type === "operator" && line.raw.slice(t.start, t.start + t.length) === "{")
+      )
+        return undefined;
+      for (const token of line.tokens)
+        if (token.type === "variable") {
+          const name = line.raw.slice(token.start, token.start + token.length).toLowerCase();
+          add(line, name);
+          add(line, name + "_*");
+          const base = name.replace(/_(?:\d+(?:_\d+)*|count)$/, "");
+          if (base !== name) {
+            add(line, base);
+            add(line, base + "_*");
+          }
+          if (line.raw[token.start + token.length] === "[") array(line, name, false);
+        }
+      if (["create", "temp", "set", "rand", "input_text", "input_number", "delete"].includes(c) && line.target) {
+        const local = c === "create" ? false : c === "temp" ? true : undefined;
+        const expr = line.targetExpr;
+        if (expr && expr.kind !== "variable" && expr.kind !== "array") return undefined;
+        if (expr?.kind === "array") array(line, expr.name, true, local);
+        else add(line, line.target, true, local);
+        if (line.target.includes("_")) add(line, line.target.replace(/_\d+(?:_\d+)*$/, "") + "_*", true, local);
+      }
+      if (["create_array", "temp_array", "delete_array"].includes(c) && line.target)
+        array(line, line.target, true, c === "create_array" ? false : c === "temp_array" ? true : undefined);
+      if (c === "params") {
+        result.parameters.add(localPrefix(line.uri));
+        for (const token of line.tokens)
+          if (token.type === "variable")
+            add(line, line.raw.slice(token.start, token.start + token.length).toLowerCase(), true, true);
+      }
+      if (["return", "ending", "abort", "restart"].includes(c)) continue;
+      if (["goto", "gosub", "goto_scene", "gosub_scene", "redirect_scene", "gotoref"].includes(c)) {
+        if (c === "gotoref" || line.targetExpr?.kind === "indirect" || line.targetExpr?.kind === "array")
+          return undefined;
+        const scene = c.endsWith("_scene") ? scenes.get(line.target ?? "") : documents.get(line.uri);
+        let label = c.endsWith("_scene") ? undefined : line.target;
+        if (c.endsWith("_scene")) {
+          const group = referenceGroups(line.args, line.line, line.argStart, [], 2)[1];
+          if (group) {
+            if (group.length !== 1 || !["reference", "variable", "number", "string", "boolean"].includes(group[0].kind))
+              return undefined;
+            label = (
+              group[0].kind === "string"
+                ? String(evaluate(parseExpression(group, [], true), () => unknown()).constant)
+                : group[0].text
+            ).toLowerCase();
+          }
+          // A non-call scene transition destroys the active local frame. Keep
+          // the existing full-state transfer for those unusual subroutines.
+          if (!c.startsWith("gosub")) return undefined;
+        }
+        const next = scene ? (label ? labels.get(scene.uri + ":" + label) : entries.get(scene.uri)) : undefined;
+        if (!next) return undefined;
+        pending.push(next);
+        if (!c.startsWith("gosub")) continue;
+      }
+      if (c === "goto_random_scene" || c === "finish" || !node.next.length) return undefined;
+      pending.push(...node.next);
+    }
+    effectCache.set(target, result);
+    return result;
+  }
+
+  function projectCall(state: State, effects: Effects): State {
+    const env = state.env.empty();
+    for (const key of effects.needed) {
+      const value = state.env.get(key);
+      if (value !== undefined) env.set(key, value);
+    }
+    if (effects.arrays.size)
+      for (const [key, value] of state.env) if (arrayKey(effects.arrays, key)) env.set(key, value);
+    const count = state.env.get("@param_count");
+    if (count) env.set("@param_count", count);
+    for (let i = 0; i < maximumArguments; i++) {
+      const key = "@param" + i,
+        value = state.env.get(key);
+      if (value !== undefined) env.set(key, value);
+    }
+    for (const scope of effects.parameters) {
+      for (const key of [
+        scope + "param_count",
+        ...Array.from({ length: maximumArguments }, (_, i) => scope + "param_" + (i + 1)),
+      ]) {
+        const value = state.env.get(key);
+        if (value !== undefined) env.set(key, value);
+      }
+    }
+    return { ...state, env };
+  }
 
   const initial: State = {
     quote: 1,
     paragraph: true,
-    env: new Environment(new Map([["global:implicit_control_flow", literal(false)]])),
+    env: arena
+      ? arena.environment([["global:implicit_control_flow", literal(false)]])
+      : new Environment([["global:implicit_control_flow", literal(false)]]),
   };
   const start = scenes.get("startup") ?? documents.values().next().value;
 
@@ -426,6 +644,13 @@ export function analyzeProject(
     if (doc) for (const line of doc.lines) priorities.set(line.id, priorities.size);
 
   if (start && entries.has(start.uri)) schedule("root", entries.get(start.uri)!, initial);
+
+  let maximumArguments = 0;
+  const clearParameters = (env: Environment) => {
+    if (!env.has("@param_count")) return;
+    for (let i = 0; i < maximumArguments; i++) env.delete("@param" + i);
+    env.delete("@param_count");
+  };
 
   let steps = 0;
   const maxSteps = options.maxSteps ?? 200000;
@@ -514,6 +739,7 @@ export function analyzeProject(
     let run = start,
       runType = mask === 2 || mask === 4 ? "dialogue" : "narrative",
       first = true;
+    let unclosedMarkup = false;
 
     const emit = (end: number) => {
       if (collect && end > run)
@@ -527,7 +753,8 @@ export function analyzeProject(
 
     // Plain prose cannot change quote state; avoid scanning every character twice.
     if (/["“”$@\[]/.test(line.raw.slice(start, limit))) {
-      for (let i = start; i < limit; i++) {
+      let i = start;
+      while (i < limit) {
         const match = line.raw[i] === "$" || line.raw[i] === "@" ? /^([$@])!{0,2}\{/.exec(line.raw.slice(i)) : null;
 
         if (match) {
@@ -580,20 +807,20 @@ export function analyzeProject(
             mask = union || 7;
           }
 
-          i = end;
-          run = i + 1;
+          i = end + 1;
+          run = i;
           runType = mask === 2 || mask === 4 ? "dialogue" : "narrative";
           first = false;
           continue;
         }
 
-        if (line.raw[i] === "[") {
-          const tag = /^\[[^\]]*]/.exec(line.raw.slice(i));
-
-          if (tag) {
-            i += tag[0].length - 1;
+        if (line.raw[i] === "[" && !unclosedMarkup) {
+          const close = line.raw.indexOf("]", i + 1);
+          if (close >= 0 && close < limit) {
+            i = close + 1;
             continue;
           }
+          unclosedMarkup = true;
         }
 
         const ch = line.raw[i];
@@ -633,6 +860,7 @@ export function analyzeProject(
           mask = next;
           first = false;
         }
+        i++;
       }
     }
 
@@ -677,8 +905,17 @@ export function analyzeProject(
    * Clone before any environment write; quotation-only transfers may share the environment.
    * Observations join contexts for display, while scheduling remains context-specific.
    */
+  function* liveEnvironments(): IterableIterator<Environment> {
+    yield initial.env;
+    for (const state of states.values()) yield state.env;
+    for (const state of observed.values()) yield state.env;
+    for (const state of summaries.values()) yield state.env;
+    for (const callers of waiting.values()) for (const caller of callers.values()) yield caller.caller.env;
+  }
+
   function processQueue() {
     while (queue.size) {
+      if (arena?.needsCollection) arena.collect(liveEnvironments());
       if (options.signal?.aborted) throw new Error("Analysis cancelled");
 
       if (++steps > maxSteps) {
@@ -694,10 +931,23 @@ export function analyzeProject(
         line = node.line,
         c = line.command ?? "",
         input = states.get(key)!;
+      if (!leaders.has(id)) states.delete(key);
       const s = writesEnvironment.has(c) || !node.next.length ? clone(input) : { ...input };
-      observed.set(id, merge(observed.get(id), input));
+      reads = input.env.empty();
+      for (const token of line.tokens)
+        if (token.type === "variable") {
+          const name = line.raw.slice(token.start, token.start + token.length).toLowerCase();
+          lookup(input, line.uri, name);
+          // Generated element aliases also need the active array's scope marker.
+          const base = name.replace(/_(?:\d+(?:_\d+)*|count)$/, "");
+          if (base !== name) lookup(input, line.uri, base);
+        }
+      for (const expr of featureExpressions.get(line) ?? []) evaluate(expr, (name) => lookup(input, line.uri, name));
       if (line.kind === "blank") s.paragraph = true;
       if (line.kind === "prose" || line.kind === "option" || line.inlineText !== undefined) textTransfer(line, s);
+      const observation = { quote: input.quote, paragraph: input.paragraph, env: reads };
+      reads = undefined;
+      observed.set(id, merge(observed.get(id), observation));
 
       if (["create", "temp", "set", "rand", "input_text", "input_number"].includes(c) && line.target) {
         let value =
@@ -720,22 +970,15 @@ export function analyzeProject(
             const prefix = id.slice(0, -1);
 
             for (const [key, prior] of s.env)
-              if (key.startsWith(prefix) && !key.endsWith("_count"))
-                s.env.set(key, joinValue(prior, { ...value, types: [...value.types] }));
-          } else s.env.set(id, { ...value, types: [...value.types] });
+              if (key.startsWith(prefix) && !key.endsWith("_count")) s.env.set(key, joinValue(prior, value));
+          } else s.env.set(id, value);
 
           if (name.includes("_")) {
             const base = name.replace(/_\d+(?:_\d+)*$/, "");
 
             if (base !== name) {
               const key = environmentId(resolve(line.uri, base + "_*"));
-              s.env.set(
-                key,
-                joinValue(s.env.get(key) ?? unknown(), {
-                  ...value,
-                  types: [...value.types],
-                }),
-              );
+              s.env.set(key, joinValue(s.env.get(key) ?? unknown(), value));
             }
           }
         } else for (const key of s.env.keys()) s.env.set(key, unknown());
@@ -775,7 +1018,7 @@ export function analyzeProject(
             s.env.set(localPrefix(line.uri) + "param_" + (p + 1), s.env.get("@param" + p) ?? unknown());
 
         // The interpreter consumes all supplied parameters at *params.
-        for (const key of s.env.keys()) if (/^@param(?:\d+|_count)$/.test(key)) s.env.delete(key);
+        clearParameters(s.env);
       }
 
       if (c === "delete" || c === "delete_array") {
@@ -840,16 +1083,17 @@ export function analyzeProject(
           const group = groups[index];
 
           if (!group) return undefined;
-          if (group[0]?.kind === "reference") return group[0].text.toLowerCase();
+          const normalize = (value: string) => (c.endsWith("_scene") && index === 0 ? value : value.toLowerCase());
+          if (group[0]?.kind === "reference") return normalize(group[0].text);
 
           const expr = parseExpression(group, [], true);
 
-          if (expr.kind === "variable") return expr.name;
-          if (expr.kind === "literal") return String(expr.value).toLowerCase();
+          if (expr.kind === "variable") return normalize(group[0].text);
+          if (expr.kind === "literal") return normalize(String(expr.value));
 
           if (expr.kind === "indirect") {
             const v = evaluate(expr.expr, (n) => lookup(s, line.uri, n));
-            return v.constant === undefined ? undefined : String(v.constant).toLowerCase();
+            return v.constant === undefined ? undefined : normalize(String(v.constant));
           }
 
           return undefined;
@@ -883,26 +1127,29 @@ export function analyzeProject(
             .slice(argOffset)
             .map((group) => evaluate(parseExpression(group, []), (n) => lookup(s, line.uri, n)));
 
-          if (c.endsWith("_scene")) for (const k of s.env.keys()) if (k.startsWith("local:")) s.env.delete(k);
-          for (const key of s.env.keys()) if (/^@param(?:\d+|_count)$/.test(key)) s.env.delete(key);
+          if (c.endsWith("_scene")) s.env.deletePrefix("local:");
+          clearParameters(s.env);
 
+          maximumArguments = Math.max(maximumArguments, argumentsList.length);
           s.env.set("@param_count", literal(argumentsList.length));
           for (let p = 0; p < argumentsList.length; p++) s.env.set("@param" + p, argumentsList[p]);
 
           if (isCall) {
+            const effects = calleeEffects(target);
             const callee = "call:" + target + ":" + s.quote;
             const waits = waiting.get(callee) ?? new Map<string, Waiting>();
             const previous = waits.get(key);
             const w: Waiting = {
               context,
               next: node.next,
-              caller: merge(previous?.caller, states.get(key)!),
+              caller: merge(previous?.caller, input),
               callerUri: line.uri,
               restore: c === "gosub_scene",
+              effects,
             };
             waits.set(key, w);
             waiting.set(callee, waits);
-            schedule(callee, target, s);
+            schedule(callee, target, effects ? projectCall(s, effects) : s);
             if (summaries.has(callee)) deliver(w, summaries.get(callee)!);
           } else schedule(context, target, s);
         } else {
@@ -938,7 +1185,7 @@ export function analyzeProject(
           if (dest && entries.has(dest.uri)) {
             const next = clone(s);
 
-            for (const key of next.env.keys()) if (key.startsWith("local:")) next.env.delete(key);
+            next.env.deletePrefix("local:");
 
             schedule(context, entries.get(dest.uri)!, next);
           }
@@ -954,7 +1201,7 @@ export function analyzeProject(
           scene = scenes.get(orderedScenes[index + 1]);
 
         if (index >= 0 && scene && entries.has(scene.uri)) {
-          for (const key of s.env.keys()) if (key.startsWith("local:")) s.env.delete(key);
+          s.env.deletePrefix("local:");
 
           schedule(context, entries.get(scene.uri)!, s);
         } else returnState(context, s);
@@ -978,25 +1225,34 @@ export function analyzeProject(
       processQueue();
     }
 
+  // Propagation is finished. Keep only per-line observations while collecting
+  // features; releasing flow/call snapshots prevents both phases from retaining
+  // their peak allocations together in the bounded worker heap.
+  states.clear();
+  waiting.clear();
+  effectCache.clear();
+  nodes.clear();
+  priorities.clear();
+  featureExpressions.clear();
+  const endings = [...summaries].map(([context, state]) => ({ context, quote: state.quote }));
+  summaries.clear();
+
   for (const doc of documents.values()) {
     const all: Span[] = [],
       diagnostics = result.diagnostics.get(doc.uri)!;
     let words = 0;
 
     for (const line of doc.lines) {
-      const state = observed.get(line.id) ?? { ...initial, quote: 7 };
+      const state = (!result.truncated && observed.get(line.id)) || {
+        quote: 7,
+        paragraph: true,
+        env: initial.env.empty(),
+      };
       let base: Span[] = [];
 
       if (line.kind === "prose" || line.kind === "option" || line.inlineText !== undefined) {
         base = textTransfer(line, { ...state }, true);
-        words +=
-          line.wordCount ??
-          (
-            line.raw
-              .slice(line.inlineText ?? line.indent)
-              .replace(/\[[^\]]*]/g, "")
-              .match(/[\p{L}\p{N}]+(?:['’]\p{L}+)*/gu) ?? []
-          ).length;
+        words += line.wordCount ?? narrativeWords(line.raw.slice(line.inlineText ?? line.indent));
       }
 
       if (
@@ -1017,12 +1273,26 @@ export function analyzeProject(
           ),
         );
 
+      observed.delete(line.id);
+
       const overlays = line.tokens.map((t) => ({ ...t }));
 
+      const sceneTarget = () => {
+        if (line.targetExpr?.kind === "indirect") {
+          const value = evaluate(line.targetExpr.expr, (name) => lookup(state, line.uri, name));
+          return value.constant === undefined ? undefined : String(value.constant);
+        }
+        return line.target;
+      };
       for (const t of overlays) {
-        const name = line.raw.slice(t.start, t.start + t.length).toLowerCase();
+        const spelling = line.raw.slice(t.start, t.start + t.length);
+        const name = spelling.toLowerCase();
 
         if (t.type === "variable") {
+          if (result.truncated && !t.modifiers?.includes("declaration")) {
+            delete t.symbol;
+            continue;
+          }
           const directId = t.symbol ?? activeResolve(state, doc.uri, name);
           const alias =
             !result.symbols.has(directId) &&
@@ -1040,7 +1310,7 @@ export function analyzeProject(
 
           let value = lookup(state, doc.uri, name);
 
-          if (t.modifiers?.includes("declaration") && line.expr)
+          if (!result.truncated && t.modifiers?.includes("declaration") && line.expr)
             value = evaluate(line.expr, (n) => lookup(state, line.uri, n));
 
           if (line.raw[t.start + t.length] === "[") {
@@ -1060,13 +1330,17 @@ export function analyzeProject(
         } else if (t.type === "label" && !t.symbol) {
           if (
             ["scene_list", "goto_random_scene"].includes(line.parent?.command ?? "") ||
-            (line.command?.endsWith("_scene") && t === overlays.find((x) => x.type === "label"))
+            (line.command?.endsWith("_scene") && t.start === line.targetToken?.start)
           )
-            t.symbol = "scene:" + name;
+            t.symbol = "scene:" + spelling;
           else {
             let uri = doc.uri;
 
-            if (line.command?.endsWith("_scene")) uri = scenes.get(line.target ?? "")?.uri ?? uri;
+            if (line.command?.endsWith("_scene")) {
+              const destination = scenes.get(sceneTarget() ?? "");
+              if (!destination) continue;
+              uri = destination.uri;
+            }
 
             t.symbol = "label:" + uri + ":" + name;
           }
@@ -1146,9 +1420,9 @@ export function analyzeProject(
     result.wordCounts.set(doc.uri, words);
   }
 
-  if (options.quoteWarnings !== false)
-    for (const [context, s] of summaries)
-      if ((context === "root" || context.startsWith("isolated:")) && (s.quote === 2 || s.quote === 4)) {
+  if (!result.truncated && options.quoteWarnings !== false)
+    for (const { context, quote } of endings)
+      if ((context === "root" || context.startsWith("isolated:")) && (quote === 2 || quote === 4)) {
         const doc = context === "root" ? start : documents.get(context.slice(9));
 
         if (doc) {

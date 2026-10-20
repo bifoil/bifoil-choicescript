@@ -24,8 +24,8 @@ function engine() {
   return context;
 }
 
-function token(a: ReturnType<typeof analyze>, line: number, character: number) {
-  return a.tokens.get(uri)!.find((t) => t.line === line && t.start <= character && t.start + t.length > character)
+function token(a: ReturnType<typeof analyze>, line: number, character: number, source = uri) {
+  return a.tokens.get(source)!.find((t) => t.line === line && t.start <= character && t.start + t.length > character)
     ?.type;
 }
 
@@ -174,4 +174,142 @@ test("unequal choice branches converge before a long continuation within a bound
   assert.equal(a.truncated, false);
   assert.equal(token(a, lines.length - 1, 7), "booleanVariable");
   assert.deepEqual(a.diagnostics.get(uri), []);
+});
+
+test("comment-only conditional bodies are valid and retain sibling alternatives", () => {
+  const source =
+    "*create implicit_control_flow true\n*if true\n\n  *comment Deliberately empty.\n*else\n  *comment Also empty.\nFollowing prose.";
+  const context = engine();
+  vm.runInContext(
+    `scene.loadLines(${JSON.stringify(source)}); scene.lineNum = 1; scene.indent = 0; scene["if"]("true")`,
+    context,
+  );
+  assert.deepEqual(analyze(source).diagnostics.get(uri), []);
+});
+
+test("a UTF-8 BOM preserves physical ranges without changing indentation", () => {
+  const source = "\uFEFF*if true\r\n One line.\r\n*else\r\n Another line.";
+  const a = analyze(source);
+  assert.deepEqual(a.diagnostics.get(uri), []);
+  assert.equal(token(a, 0, 0), undefined);
+  assert.equal(token(a, 0, 1), "keyword");
+  assert.equal(token(a, 0, 5), "boolean");
+  assert.equal(a.documents.get(uri)!.lines[1].parent?.line, 0);
+});
+
+test("Unicode whitespace-only lines do not break blocks or become prose parents", () => {
+  const source = "*if true\n\u00a0 \u00a0\n  Still in the block.\n\t\u00a0\n  Another line.\nOutside.";
+  const a = analyze(source);
+  assert.deepEqual(a.diagnostics.get(uri), []);
+  assert.equal(a.documents.get(uri)!.lines[1].kind, "blank");
+  assert.equal(a.documents.get(uri)!.lines[4].parent?.line, 0);
+});
+
+test("jump targets can start a deeper region after an unconditional transfer", () => {
+  const source = "*goto deeper\n    *label deeper\n    *temp count 1\n    *print count\n    *ending";
+  const a = analyze(source);
+  assert.deepEqual(a.diagnostics.get(uri), []);
+  assert.equal(token(a, 3, 11), "numberVariable");
+  assert.equal(definition(a, uri, { line: 0, character: 8 })?.range.start.line, 1);
+});
+
+test("bounded analysis does not publish certain types or quote warnings from unfinished flow", () => {
+  const source = '*temp flag true\n*if flag\n  "Open\n*else\n  Ordinary.\n*print flag';
+  const a = analyzeProject([{ uri, text: source }], { maxSteps: 2 });
+  assert.equal(a.truncated, true);
+  assert(!a.diagnostics.get(uri)!.some((d) => d.code.startsWith("quote-")));
+  assert.equal(token(a, 5, 7), "variable");
+});
+
+test("incomplete command diagnostics stay on the physical line within its UTF-16 extent", () => {
+  const lines = ["*comment 😀", "*set", "*set value", "*if", "  *set value +", "*create value (1 + 2)"];
+  const d = parseDocument(uri, lines.join("\r\n"));
+  assert(d.diagnostics.some((d) => d.code === "missing-value" && d.range.start.line === 4));
+  assert(d.diagnostics.some((d) => d.code === "missing-expression" && d.range.start.line === 3));
+  for (const diagnostic of d.diagnostics)
+    for (const p of [diagnostic.range.start, diagnostic.range.end]) {
+      assert(p.line >= 0 && p.line < lines.length);
+      assert(p.character >= 0 && p.character <= lines[p.line].length, JSON.stringify(diagnostic));
+    }
+});
+
+test("truncated flow cannot rename or navigate a guessed shadowed reference", () => {
+  const text = '*create value 1\n*temp value "local"\n*print value';
+  const a = analyzeProject([{ uri, text }], { maxSteps: 1 });
+  assert.equal(rename(a, uri, { line: 0, character: 9 }, "replacement"), null);
+  assert.equal(definition(a, uri, { line: 2, character: 8 }), null);
+});
+
+test("labels introduce reachable indentation regions even after unreachable prose", () => {
+  const source = "*goto nested\nUnused prose.\n    *label nested\n    *temp count 1\n    *print count\n    *ending";
+  const a = analyze(source);
+  assert.deepEqual(a.diagnostics.get(uri), []);
+  assert.equal(token(a, 4, 11), "numberVariable");
+});
+
+test("non-ASCII indentation is diagnosed locally while command parsing recovers", () => {
+  const source = "\u00a0*if true\n  Inside.\n*print 42";
+  const a = analyze(source);
+  assert.equal(a.diagnostics.get(uri)!.filter((d) => d.code === "indentation-whitespace").length, 1);
+  assert.equal(token(a, 0, 1), "keyword");
+  assert.equal(token(a, 2, 7), "number");
+});
+
+test("comments alone do not provide an option for a choice block", () => {
+  assert(
+    parseDocument(uri, "*fake_choice\n  *comment No options yet.").diagnostics.some((d) => d.code === "missing-block"),
+  );
+});
+
+test("syntax-only recovery keeps literal colors and local errors without guessed flow", () => {
+  const text = '*temp flag true\n"Open dialogue\n*set flag "unterminated\n*print 42\nOutside.';
+  const a = analyzeProject([{ uri, text }], { maxSteps: 0 });
+  assert.equal(a.truncated, true);
+  assert(a.diagnostics.get(uri)!.some((d) => d.code === "expression-string" && d.range.start.line === 2));
+  assert(!a.diagnostics.get(uri)!.some((d) => d.code.startsWith("quote-")));
+  assert.equal(token(a, 1, 1), "narrative");
+  assert.equal(token(a, 3, 7), "number");
+  assert.equal(token(a, 4, 1), "narrative");
+  const controller = new AbortController();
+  controller.abort();
+  assert.throws(() => analyzeProject([{ uri, text }], { maxSteps: 0, signal: controller.signal }), /cancelled/);
+});
+
+test("scene names preserve case while labels remain case-insensitive", () => {
+  const context = engine();
+  assert.equal(vm.runInContext('scene.parseGotoScene("Act ENTRY").sceneName', context), "Act");
+  vm.runInContext('scene.stats.destination = "act"', context);
+  assert.equal(vm.runInContext('scene.parseGotoScene("{destination} ENTRY").sceneName', context), "act");
+  const upper = "file:///corpus/scenes/Act.txt",
+    lower = "file:///corpus/scenes/act.txt";
+  const text =
+    '*create result 0\n*create destination "act"\n*gosub_scene Act ENTRY\n*print result\n*gosub_scene {destination} ENTRY\n*print result\n*ending';
+  const a = analyzeProject([
+    { uri, text },
+    { uri: upper, text: "*label entry\n*set result 1\n*return" },
+    { uri: lower, text: '*label entry\n*set result "text"\n*return' },
+  ]);
+  assert.deepEqual([...a.diagnostics.values()].flat(), []);
+  assert.equal(a.symbols.get("scene:Act")?.uri, upper);
+  assert.equal(a.symbols.get("scene:act")?.uri, lower);
+  assert.equal(definition(a, uri, { line: 2, character: 14 })?.uri, upper);
+  assert.equal(definition(a, uri, { line: 2, character: 19 })?.uri, upper);
+  assert.equal(definition(a, uri, { line: 4, character: 28 })?.uri, lower);
+  assert.equal(token(a, 3, 8), "numberVariable");
+  assert.equal(token(a, 5, 8), "stringVariable");
+});
+
+test("blank scene-list rows do not interrupt case-preserving scene transitions", () => {
+  const context = engine();
+  const text = "*create value 7\n*scene_list\n\n  startup\n\n  Act\n*finish";
+  vm.runInContext(`scene.loadLines(${JSON.stringify(text)});scene.lineNum=1;scene.indent=0`, context);
+  assert.equal(vm.runInContext('scene.parseSceneList().join(",")', context), "startup,Act");
+  const next = "file:///corpus/scenes/Act.txt";
+  const a = analyzeProject([
+    { uri, text },
+    { uri: next, text: "*print value\n*ending" },
+  ]);
+  assert.deepEqual([...a.diagnostics.values()].flat(), []);
+  assert.equal(token(a, 0, 8, next), "numberVariable");
+  assert.equal(definition(a, uri, { line: 5, character: 3 })?.uri, next);
 });

@@ -287,7 +287,7 @@ function command(doc: Document, node: Line): void {
       if (declaration.has(c)) node.targetToken.modifiers = ["declaration"];
     }
 
-    if (!ts[0]) doc.diagnostics.push(diagnostic(node.line, s, 1, "missing-variable", "Expected a variable name."));
+    if (!ts[0]) doc.diagnostics.push(diagnostic(node.line, s, 0, "missing-variable", "Expected a variable name."));
 
     if (declaration.has(c) && ts[0] && !validVariableName(ts[0].text))
       doc.diagnostics.push(
@@ -328,14 +328,19 @@ function command(doc: Document, node: Line): void {
         diagnostic(
           node.line,
           rest[0].start,
-          a.length,
+          node.raw.length - rest[0].start,
           "create-literal",
           "*create requires a simple number, boolean, or string literal.",
         ),
       );
 
     if ((c === "create" || c === "set" || c === "setref") && !rest.length)
-      doc.diagnostics.push(diagnostic(node.line, s + a.length, 1, "missing-value", "Expected a value."));
+      doc.diagnostics.push(diagnostic(node.line, s + a.length, 0, "missing-value", "Expected a value."));
+
+    if (node.expr?.kind === "binary" && node.expr.right.kind === "unknown" && rest.length === 1)
+      doc.diagnostics.push(
+        diagnostic(node.line, node.raw.length, 0, "missing-value", "Expected a value after the operator."),
+      );
 
     if (c.endsWith("_array")) {
       node.expressions = valueGroups(rest).map((t) => parseExpression(t, doc.diagnostics));
@@ -370,7 +375,7 @@ function command(doc: Document, node: Line): void {
 
     node.expr = addExpression(doc, node, expr, s);
     if (!expr.trim())
-      doc.diagnostics.push(diagnostic(node.line, s, 1, "missing-expression", "Expected an expression."));
+      doc.diagnostics.push(diagnostic(node.line, s, 0, "missing-expression", "Expected an expression."));
   } else if (["label", "goto", "gosub", "goto_scene", "gosub_scene", "redirect_scene", "gotoref"].includes(c)) {
     const count = c.endsWith("_scene") ? 2 : 1;
     const groups =
@@ -385,7 +390,7 @@ function command(doc: Document, node: Line): void {
     if (ts[0]) {
       node.targetExpr =
         ts[0].kind === "reference" ? { kind: "literal", value: ts[0].text } : parseExpression(groups[0], [], true);
-      node.target = ts[0].text.toLowerCase();
+      node.target = c.endsWith("_scene") ? ts[0].text : ts[0].text.toLowerCase();
       node.targetToken = ts[0].span;
       if (c === "label") node.targetToken.modifiers = ["declaration"];
     }
@@ -418,12 +423,16 @@ export function parseDocument(uri: string, text: string, version = 0): Document 
   };
   const stack: Line[] = [];
   const previousSibling = new Map<Line | undefined, Line>();
+  const labelRegions = new Map<Line, Set<number>>();
   let indentStyle = "";
+  const bom = text.startsWith("\uFEFF") ? 1 : 0;
+  const level = (node: Line) => node.indent - (node.line === 0 ? bom : 0);
 
   for (const [line, raw] of text.split(/\r\n|\n|\r/).entries()) {
-    const whitespace = /^[ \t]*/.exec(raw)![0],
-      indent = whitespace.length,
-      body = raw.slice(indent);
+    const offset = line === 0 ? bom : 0;
+    const whitespace = /^\s*/.exec(raw.slice(offset))![0],
+      indent = offset + whitespace.length,
+      body = raw.trim() ? raw.slice(indent) : "";
     const node: Line = {
       id: uri + "#" + line,
       uri,
@@ -446,7 +455,7 @@ export function parseDocument(uri: string, text: string, version = 0): Document 
     };
 
     if (body) {
-      while (stack.length && stack.at(-1)!.indent >= indent) stack.pop();
+      while (stack.length && level(stack.at(-1)!) >= indent - offset) stack.pop();
 
       node.parent = stack.at(-1);
       if (node.parent) node.parent.children.push(node);
@@ -456,7 +465,18 @@ export function parseDocument(uri: string, text: string, version = 0): Document 
       (node.parent?.children ?? doc.roots).push(node);
     }
 
-    if (body && /[ \t]/.test(whitespace)) {
+    if (body && /[^ \t]/.test(whitespace))
+      doc.diagnostics.push(
+        diagnostic(
+          line,
+          offset,
+          whitespace.length,
+          "indentation-whitespace",
+          "Indentation may contain only spaces or tabs.",
+        ),
+      );
+
+    if (body && /[ \t]/.test(whitespace) && !/[^ \t]/.test(whitespace)) {
       const style = whitespace.includes("\t") ? "tabs" : "spaces";
 
       if ((whitespace.includes(" ") && whitespace.includes("\t")) || (indentStyle && style !== indentStyle))
@@ -465,15 +485,15 @@ export function parseDocument(uri: string, text: string, version = 0): Document 
       indentStyle ||= style;
     }
 
-    if ((node.parent && metadata.has(node.parent.command ?? "")) || node.parent?.kind === "metadata")
+    if (body && ((node.parent && metadata.has(node.parent.command ?? "")) || node.parent?.kind === "metadata"))
       node.kind = "metadata";
 
     if (node.kind === "command" || node.kind === "comment") {
-      const m = /^\*(\w+)(?:\s*(.*))?$/.exec(body);
+      const m = /^\*(\w+)/.exec(body);
 
       if (m) {
         node.command = m[1].toLowerCase();
-        node.args = m[2] ?? "";
+        node.args = body.slice(m[0].length).trimStart();
         node.argStart = indent + body.length - node.args.length;
         node.tokens.push({
           line,
@@ -485,18 +505,24 @@ export function parseDocument(uri: string, text: string, version = 0): Document 
       } else doc.diagnostics.push(diagnostic(line, indent, body.length, "command-syntax", "Expected a command name."));
     } else if (node.kind === "metadata") {
       if (node.parent?.command === "goto_random_scene") {
-        const target = /\S+\s*$/.exec(body);
+        const trimmed = body.trimEnd();
+        let start = trimmed.length;
+        while (start > 0 && !/\s/.test(trimmed[start - 1])) start--;
 
-        if (target) {
-          node.target = target[0].trim().toLowerCase();
-          node.tokens.push({ line, start: indent + target.index, length: target[0].trim().length, type: "label" });
+        if (start < trimmed.length) {
+          node.target = trimmed.slice(start);
+          node.tokens.push({ line, start: indent + start, length: node.target.length, type: "label" });
         }
 
-        const conditional = /\*if\s+\((.*)\)\s+\S+\s*$/.exec(body);
-
-        if (conditional) {
-          const open = body.indexOf("(", conditional.index);
-          addExpression(doc, node, conditional[1], indent + open + 1);
+        const conditional = /\*if\s+\(/.exec(body);
+        const close = body.lastIndexOf(")", start - 1);
+        if (
+          conditional &&
+          close >= conditional.index + conditional[0].length &&
+          /^\s+$/.test(body.slice(close + 1, start))
+        ) {
+          const open = conditional.index + conditional[0].length - 1;
+          addExpression(doc, node, body.slice(open + 1, close), indent + open + 1);
         }
       } else if (node.parent?.command === "scene_list") {
         const m = /^(?:\$\S+\s+)?(\S+)/.exec(body);
@@ -553,11 +579,20 @@ export function parseDocument(uri: string, text: string, version = 0): Document 
     doc.lines.push(node);
 
     if (body && node.kind !== "comment") {
+      if (node.command === "label" && node.parent) {
+        const regions = labelRegions.get(node.parent) ?? new Set<number>();
+        regions.add(node.indent);
+        labelRegions.set(node.parent, regions);
+      }
       if (
         node.parent &&
         node.parent.kind !== "metadata" &&
         node.parent.kind !== "option" &&
+        !labelRegions.get(node.parent)?.has(node.indent) &&
         !blocks.has(node.parent.command ?? "") &&
+        !["goto", "goto_scene", "redirect_scene", "gotoref", "finish", "ending", "return", "abort", "restart"].includes(
+          node.parent.command ?? "",
+        ) &&
         node.parent.inlineText === undefined
       )
         doc.diagnostics.push(
@@ -578,7 +613,11 @@ export function parseDocument(uri: string, text: string, version = 0): Document 
     if (
       blocks.has(node.command ?? "") &&
       node.inlineText === undefined &&
-      !node.children.some((c) => !["blank", "comment"].includes(c.kind))
+      !node.children.some(
+        (c) =>
+          c.kind !== "blank" &&
+          (c.kind !== "comment" || ["if", "elseif", "elsif", "else"].includes(node.command ?? "")),
+      )
     )
       doc.diagnostics.push(
         diagnostic(

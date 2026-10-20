@@ -44,10 +44,27 @@ if (args[0] === "--worker") {
     const counts = {};
     const locations = [];
     let errors = 0,
-      invalidTokens = 0;
+      invalidTokens = 0,
+      invalidDiagnostics = 0;
+
+    const sourceLines = new Map(files.map((file) => [file.uri, file.text.split(/\r\n|\n|\r/)]));
 
     for (const [uri, diagnostics] of analysis.diagnostics) {
       for (const diagnostic of diagnostics) {
+        const { start, end } = diagnostic.range;
+        const lines = sourceLines.get(uri);
+        if (
+          !lines ||
+          start.line < 0 ||
+          end.line < start.line ||
+          end.line >= lines.length ||
+          start.character < 0 ||
+          end.character < 0 ||
+          start.character > lines[start.line]?.length ||
+          end.character > lines[end.line]?.length ||
+          (start.line === end.line && end.character < start.character)
+        )
+          invalidDiagnostics++;
         counts[diagnostic.code] = (counts[diagnostic.code] ?? 0) + 1;
         if (diagnostic.severity === 1) errors++;
 
@@ -93,12 +110,13 @@ if (args[0] === "--worker") {
         rssMiB: Math.round(process.memoryUsage().rss / 1024 ** 2),
         truncated: analysis.truncated,
         invalidTokens,
+        invalidDiagnostics,
         errors,
         diagnostics: counts,
         ...(args.includes("--details") ? { locations } : {}),
       }),
     );
-    if (analysis.truncated || invalidTokens || errors) process.exitCode = 1;
+    if (analysis.truncated || invalidTokens || invalidDiagnostics || errors) process.exitCode = 1;
   }
 } else {
   const directories = args.filter((arg) => arg !== "--details");
