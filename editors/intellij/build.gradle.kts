@@ -1,7 +1,10 @@
+import org.gradle.testing.jacoco.plugins.JacocoTaskExtension
+import org.gradle.testing.jacoco.tasks.JacocoReport
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
 
 plugins {
+	jacoco
 	kotlin("jvm") version "2.2.20"
 	id("org.jetbrains.intellij.platform") version "2.19.0"
 }
@@ -56,3 +59,30 @@ intellijPlatform {
 	}
 }
 tasks.test(Test::useJUnit)
+
+// Coverage is opt-in, so instrumentation does not affect normal interaction-latency checks.
+jacoco {
+	toolVersion = "0.8.14"
+}
+val collectCoverage = providers.gradleProperty("coverage").map { it.toBooleanStrict() }.getOrElse(false)
+tasks.test {
+	// The strict interaction deadline is validated separately without the coverage agent.
+	if (collectCoverage) exclude("**/ChoiceScaleTest.class")
+	extensions.configure<JacocoTaskExtension> {
+		isEnabled = collectCoverage
+		isIncludeNoLocationClasses = true
+		sessionId = "bifoil-choicescript-tests"
+		excludes = listOf("jdk.internal.*")
+		includes = listOf("dev.bifoil.choicescript.*")
+	}
+}
+tasks.named<JacocoReport>("jacocoTestReport") {
+	dependsOn(tasks.test)
+	classDirectories.setFrom(tasks.named("instrumentCode"))
+	onlyIf { collectCoverage }
+	reports {
+		xml.required.set(true)
+		html.required.set(false)
+		csv.required.set(false)
+	}
+}

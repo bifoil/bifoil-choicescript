@@ -1,0 +1,27 @@
+{
+  "all": true,
+  "exclude-after-remap": true,
+  "src": ["packages", "scripts", "editors/vscode/src"],
+  "include": [
+    "packages/*/src/**/*.ts",
+    "scripts/**/*.mjs",
+    "scripts/**/*.cjs",
+    "dist/server/**/*.cjs",
+    "editors/vscode/src/**/*.ts",
+    "editors/vscode/dist/**/*.cjs",
+    ".cache/coverage/editor-adapter.cjs",
+    ".cache/coverage/tests/**/*.mjs"
+  ],
+  "exclude": [
+    "packages/*/test/**",
+    "editors/vscode/test/**",
+    "scripts/test/**",
+    "packages/core/src/environment-binary.ts",
+    "**/node_modules/**"
+  ],
+  "extension": [".ts", ".js", ".mjs", ".cjs"],
+  "reporter": ["lcovonly"],
+  "reports-dir": "dist/coverage/javascript",
+  "temp-directory": "dist/coverage/v8",
+  "experimental-monocart": true
+}
