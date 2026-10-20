@@ -7,6 +7,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { access, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { hostTool } from "./host-tools.mjs";
 
 const root = "vendor/choicescript";
 const initialize = "git -c core.autocrlf=false submodule update --init --recursive";
@@ -21,7 +22,7 @@ try {
 let commit;
 
 try {
-  commit = execFileSync("git", ["-C", root, "rev-parse", "HEAD"], {
+  commit = execFileSync(await hostTool("git"), ["-C", root, "rev-parse", "HEAD"], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   }).trim();
@@ -54,7 +55,10 @@ if (process.argv.includes("--record")) await writeFile("vendor/checksums.json", 
 else {
   const expected = JSON.parse(await readFile("vendor/checksums.json", { encoding: "utf8" }));
 
-  if (JSON.stringify(Object.entries(expected).sort()) !== JSON.stringify(Object.entries(actual).sort()))
+  if (
+    JSON.stringify(Object.entries(expected).sort(([a], [b]) => a.localeCompare(b, "en"))) !==
+    JSON.stringify(Object.entries(actual).sort(([a], [b]) => a.localeCompare(b, "en")))
+  )
     throw new Error(
       "ChoiceScript files differ from the pinned snapshot. Preserve upstream bytes with core.autocrlf=false.",
     );

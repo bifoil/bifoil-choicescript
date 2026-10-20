@@ -7,13 +7,29 @@
 import { unzipSync } from "fflate";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmod, cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { hostTool } from "./host-tools.mjs";
 
 const lock = JSON.parse(await readFile("runtime-lock.json", { encoding: "utf8" }));
 
+/** Keep verified existing executables untouched, including a runtime currently in use. */
+async function install(file, data) {
+  try {
+    const existing = await readFile(file);
+    if (existing.equals(typeof data === "string" ? Buffer.from(data) : data)) return;
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  await writeFile(file, data);
+}
+
 /** Provision a locked target and return its absolute dist/runtime directory; reject unknown targets or bad hashes. */
-export async function provision(target) {
+export async function provision(requested) {
+  const target = Object.keys(lock.archives).find((candidate) => candidate === requested);
+  if (!target || !/^(?:win32|darwin|linux)-(?:x64|arm64)$/.test(target) || !Object.hasOwn(lock.archives, target))
+    throw new Error("Unsupported platform");
+
   const archive = lock.archives[target];
 
   if (!archive) throw new Error(`Unsupported platform ${target}`);
@@ -49,16 +65,16 @@ export async function provision(target) {
     const files = unzipSync(bytes, {
       filter: (entry) => needed.has(entry.name),
     });
-    await writeFile(path.join(out, binary), files[prefix + "/node.exe"]);
-    await writeFile(path.join(out, "NODE-LICENSE"), files[prefix + "/LICENSE"]);
+    await install(path.join(out, binary), files[prefix + "/node.exe"]);
+    await install(path.join(out, "NODE-LICENSE"), files[prefix + "/LICENSE"]);
   } else {
-    execFileSync("tar", ["-xf", file, "-C", dir, prefix + "/bin/node", prefix + "/LICENSE"]);
-    await cp(path.join(extracted, "bin/node"), path.join(out, binary));
-    await cp(path.join(extracted, "LICENSE"), path.join(out, "NODE-LICENSE"));
+    execFileSync(await hostTool("tar"), ["-xf", file, "-C", dir, "--", prefix + "/bin/node", prefix + "/LICENSE"]);
+    await install(path.join(out, binary), await readFile(path.join(extracted, "bin/node")));
+    await install(path.join(out, "NODE-LICENSE"), await readFile(path.join(extracted, "LICENSE")));
   }
 
-  await chmod(path.join(out, binary), 0o755);
-  await writeFile(
+  if (!target.startsWith("win32-")) await chmod(path.join(out, binary), 0o755);
+  await install(
     path.join(out, "provenance.json"),
     JSON.stringify(
       {

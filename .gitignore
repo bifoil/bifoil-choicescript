@@ -25,4 +25,9 @@ fixtures/dialogue/.vscode/
 
 # Local tooling settings and exported inspection reports.
 /.codex/
-/inspections/
+inspections/
+
+# Local release assembly and verification outputs.
+/release/
+/downloaded/
+/.scannerwork/

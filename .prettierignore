@@ -1,6 +1,7 @@
 vendor/
 pnpm-lock.yaml
 node_modules/
+.cache/
 dist/
 .gradle/
 **/build/
@@ -24,3 +25,8 @@ docs/provenance/
 fixtures/dialogue/.vscode/
 *.log
 .DS_Store
+
+# Local release assembly and verification outputs.
+/release/
+/downloaded/
+/.scannerwork/

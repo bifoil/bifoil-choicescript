@@ -5,15 +5,16 @@
  * a requested release tag points at that revision. Run against trusted build artifacts.
  */
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { artifactPath, releaseFile } from "./artifact-paths.mjs";
 
-const directory = path.resolve(process.argv[2] ?? "release");
+const directory = await artifactPath(process.argv[2] ?? "release");
 await mkdir(directory, { recursive: true });
 
 const lock = JSON.parse(await readFile("runtime-lock.json", { encoding: "utf8" }));
 const names = await readdir(directory);
-const targets = Object.keys(lock.archives).sort();
+const targets = Object.keys(lock.archives).sort((a, b) => a.localeCompare(b, "en"));
 
 for (const target of targets) {
   if (!names.includes(`bifoil-choicescript-${target}.vsix`)) throw new Error(`Missing package for ${target}`);
@@ -40,12 +41,12 @@ for (const [source, destination] of [
   ["docs/provenance/gradle-linux-x64.xml", "gradle-linux-x64.xml"],
   ["docs/release-notes.md", "RELEASE-NOTES.md"],
 ])
-  await copyFile(source, path.join(directory, destination));
+  await copyFile(source, await releaseFile(directory, destination));
 
 const artifacts = [];
 
 for (const file of [...targets.map((target) => `bifoil-choicescript-${target}.vsix`), ...native]) {
-  const bytes = await readFile(path.join(directory, file));
+  const bytes = await readFile(await releaseFile(directory, file));
   artifacts.push({
     file,
     bytes: bytes.length,
@@ -54,7 +55,7 @@ for (const file of [...targets.map((target) => `bifoil-choicescript-${target}.vs
 }
 
 await writeFile(
-  path.join(directory, "release-manifest.json"),
+  await releaseFile(directory, "release-manifest.json"),
   JSON.stringify(
     {
       name: "Bifoil ChoiceScript",
@@ -75,12 +76,14 @@ await writeFile(
 
 const checksums = [];
 
-for (const file of (await readdir(directory)).filter((name) => name !== "SHA256SUMS.txt").sort()) {
+for (const file of (await readdir(directory))
+  .filter((name) => name !== "SHA256SUMS.txt")
+  .sort((a, b) => a.localeCompare(b, "en"))) {
   const digest = createHash("sha256")
     .update(await readFile(path.join(directory, file)))
     .digest("hex");
   checksums.push(`${digest}  ${file}`);
 }
 
-await writeFile(path.join(directory, "SHA256SUMS.txt"), checksums.join("\n") + "\n");
+await writeFile(await releaseFile(directory, "SHA256SUMS.txt"), checksums.join("\n") + "\n");
 console.log("Prepared seven packages, dependency provenance, notices and SHA-256 checksums.");

@@ -11,7 +11,10 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { narrativeWords as count } from "../packages/core/src/plain-text.ts";
 import { classification, startServer, waitFor } from "../packages/server/test/helpers.ts";
+import { artifactPath } from "./artifact-paths.mjs";
+import { hostTool } from "./host-tools.mjs";
 
 const scenes = Number(process.argv[2] ?? 1000),
   wordsPerScene = Number(process.argv[3] ?? 30000);
@@ -19,7 +22,9 @@ const scenes = Number(process.argv[2] ?? 1000),
 assert(Number.isSafeInteger(scenes) && scenes >= 2 && scenes <= 10000);
 assert(Number.isSafeInteger(wordsPerScene) && wordsPerScene >= 1000 && wordsPerScene <= 1000000);
 
-const resultFile = path.resolve(process.argv[4] ?? ".bifoil-choicescript/development/large-game/benchmark.json");
+const resultFile = await artifactPath(process.argv[4] ?? ".bifoil-choicescript/development/large-game/benchmark.json", [
+  ".bifoil-choicescript/development",
+]);
 await mkdir(path.dirname(resultFile), { recursive: true });
 
 const dir = await mkdtemp(path.join(os.tmpdir(), "bifoil thirty million Ω "));
@@ -27,8 +32,6 @@ const sceneDir = path.join(dir, "scenes");
 await mkdir(sceneDir);
 
 const name = (i) => "chapter" + String(i).padStart(4, "0");
-
-const count = (raw) => (raw.replace(/\[[^\]]*]/g, "").match(/[\p{L}\p{N}]+(?:['’]\p{L}+)*/gu) ?? []).length;
 
 const narrative = ['She said "This passage will end', '    with William."', '    with Belle."', "She walked away."];
 const sentence =
@@ -94,7 +97,7 @@ try {
     const text = i < 0 ? startup : chapter(i);
     report.sourceBytes += Buffer.byteLength(text);
     report.sourceLines += text.split("\r\n").length;
-    report.commands += (text.match(/^\s*\*/gm) ?? []).length;
+    report.commands += (text.match(/^[ \t]*\*/gm) ?? []).length;
     await writeFile(path.join(sceneDir, (i < 0 ? "startup" : name(i)) + ".txt"), text);
   }
 
@@ -113,16 +116,17 @@ try {
   if (process.platform === "win32") {
     const memoryFile = resultFile + ".memory.json";
     const ps =
-      "$ErrorActionPreference='Stop';$p=Get-Process -Id " +
+      "$ErrorActionPreference='Stop';$ownedProcessId=" +
       h.child.pid +
-      ";$samples=New-Object System.Collections.Generic.List[object];$peak=0L;try {while(!$p.HasExited){$p.Refresh();" +
-      "$rss=[long]$p.WorkingSet64;if($rss -gt $peak){$peak=$rss};" +
+      ";$samples=New-Object System.Collections.Generic.List[object];$peak=0L;" +
+      "while($true){$p=Get-Process -Id $ownedProcessId -ErrorAction SilentlyContinue;if(!$p){break};" +
+      "try{$rss=[long]$p.WorkingSet64}catch{break};if($rss -gt $peak){$peak=$rss};" +
       "$samples.Add([pscustomobject]@{time=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();rss=$rss});" +
-      "Start-Sleep -Milliseconds 50}}catch{};" +
-      "[pscustomobject]@{peakMiB=$peak/1MB;samples=$samples;scope='Server and analysis-worker threads; no tool children active'} | ConvertTo-Json -Depth 5 -Compress | Set-Content -LiteralPath '" +
+      "Start-Sleep -Milliseconds 50};$available=$samples.Count -gt 0;" +
+      "[pscustomobject]@{available=$available;peakMiB=$(if($available){$peak/1MB}else{$null});samples=$samples;scope='Server and analysis-worker threads; no tool children active'} | ConvertTo-Json -Depth 5 -Compress | Set-Content -LiteralPath '" +
       memoryFile.replaceAll("'", "''") +
       "' -Encoding UTF8";
-    monitor = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", ps], {
+    monitor = spawn(await hostTool("powershell"), ["-NoProfile", "-NonInteractive", "-Command", ps], {
       windowsHide: true,
       stdio: ["ignore", "ignore", "inherit"],
     });
@@ -277,7 +281,12 @@ try {
     const memoryJson = await readFile(resultFile + ".memory.json", { encoding: "utf8" });
     report.memory = JSON.parse(memoryJson.replace(/^\uFEFF/, ""));
 
-    if (report.memory.peakMiB > 256) {
+    if (!report.memory.samples.length) {
+      report.failure =
+        (report.failure ? report.failure + "; " : "") + "Runtime memory sampling ended without any samples";
+      process.exitCode = 1;
+      report.completed = false;
+    } else if (report.memory.peakMiB > 256) {
       report.failure = (report.failure ? report.failure + "; " : "") + "Combined runtime memory exceeded 256 MiB";
       process.exitCode = 1;
       report.completed = false;
