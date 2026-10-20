@@ -1,0 +1,6 @@
+{
+  "version": "go1.26.3",
+  "moduleLanguageVersion": "1.26.0",
+  "dependencies": "Go standard library only; CGO disabled",
+  "toolchainSource": "https://go.dev/dl/#go1.26.3"
+}
