@@ -23,7 +23,8 @@ test("engine verification handles submodule metadata, modified files, revision m
     for (const file of ["choicescript.lock.json", "checksums.json"])
       await cp(path.join(root, "vendor", file), path.join(vendor, file));
 
-    await cp(path.join(root, "scripts/check-engine.mjs"), path.join(directory, "check-engine.mjs"));
+    for (const script of ["check-engine.mjs", "host-tools.mjs"])
+      await cp(path.join(root, "scripts", script), path.join(directory, script));
 
     const check = (...args: string[]) =>
       execFileSync(process.execPath, ["check-engine.mjs", ...args], {

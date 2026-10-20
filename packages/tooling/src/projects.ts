@@ -176,13 +176,36 @@ export function sameFileUri(left: string, right: string) {
 }
 
 /**
+ * Resolve a file spelling within a known inventory. Exact identities win; a
+ * case-insensitive Windows alias is safe only when it identifies one source.
+ * This also preserves distinct files in Windows directories with case sensitivity enabled.
+ * Disable case aliases for unsaved identities that have not been established on disk.
+ */
+export function sourceUri(uris: Iterable<string>, uri: string, allowCaseAlias = true): string | undefined {
+  const candidates = [...uris];
+  if (candidates.includes(uri)) return uri;
+  if (uri.startsWith("file:")) {
+    const exactKey = (value: string) => {
+      const file = path.resolve(fileURLToPath(value));
+      return process.platform === "win32" ? file.replace(/^[A-Z]:/, (drive) => drive.toLowerCase()) : file;
+    };
+    const key = exactKey(uri);
+    const exact = candidates.filter((candidate) => candidate.startsWith("file:") && exactKey(candidate) === key);
+    if (exact.length === 1) return exact[0];
+  }
+  if (!allowCaseAlias) return undefined;
+  const matches = candidates.filter((candidate) => sameFileUri(candidate, uri));
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+/**
  * Source identity without eagerly loading text. buffer, when present, overrides disk
  * and can represent a newly created unsaved scene; file remains an absolute host path.
  */
-export interface ProjectSource {
+export interface ProjectSource<T extends { uri: string } = BufferSnapshot> {
   uri: string;
   file: string;
-  buffer?: BufferSnapshot;
+  buffer?: T;
 }
 
 /**
@@ -191,47 +214,43 @@ export interface ProjectSource {
  * traversal and propagates I/O errors. Nested sources are valid for enumeration but the
  * official runtime staging layer imposes its own flat-scene restriction.
  */
-export async function projectSources(
+export async function projectSources<T extends { uri: string } = BufferSnapshot>(
   project: Project,
-  buffers: BufferSnapshot[] = [],
+  buffers: T[] = [],
   signal?: AbortSignal,
-): Promise<ProjectSource[]> {
-  const sources: ProjectSource[] = [];
-
-  const key = (file: string) => (process.platform === "win32" ? path.resolve(file).toLowerCase() : path.resolve(file));
-
-  const open = new Map(
-    buffers
-      .filter((buffer) => projectFor([project], buffer.uri))
-      .map((buffer) => [key(fileURLToPath(buffer.uri)), { ...buffer }]),
-  );
-  const seen = new Set<string>();
+): Promise<ProjectSource<T>[]> {
+  const sources: ProjectSource<T>[] = [];
 
   async function walk(dir: string) {
     signal?.throwIfAborted();
-
     for (const entry of await readdir(dir, { withFileTypes: true })) {
       signal?.throwIfAborted();
-
       const file = path.join(dir, entry.name);
-
       if (entry.isDirectory() && !excluded.has(entry.name) && !entry.name.startsWith(".")) await walk(file);
-      else if (entry.isFile() && /\.txt$/i.test(entry.name)) {
-        const identity = key(file),
-          buffer = open.get(identity);
-        sources.push({ file, uri: buffer?.uri ?? pathToFileURL(file).href, buffer });
-        seen.add(identity);
-      }
+      else if (entry.isFile() && /\.txt$/i.test(entry.name)) sources.push({ file, uri: pathToFileURL(file).href });
     }
   }
-
   await walk(project.sceneDir);
 
-  for (const [identity, buffer] of open)
-    if (!seen.has(identity) && /\.txt$/i.test(fileURLToPath(buffer.uri))) {
-      sources.push({ file: fileURLToPath(buffer.uri), uri: buffer.uri, buffer });
-      seen.add(identity);
+  const inventory = sources.map((source) => source.uri);
+  const positions = new Map(inventory.map((uri, index) => [uri, index]));
+  const unsaved = new Map<string, number>();
+  for (const original of buffers) {
+    signal?.throwIfAborted();
+    if (!projectFor([project], original.uri) || !/\.txt$/i.test(fileURLToPath(original.uri))) continue;
+    const buffer = { ...original };
+    const uri = sourceUri(inventory, buffer.uri);
+    if (uri !== undefined) {
+      const source = sources[positions.get(uri)!];
+      source.uri = buffer.uri;
+      source.buffer = buffer;
+    } else {
+      const alias = sourceUri(unsaved.keys(), buffer.uri, false);
+      const position = alias === undefined ? sources.length : unsaved.get(alias)!;
+      if (alias === undefined) unsaved.set(buffer.uri, position);
+      sources[position] = { file: fileURLToPath(buffer.uri), uri: buffer.uri, buffer };
     }
+  }
 
   return sources;
 }

@@ -481,3 +481,47 @@ test(
     }
   },
 );
+
+test("coverage is complete in saved output without flooding editor events", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bifoil coverage output Ω "));
+  const { fakeEngine, game } = await createGameFixture(root);
+  await writeFile(path.join(fakeEngine, "mygamegenerator.js"), "console.log('var stats = {};');");
+  await writeFile(
+    path.join(fakeEngine, "randomtest.js"),
+    "console.log('Word count: 1'); console.log('startup 999: Deliberate source text.');",
+  );
+  const events: JobEvent[] = [];
+  const runner = new ToolRunner(fakeEngine, (event) => events.push(event));
+  try {
+    const [project] = await discoverProjects([game]);
+    for (const showText of [false, true]) {
+      const result = await runner.start({ ...request, operation: "randomtest", iterations: 1, showText }, project, []);
+      const completed = await waitFor(() =>
+        events.find((event) => event.jobId === result.jobId && event.kind === "completed"),
+      );
+      assert.equal(completed?.exitCode, 0);
+      const jobEvents = events.filter((event) => event.jobId === result.jobId);
+      assert.ok((await readFile(completed!.message!, "utf8")).includes("startup 999: Deliberate source text."));
+      const coverage = jobEvents.find((event) => event.kind === "coverage");
+      if (showText) {
+        assert.equal(coverage, undefined, "printed prose was interpreted as coverage");
+        assert.ok(
+          jobEvents.some(
+            (event) => event.kind === "output" && event.message === "startup 999: Deliberate source text.",
+          ),
+        );
+      } else {
+        assert.deepEqual(coverage?.coverage?.startup, [999]);
+        assert.equal(
+          jobEvents.some(
+            (event) => event.kind === "output" && event.message === "startup 999: Deliberate source text.",
+          ),
+          false,
+        );
+      }
+    }
+  } finally {
+    await runner.dispose();
+    await rm(root, { recursive: true, force: true });
+  }
+});

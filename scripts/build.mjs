@@ -62,6 +62,13 @@ builds.push(
   }),
 );
 
+for (const [entry, output] of [
+  ["packages/tooling/src/tool-source-preload.ts", "tool-source-preload.cjs"],
+  ["packages/tooling/src/export-source-preload.ts", "export-source-preload.cjs"],
+]) {
+  builds.push(await build({ ...common, entryPoints: [entry], outfile: path.join("dist/server", output) }));
+}
+
 const runtime = JSON.parse(await readFile("vendor/runtime-files.json", { encoding: "utf8" }));
 const engineLock = JSON.parse(await readFile("vendor/choicescript.lock.json", { encoding: "utf8" }));
 const checksums = JSON.parse(await readFile("vendor/checksums.json", { encoding: "utf8" }));

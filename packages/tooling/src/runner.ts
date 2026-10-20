@@ -28,6 +28,11 @@ import {
 } from "@bifoil/choicescript-protocol";
 import { contains, exists, projectSources, sameFileUri } from "./projects.js";
 import { ProcessSlot } from "./processes.js";
+import { CoverageSeries } from "./coverage-series.js";
+import { toolDiagnostic } from "./tool-diagnostic.js";
+
+/** An immutable private capture file avoids copying large open buffers into the tool broker. */
+export type GameBufferSnapshot = BufferSnapshot | { uri: string; version: number; textFile: string };
 
 const enginePaths = new Set(
   runtimeInventory.files.flatMap((file) => {
@@ -53,6 +58,19 @@ function enqueue<T>(queue: Map<string, Promise<void>>, key: string, run: () => P
   });
 
   return result;
+}
+
+/** Leave CPU scheduling headroom for editing while official game tools are running. */
+function backgroundChild(child: ChildProcess): void {
+  child.once("spawn", () => {
+    if (child.pid === undefined) return;
+
+    try {
+      os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL);
+    } catch {
+      // Scheduling permissions differ across hosts. Failure must not interrupt the tool job.
+    }
+  });
 }
 
 function sceneFilename(sceneDir: string, file: string): string | undefined {
@@ -107,7 +125,14 @@ export class ToolRunner {
     readonly engine: string,
     readonly emit: (event: JobEvent) => void,
     readonly node = process.execPath,
+    readonly sourcePreload?: string,
+    private readonly outputDrained?: () => Promise<void>,
   ) {}
+
+  private workerNodeArgs(): readonly string[] {
+    // The bounded scene adapter leaves headroom for the native service and broker.
+    return this.sourcePreload ? ["--max-old-space-size=48", "--max-semi-space-size=2"] : toolNodeArgs;
+  }
 
   event(job: Job, kind: JobEvent["kind"], rest: Partial<JobEvent> = {}) {
     this.emit({
@@ -138,7 +163,7 @@ export class ToolRunner {
    * Runs the official generator after enforcing flat runtime scene paths. A successful
    * standalone caller owns the returned directory; registered jobs clean it through completion.
    */
-  async stage(project: Project, buffers: BufferSnapshot[], job?: Job) {
+  async stage(project: Project, buffers: GameBufferSnapshot[], job?: Job) {
     this.check(job);
 
     const dir = await mkdtemp(path.join(os.tmpdir(), "bifoil-choicescript-"));
@@ -146,6 +171,10 @@ export class ToolRunner {
     if (job) job.stage = dir;
 
     try {
+      await writeFile(path.join(dir, ".bifoil-tool-stage.json"), JSON.stringify({ format: 1 }), {
+        flag: "wx",
+        mode: 0o600,
+      });
       const files = await projectSources(project, buffers, job?.controller.signal);
       this.check(job);
       await this.copySnapshot(this.engine, dir, job, (source) => {
@@ -202,18 +231,20 @@ export class ToolRunner {
 
         const destination = path.join(game, "scenes", relative);
 
-        if (source.buffer) await writeFile(destination, source.buffer.text, { signal: job?.controller.signal });
+        if (source.buffer && "text" in source.buffer)
+          await writeFile(destination, source.buffer.text, { flag: "wx", signal: job?.controller.signal });
         else {
-          const before = await lstat(source.file, { bigint: true });
+          const input = source.buffer?.textFile ?? source.file;
+          const before = await lstat(input, { bigint: true });
 
           if (!before.isFile() || before.isSymbolicLink())
             throw new Error("Scene source must be a regular file: " + relative);
 
-          await pipeline(createReadStream(source.file), createWriteStream(destination, { flags: "wx" }), {
+          await pipeline(createReadStream(input), createWriteStream(destination, { flags: "wx" }), {
             signal: job?.controller.signal,
           });
 
-          const after = await lstat(source.file, { bigint: true });
+          const after = await lstat(input, { bigint: true });
 
           if (
             !after.isFile() ||
@@ -252,7 +283,13 @@ export class ToolRunner {
     try {
       this.check(job);
       return await new Promise<string>((resolve, reject) => {
-        const child = spawn(this.node, [...toolNodeArgs, script, ...args], { cwd, windowsHide: true });
+        const preload = this.sourcePreload && script === "mygamegenerator.js" ? ["--require", this.sourcePreload] : [];
+        const child = spawn(this.node, [...this.workerNodeArgs(), ...preload, script, ...args], {
+          cwd,
+          windowsHide: true,
+        });
+
+        backgroundChild(child);
 
         if (job) job.child = child;
 
@@ -333,7 +370,7 @@ export class ToolRunner {
    * not test/export completion; listen for completed and inspect exitCode. A rejected start
    * can also emit completed. Fresh UUIDs prevent confusing active/recent job identities.
    */
-  async start(request: JobRequest, project: Project, buffers: BufferSnapshot[]): Promise<JobResult> {
+  async start(request: JobRequest, project: Project, buffers: GameBufferSnapshot[]): Promise<JobResult> {
     if (request.protocolVersion !== PROTOCOL_VERSION) throw new Error("Unsupported tooling protocol version.");
     if (request.operation === "stop") return this.stopProject(project.id, request.jobId);
     if (this.closing) throw new Error("Game tooling is shutting down.");
@@ -590,7 +627,7 @@ export class ToolRunner {
   private async startNow(
     request: JobRequest,
     project: Project,
-    buffers: BufferSnapshot[],
+    buffers: GameBufferSnapshot[],
     revision: number,
     job: Job,
   ): Promise<JobResult> {
@@ -601,6 +638,7 @@ export class ToolRunner {
       for (const job of this.jobs.values()) if (job.project.id === project.id && job.server) await this.stop(job.id);
     }
 
+    const sourceUris = buffers.map((buffer) => buffer.uri);
     const stage = await this.stage(project, buffers, job);
     this.check(job);
     job.stale ||= revision !== (this.revisions.get(project.id) ?? 0);
@@ -630,8 +668,11 @@ export class ToolRunner {
       }
 
       const nodeArgs = [script, ...args];
+      if (this.sourcePreload && request.operation !== "exportHtml") nodeArgs.unshift("--require", this.sourcePreload);
 
-      if (request.operation === "exportHtml") {
+      if (request.operation === "exportHtml" && this.sourcePreload) {
+        nodeArgs.unshift("--require", path.join(path.dirname(this.sourcePreload), "export-source-preload.cjs"));
+      } else if (request.operation === "exportHtml") {
         const preload = path.join(stage, "bifoil-choicescript-preload.cjs");
         await writeFile(
           preload,
@@ -651,8 +692,9 @@ export class ToolRunner {
         log = createWriteStream(output);
       let sawError = false;
       const paused = new Set<Readable>();
+      const transportPaused = new Set<Readable>();
       log.on("error", (error) => {
-        for (const stream of paused) stream.resume();
+        for (const stream of paused) if (!transportPaused.has(stream)) stream.resume();
 
         paused.clear();
         sawError = true;
@@ -661,18 +703,15 @@ export class ToolRunner {
         });
       });
 
-      const coverage: Record<string, number[]> = Object.create(null);
-      let coverageReady = !request.showText;
+      const coverage: Record<string, number[] | CoverageSeries> = Object.create(null);
+      const coverageReady = !request.showText;
       let quicktestFailed = false;
       let failure: Partial<JobEvent> | undefined;
       const warnings: Partial<JobEvent>[] = [];
 
       const handle = (message: string) => {
-        this.event(job, "output", { message });
-
         // Coverage echoes arbitrary source text. Consume it before parsing errors.
-        if (/^Word count: \d+$/.test(message)) {
-          coverageReady = true;
+        if (coverageReady && /^Word count: \d+$/.test(message)) {
           // Actual final coverage follows the final word count, after prose output.
           for (const scene of Object.keys(coverage)) delete coverage[scene];
         }
@@ -682,28 +721,30 @@ export class ToolRunner {
         const count = /^(.*?) (\d+): /.exec(message);
 
         if (request.operation === "randomtest" && coverageReady && count && sceneNames.has(count[1])) {
-          (coverage[count[1]] ??= []).push(Number(count[2]));
+          (coverage[count[1]] ??= this.outputDrained ? new CoverageSeries() : []).push(Number(count[2]));
           return;
         }
 
-        const match = /^(RANDOMTEST FAILED: (?:Error: )?|WARNING |Error: )?(.+?) line (\d+):\s*(.*)$/i.exec(message);
+        // Raw coverage remains complete in the saved log and coverage event.
+        // Echoing every source line into the editor duplicates entire large games.
+        this.event(job, "output", { message });
+
+        const match = toolDiagnostic(message);
 
         if (
           match &&
-          sceneNames.has(match[2].replace(/\.txt$/i, "")) &&
-          (quicktestFailed || match[1] || /^WARNING\b/.test(match[4]))
+          sceneNames.has(match.scene.replace(/\.txt$/i, "")) &&
+          (quicktestFailed || match.prefixed || match.warning)
         ) {
-          const warning = match[1] === "WARNING " || /^WARNING\b/.test(match[4]);
-          const file = path.join(project.sceneDir, match[2].replace(/\.txt$/i, "") + ".txt");
+          const warning = match.warning;
+          const file = path.join(project.sceneDir, match.scene.replace(/\.txt$/i, "") + ".txt");
 
           if (!contains(project.sceneDir, file)) return;
 
           const diagnostic: Partial<JobEvent> = {
-            uri:
-              buffers.find((buffer) => sameFileUri(buffer.uri, pathToFileURL(file).href))?.uri ??
-              pathToFileURL(file).href,
-            line: Math.max(0, Number(match[3]) - 1),
-            message: match[4],
+            uri: sourceUris.find((uri) => sameFileUri(uri, pathToFileURL(file).href)) ?? pathToFileURL(file).href,
+            line: match.line,
+            message: match.message,
             severity: warning ? 2 : 1,
           };
 
@@ -720,10 +761,11 @@ export class ToolRunner {
 
       try {
         this.check(job);
-        child = spawn(this.node, [...toolNodeArgs, ...nodeArgs], {
+        child = spawn(this.node, [...this.workerNodeArgs(), ...nodeArgs], {
           cwd: stage,
           windowsHide: true,
         });
+        backgroundChild(child);
         child.once("close", release);
         acquired = false;
       } finally {
@@ -756,11 +798,24 @@ export class ToolRunner {
             paused.add(stream);
             log.once("drain", () => {
               paused.delete(stream);
-              stream.resume();
+              if (!transportPaused.has(stream)) stream.resume();
             });
           }
 
           accept(decoder.write(chunk));
+          if (this.outputDrained) {
+            transportPaused.add(stream);
+            stream.pause();
+            void this.outputDrained().then(
+              () => {
+                transportPaused.delete(stream);
+                if (!paused.has(stream)) stream.resume();
+              },
+              () => {
+                stream.destroy();
+              },
+            );
+          }
         });
 
         return () => {
@@ -816,7 +871,16 @@ export class ToolRunner {
             this.event(job, "output", { message: `Exported ${dest}` });
           }
 
-          if (Object.keys(coverage).length) this.event(job, "coverage", { coverage });
+          if (Object.keys(coverage).length)
+            this.event(job, "coverage", {
+              coverage: Object.fromEntries(
+                Object.entries(coverage).map(([scene, counts]) => [
+                  scene,
+                  counts instanceof CoverageSeries ? counts.view() : counts,
+                ]),
+              ),
+            });
+          await this.outputDrained?.();
         } catch (e) {
           code = 1;
           this.event(job, "output", { message: String(e) });
