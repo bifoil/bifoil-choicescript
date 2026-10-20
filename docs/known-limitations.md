@@ -1,84 +1,82 @@
 # Known limitations
 
-This is a working prerelease. The features described elsewhere are implemented, but the following gaps prevent treating
-them as fully accepted across editors and workloads. This page describes user-visible consequences, not private audit
-logs or a promise that all defects are listed.
+Bifoil ChoiceScript is in private prerelease development. This page describes limits of the current native backend and
+its acceptance evidence. It is not a list of every possible defect.
 
-## Performance and scale
+## Resource and latency acceptance
 
-The target is at most **256 MiB of combined plugin-owned runtime resident memory**, useful responses **below 1,000 ms**
-(ideally below 500 ms), and games with **tens of millions of words**.
-Those requirements are not yet met across the required workloads.
+The requirements are complete analysis, useful current responses below **1,000 ms** (ideally **500 ms**), and at most
+**256 MiB combined resident memory** across plugin-owned server and tooling processes. Scale includes tens of millions
+of narrative words. Selected large-game runs have met these limits; every workload and native editor path has not yet
+been accepted.
 
-Large or command-heavy games can exhaust the analysis worker or official tool process heaps. Interactions requiring
-current project analysis may time out or remain unavailable. A prose-heavy many-scene result does not establish support
-for giant individual scenes, recursive/control-flow-heavy games, or testing/export at the same scale.
+The native server does not automatically replace failed whole-project flow with foreground-only or syntax-only results.
+The earlier TypeScript implementation remains in source for comparison, and its reduced-analysis fallback is not the
+installed runtime path. A full-analysis failure or unavailable current snapshot is still a failure to provide the
+required interaction.
 
-There is no supported setting that makes these limits disappear. See [performance](performance.md) for the current
-resource model and valid acceptance measurements.
+A giant single physical paragraph, many giant open buffers, dense control flow, rapid sustained edits and simultaneous
+projects need independent stress checks. Text retention and query paging do not bound every line-offset allocation or
+large feature response. Official tools can also hit legitimate upstream limits. The pinned QuickTest input-size guard
+is preserved.
+
+Memory targets are soft runtime policies, not an operating-system cap on combined resident memory. A selected
+20-million-word RandomTest workload measured 215.8 MiB combined memory. This leaves headroom in that run but does not
+prove an upper bound for every workload. See
+[performance](performance.md) for measurement scope and acceptance rules.
 
 ## Language analysis and rename
 
-- Special identifiers and function-name parsing have edge cases, including `auto` and identifiers overlapping built-in
-  function names such as `round`.
-- Some stat-chart display text and conditional/shadowed bindings can be included incorrectly in symbol operations.
-- Arrays, indirect assignment, and changing shadowed bindings still have analysis gaps.
-- Dynamic destinations, generated text, incomplete projects, and analysis budgets can reduce precision even without a
-  parser error.
+Dynamic destinations, unknown generated text and unresolved indirect names can reduce precision. Mixed values and
+uncertain dialogue use neutral styling. This is different from omitting scenes or skipping control-flow analysis.
+Malformed or incomplete games may produce valid syntax diagnostics even when the plugin is working correctly.
 
-Review rename edits before applying them, inspect indirect references manually, and run official tests afterward.
-Scene-file rename is not implemented through symbol rename. Neutral highlighting is not evidence of an error by itself.
+Rename operates on resolved symbols and conservatively refuses cases where it cannot establish a safe edit. Review its
+preview, especially around generated array names, indirection and shadowing. Scene-file rename is not implemented by
+symbol rename. Editor diagnostics do not replace official tests or manual play.
 
-## Index freshness
+## Native editor delivery
 
-Configured scene directories outside the opened workspace may not receive the expected file-watch events.
-Directory-only deletion/move notifications can leave stale membership or results. Recent-job history is bounded;
-older retained diagnostics can have invalidation edge cases after history eviction.
+The project-change notification uses a versioned object, with regression coverage through actual LSP4J framing and
+reflective decoding. Coverage decorators retain full counts and create markers only for visible rows. These correct the
+previous notification-binding and unbounded-decoration paths, but helper/transport tests alone do not establish every
+built-in IDE manager callback or paint-time deadline.
 
-If a project is out of date, save files, reopen/reload the workspace, and rerun the operation. A discovered project or a
-count of indexed files does not prove that current whole-project analysis is complete.
+Installed VS Code smoke tests, JetBrains native transport tests, Plugin Verifier and manual light/dark checks establish
+different things. Report the exact artifact, editor, workload and assertions exercised. Other IDE products and platforms
+need their own runs; a compatible API report does not prove responsive rendering.
 
-## Editor integration
+Configured scene roots outside the workspace depend on adapter file-watch delivery. If external changes appear absent,
+save/reopen the affected files or reload the workspace and verify project readiness. A detected game or scene count does
+not prove that the current full analysis has completed.
 
-JetBrains project-change notification binding currently prevents reliable coverage association in the normal native
-LSP path. Tool actions that query projects directly are separate from that failure. Lack of coverage decorations is not
-proof of a run with no executed lines.
+## Game tools and snapshots
 
-Coverage rendering also needs improvement for high line counts; updating many markers on the UI thread can stall the
-editor. Unit tests of a decoration store do not establish native rendering performance.
+Tooling runs captured source snapshots. Later edits mark a result stale and require an explicit rerun or preview restart.
+Stopping the preview server cannot terminate JavaScript already loaded into a browser page. Closing that page is a
+separate action.
 
-VS Code starting a preview closes existing preview panels, including those for another game. A source change very
-early during preview startup may miss its visible stale marker. Treat previews as explicit snapshots and restart them
-after edits.
+The preparation generator has a time/output limit. There is no overall deadline for every staging, queueing, official
+test or compilation phase, and logs have no total-size quota. Large sources can therefore take substantial time and
+storage even while language interactions remain responsive.
 
-## Game tools
+Creation and export preserve existing destination files but may leave partial newly created output after a failure.
+Use a fresh destination and inspect the result. Exported font/companion-asset behavior needs browser acceptance alongside
+the compiler-output regressions. A successful test run or export does not prove story completeness.
 
-- Cancellation can be delayed for queued/preparing jobs, and preparation cancellation can appear as an adapter error.
-- Cleanup is not guaranteed for arbitrary descendant processes; queued-job resource handling has remaining gaps.
-- The child used to generate runtime scene data has a time/output limit, but there is no overall deadline for all
-  staging, queueing, QuickTest, RandomTest, or compilation.
-- Logs do not have a total-size quota.
-- Export can omit engine-provided font assets. Test the exported files in a browser, including typography.
-- Creation/export preserve existing files but can leave partial new output after a failure.
-- Stopping a preview does not terminate JavaScript already loaded into an open browser page.
-
-For regular authoring, use a fresh export directory, retain a saved source revision for reproducible tests, close old
-preview pages, and inspect tool output rather than relying solely on a success notification.
+Owned process cleanup uses Windows Job Objects or Unix process groups. Shutdown, cancellation, project removal and
+preview restart have separate regressions; unexpected operating-system failures still need actionable reporting.
 
 ## Compatibility and release validation
 
-The platform/package matrix is a target, not evidence that every current artifact has passed native and visual checks.
-Source tests, native unit tests, Plugin Verifier, installed-package smoke tests, and manual light/dark UI checks
-establish
-different things.
-
-The existing large-game benchmark includes repeated prose-edit cases that can become no-ops, and its memory sampling
-does not cover all runtime processes on all platforms. It cannot by itself establish scale acceptance.
-See [testing](testing.md).
+The six-target package matrix is a delivery target. Cross-compilation is not execution on every target. Current native
+and resource measurements must not be generalized to untested operating systems, architectures, IDE products or games.
+The reference TypeScript benchmark is not an acceptance harness for the installed native backend.
 
 The private release workflow does not enforce that a requested tag is unused. An existing tag may point to a different
-revision from newly built assets; maintainers must check the tag/source relationship before publication.
-See [releasing](releasing.md#private-prerelease-workflow).
+revision from newly built assets; maintainers must check that relationship before publication. Ordinary pushes run
+checks without building installers; packaging requires the explicit workflow input. See [testing](testing.md) and
+[releasing](releasing.md).
 
-Browser-only VS Code, Android Studio, older Community editions, debugging, and marketplace publication are outside the
+Browser-only VS Code, Android Studio, older Community editions, debugging and marketplace publication are outside the
 first release. Planned Bifoil ecosystem projects are not features of this plugin.

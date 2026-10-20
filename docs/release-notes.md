@@ -20,12 +20,11 @@ is not fully equivalent.
 ## Declared targets
 
 VS Code desktop 1.109+; IntelliJ IDEA, WebStorm, and PyCharm 2026.1.4 at the documented
-[build baselines](jetbrains-compatibility.md).
-Packaging covers Windows, macOS, and glibc Linux on x64 and ARM64. A host-only local JetBrains bundle covers only its
-prepared runtime, not that whole matrix.
+[build baselines](jetbrains-compatibility.md). Packaging covers Windows, macOS, and glibc Linux on x64 and ARM64. A
+host-only local JetBrains bundle covers only its prepared runtime, not that whole matrix.
 
-The bundled unmodified engine is pinned to `60a6c3ee7393c9ee7e42650b8e1642ae38e3cb6a`.
-Original plugin code is MIT licensed; upstream material retains its separate license and notices.
+The bundled unmodified engine is pinned to `60a6c3ee7393c9ee7e42650b8e1642ae38e3cb6a`. Original plugin code is MIT
+licensed; upstream material retains its separate license and notices.
 
 ## Known limitations
 
@@ -43,11 +42,9 @@ language/toolchain products are outside this candidate's scope.
 
 ## Installing and reporting issues
 
-Follow [installation](support.md), then the [first-game walkthrough](getting-started.md).
-Use an original minimal reproduction and sanitized logs
-when [reporting a problem](troubleshooting.md#reporting-a-problem).
-Record the exact candidate, source revision where available, editor version, and host architecture.
+Follow [installation](support.md), then the [first-game walkthrough](getting-started.md). Use an original minimal
+reproduction and sanitized logs when [reporting a problem](troubleshooting.md#reporting-a-problem). Record the exact
+candidate, source revision where available, editor version, and host architecture.
 
 Before attaching these notes to an actual release, maintainers must identify the candidate revision and update
-validation
-status using [the release procedure](releasing.md).
+validation status using [the release procedure](releasing.md).

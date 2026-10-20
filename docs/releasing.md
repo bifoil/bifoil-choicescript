@@ -1,8 +1,8 @@
 # Packaging and releases
 
-This guide is for maintainers. For installation, see [support](support.md).
-Building an artifact, validating it, and publishing it are separate operations. The repository is a private prerelease;
-ordinary development work does not authorize publication or changing visibility.
+This guide is for maintainers. For installation, see [support](support.md). Building an artifact, validating it, and
+publishing it are separate operations. The repository is a private prerelease; ordinary development work does not
+authorize publication or changing visibility.
 
 ## Prepare the source
 
@@ -15,8 +15,8 @@ pnpm install --frozen-lockfile
 pnpm check
 ```
 
-Preserve upstream line endings. Do not package around an unexplained engine checksum mismatch.
-Package scripts consume the shared build outputs, so rebuild after source edits.
+Preserve upstream line endings. Do not package around an unexplained engine checksum mismatch. Package scripts consume
+the shared build outputs, so rebuild after source edits.
 
 ## VS Code packages
 
@@ -41,13 +41,13 @@ pnpm package:vscode linux-arm64
 | `linux-x64`    | glibc Linux x64     |
 | `linux-arm64`  | glibc Linux ARM64   |
 
-Output is `dist/packages/bifoil-choicescript-<target>.vsix`.
-Each package includes its Node runtime, language server, worker, selected engine files, notices, and the extension.
-The build generates the distribution README from the root README.
+Output is `dist/packages/bifoil-choicescript-<target>.vsix`. Each package includes its Node runtime, language server,
+worker, selected engine files, notices, and the extension. The build generates the distribution README from the root
+README.
 
-Cross-packaging does not validate execution on another host.
-Use [extracted-package and editor tests](testing.md#packaged-vs-code-checks)
-on the matching host. Do not run parallel package commands that mutate the same adapter runtime directory.
+Cross-packaging does not validate execution on another host. Use
+[extracted-package and editor tests](testing.md#packaged-vs-code-checks) on the matching host. Do not run parallel
+package commands that mutate the same adapter runtime directory.
 
 ## JetBrains package
 
@@ -66,8 +66,8 @@ editors/intellij/gradlew.bat -p editors/intellij test buildPlugin verifyPlugin
 ```
 
 `pnpm package:intellij` prepares server/runtime archives and a manifest under
-`editors/intellij/src/main/resources/bundle`. It does **not** run Gradle or produce the installable ZIP.
-Gradle writes the plugin ZIP under `editors/intellij/build/distributions`.
+`editors/intellij/src/main/resources/bundle`. It does **not** run Gradle or produce the installable ZIP. Gradle writes
+the plugin ZIP under `editors/intellij/build/distributions`.
 
 | Preparation option | Meaning                                                             |
 | ------------------ | ------------------------------------------------------------------- |
@@ -75,20 +75,19 @@ Gradle writes the plugin ZIP under `editors/intellij/build/distributions`.
 | `--current`        | Prepare only the host runtime for local development                 |
 | `--server-only`    | Refresh server resources using an already prepared runtime manifest |
 
-A `--current` ZIP is not universal. `--server-only` cannot turn a host-only manifest into a universal one.
-Use the IDEA-built ZIP as the distribution artifact and validate the same adapter source with
-`-PplatformProduct=webstorm` and `-PplatformProduct=pycharm` too.
-See [compatibility](jetbrains-compatibility.md).
+A `--current` ZIP is not universal. `--server-only` cannot turn a host-only manifest into a universal one. Use the
+IDEA-built ZIP as the distribution artifact and validate the same adapter source with `-PplatformProduct=webstorm` and
+`-PplatformProduct=pycharm` too. See [compatibility](jetbrains-compatibility.md).
 
 ## All-target preparation
 
 `pnpm package:all` builds shared code, creates all six VSIX files, and prepares the universal IntelliJ resource bundle.
-Gradle is still required to build/verify the JetBrains ZIP.
-This command may download substantial runtime data; prefer host-only work while iterating.
+Gradle is still required to build/verify the JetBrains ZIP. This command may download substantial runtime data; prefer
+host-only work while iterating.
 
-`pnpm runtime <target>` provisions an individual runtime. `pnpm runtime --all` provisions every locked target.
-Archives are cached and verified before use. Changing the runtime pin requires matching archive hashes and provenance,
-not just editing a version label.
+`pnpm runtime <target>` provisions an individual runtime. `pnpm runtime --all` provisions every locked target. Archives
+are cached and verified before use. Changing the runtime pin requires matching archive hashes and provenance, not just
+editing a version label.
 
 ## Provenance and package contents
 
@@ -101,10 +100,9 @@ not just editing a version label.
 | [pnpm lock](../pnpm-lock.yaml)                      | JavaScript dependency versions/integrity                 |
 | [Gradle inventory](provenance/gradle-linux-x64.xml) | One environment's resolved JVM dependencies and hashes   |
 
-The Gradle inventory is supplementary provenance, not a portable enforcement lock.
-Each packaged Node runtime includes `NODE-LICENSE` and `provenance.json` with archive/executable hashes.
-Retain the engine license and dependency notices. Source maps and unselected upstream development files are not part of
-the intended server distribution.
+The Gradle inventory is supplementary provenance, not a portable enforcement lock. Each packaged Node runtime includes
+`NODE-LICENSE` and `provenance.json` with archive/executable hashes. Retain the engine license and dependency notices.
+Source maps and unselected upstream development files are not part of the intended server distribution.
 
 Inspect actual archive contents when validating a packaging change. A provenance file's presence alone does not prove
 that the listed binaries match those running.
@@ -147,14 +145,14 @@ The prerelease workflow collects six VSIX files and the IDEA-built ZIP, then cre
 - `SHA256SUMS.txt` covering the release contents.
 - Release notes, license notices, engine/runtime pins, and dependency provenance.
 
-It creates the private prerelease, downloads assets again, compares checksums, and verifies the downloaded manifest.
-A late failure can leave a partially created release. Inspect the remote release and workflow before retrying;
-do not silently overwrite, retag, or delete a published release.
+It creates the private prerelease, downloads assets again, compares checksums, and verifies the downloaded manifest. A
+late failure can leave a partially created release. Inspect the remote release and workflow before retrying; do not
+silently overwrite, retag, or delete a published release.
 
 To validate a downloaded release directory locally:
 
 ```sh
-node scripts/verify-release.mjs "/path/to/downloaded-release"
+node scripts/verify-release.mjs downloaded
 ```
 
 This checks the release files against their recorded inventory; it is not a substitute for native execution or trusting
@@ -171,3 +169,11 @@ Retention changes apply to new uploads; existing artifacts retain their previous
 pushes and pull requests upload no artifacts. Keep installers and runtime binaries out of Git history. Reuse runtime/SDK
 caches. Remove only obsolete, task-owned extraction/report directories after their processes exit. Keep the minimal
 evidence needed to identify and reproduce a failed candidate.
+
+## Developer artifact paths
+
+The release assembly/verifier and VSIX extractor accept paths beneath this checkout's `release/`, `downloaded/`,
+`dist/` or ignored development-output directories. Copy downloaded packages into one of those areas before verification.
+The synthetic benchmark's report stays under the ignored development-output directory. These scripts reject traversal,
+existing symlink ancestors and filenames that have ambiguous meanings across Windows and Unix. They do not restrict the
+game-project or export paths selected through the editor.

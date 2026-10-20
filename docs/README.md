@@ -1,8 +1,8 @@
 # Documentation
 
-Bifoil ChoiceScript is an unofficial ChoiceScript authoring environment for VS Code and JetBrains IDEs.
-These guides describe the current prerelease implementation. Read [known limitations](known-limitations.md) alongside
-feature descriptions; declared support and release acceptance are different things.
+Bifoil ChoiceScript is an unofficial ChoiceScript authoring environment for VS Code and JetBrains IDEs. These guides
+describe the current prerelease implementation. Read [known limitations](known-limitations.md) alongside feature
+descriptions; declared support and release acceptance are different things.
 
 ## Write your first game
 
@@ -37,8 +37,8 @@ feature descriptions; declared support and release acceptance are different thin
 - [JetBrains implementation notes](jetbrains-api-notes.md): platform lifecycle, threading, and transport contracts.
 - [Packaging and releases](releasing.md): host packages, universal bundles, provenance, and release gates.
 
-[Third-party notices](../THIRD_PARTY_NOTICES.md) explain the engine/runtime provenance and distinct licenses.
-The [Gradle dependency inventory](provenance/gradle-linux-x64.xml) records one resolution environment; it is not a
+[Third-party notices](../THIRD_PARTY_NOTICES.md) explain the engine/runtime provenance and distinct licenses. The
+[Gradle dependency inventory](provenance/gradle-linux-x64.xml) records one resolution environment; it is not a
 cross-platform compatibility certificate or portable dependency lock.
 
 ## Reading conventions

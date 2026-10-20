@@ -2,18 +2,19 @@
 
 ChoiceScript authoring tools for VS Code and JetBrains IDEs, built around one shared language service.
 
-**An unofficial personal project under the planned Bifoil Foundation umbrella, maintained by Chinay.
-Unaffiliated with Choice of Games or upstream ChoiceScript.**
+**An unofficial personal project under the planned Bifoil Foundation umbrella, maintained by Chinay. Unaffiliated with
+Choice of Games or upstream ChoiceScript.**
 
-[Installation](docs/support.md) · [First game](docs/getting-started.md) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
+[Installation](docs/support.md) · [First game](docs/getting-started.md) · [Documentation](docs/README.md) ·
+[Contributing](CONTRIBUTING.md)
 
 ## What you can do
 
 - Write with completion, command documentation, navigation, references, rename, folding, and semantic highlighting.
 - Follow dialogue through conditional branches independently of quoted strings in commands.
 - See inferred string, number, and boolean variable types at individual references.
-- Create projects from the pinned upstream template, preview games, run official QuickTest and seeded RandomTest,
-  and export HTML with companion assets.
+- Create projects from the pinned upstream template, preview games, run official QuickTest and seeded RandomTest, and
+  export HTML with companion assets.
 - Open existing games without associating every unrelated `.txt` file with ChoiceScript.
 
 For example, the dialogue in these two alternatives closes independently:
@@ -39,17 +40,16 @@ This repository is in **private prerelease development**. Access to the reposito
 There is no marketplace release. Implemented features are not a claim that every editor, platform, or workload has
 passed acceptance.
 
-The current version has [known limitations](docs/known-limitations.md), including rename edge cases, unreliable
-JetBrains coverage delivery, and incomplete large-game support. The targets of **256 MiB combined plugin runtime
-memory**, **responses below one second**, and **games with tens of millions of words** are not yet met across required
-workloads. See [performance and scale](docs/performance.md) before relying on those limits.
+The current version has [known limitations](docs/known-limitations.md), including dynamic-reference uncertainty and remaining
+native editor/large-game acceptance gaps. Windows checks have met **256 MiB combined plugin runtime memory** and **responses below one second** on tested games
+with **tens of millions of words**. Wider platform and native UI acceptance remains incomplete. See [performance and scale](docs/performance.md) before relying on those limits.
 
 | Editor                           | Declared baseline | Package                            |
 | -------------------------------- | ----------------- | ---------------------------------- |
 | VS Code desktop                  | 1.109+            | OS- and architecture-specific VSIX |
 | IntelliJ IDEA, WebStorm, PyCharm | 2026.1.4          | JetBrains plugin ZIP               |
 
-Packaging targets Windows, macOS, and glibc-based Linux on x64 and ARM64. Packages include Node.js 24 and an unmodified,
+Packaging targets Windows, macOS, and glibc-based Linux on x64 and ARM64. Packages include the native Go language server, Node.js 24 and an unmodified,
 pinned ChoiceScript engine; users do not need to install Node.js. Exact JetBrains build requirements and exclusions are
 in [compatibility](docs/jetbrains-compatibility.md). Browser-only VS Code, Android Studio, debugging, and marketplace
 publication are outside the first release.
@@ -63,8 +63,8 @@ publication are outside the first release.
 4. In a trusted project, choose **Run Game**, **Run QuickTest**, or **Run RandomTest**.
 5. Follow the [first-game walkthrough](docs/getting-started.md) for a complete example.
 
-Existing engine checkouts and multiple games are supported through [project discovery](docs/projects.md).
-Paths and test defaults go in `choicescript.json`; presentation belongs in [editor settings](docs/configuration.md).
+Existing engine checkouts and multiple games are supported through [project discovery](docs/projects.md). Paths and test
+defaults go in `choicescript.json`; presentation belongs in [editor settings](docs/configuration.md).
 
 ## Find your way around
 
@@ -84,10 +84,9 @@ versions, following [reporting a problem](docs/troubleshooting.md#reporting-a-pr
 ## Bifoil and licensing
 
 Bifoil Foundation is the planned umbrella for a broader interactive-fiction ecosystem. This repository implements
-ChoiceScript editor tooling; a future Bifoil language, compiler, runtime, SDK, and studio are separate plans.
-The name does not imply incorporation, nonprofit status, or upstream affiliation.
+ChoiceScript editor tooling; a future Bifoil language, compiler, runtime, SDK, and studio are separate plans. The name
+does not imply incorporation, nonprofit status, or upstream affiliation.
 
 Original code is [MIT licensed](LICENSE). The bundled ChoiceScript engine, official template, Node.js, and dependencies
 retain their own licenses and notices. See [third-party notices](THIRD_PARTY_NOTICES.md); this project's MIT license
-does
-not replace the ChoiceScript license.
+does not replace the ChoiceScript license.

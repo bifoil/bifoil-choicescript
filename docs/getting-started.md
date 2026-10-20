@@ -6,8 +6,8 @@ editors; the same shared engine and language service power each adapter. First [
 ## 1. Create or open a project
 
 In VS Code, open the Command Palette and choose **Bifoil ChoiceScript: New Project**. In JetBrains, choose **Tools →
-Bifoil ChoiceScript → New Project**. Choose a new directory or an empty directory; project creation refuses to
-merge a template into an existing collection of files.
+Bifoil ChoiceScript → New Project**. Choose a new directory or an empty directory; project creation refuses to merge a
+template into an existing collection of files.
 
 The template comes from the bundled pinned engine. Keep its runtime assets, `CHOICESCRIPT-LICENSE.txt`, and
 `UPSTREAM-TEMPLATE.md`. Creating a project does not grant new rights to upstream material.
@@ -24,11 +24,11 @@ my-first-game/
 └── UPSTREAM-TEMPLATE.md
 ```
 
-The generated template also contains other game assets and sample scenes. The tree above shows the relevant subset,
-not a complete generated-file list. Existing sample scenes need not be added to your new story's `*scene_list`.
+The generated template also contains other game assets and sample scenes. The tree above shows the relevant subset, not
+a complete generated-file list. Existing sample scenes need not be added to your new story's `*scene_list`.
 
-Alternatively, open an existing game containing `scenes/startup.txt`. No extension-specific project file is required
-for this conventional layout.
+Alternatively, open an existing game containing `scenes/startup.txt`. No extension-specific project file is required for
+this conventional layout.
 
 ## 2. Write the story
 
@@ -80,8 +80,8 @@ Save both files. Directives start with `*`, options with `#`, and indentation de
 `*if` or `*else`. `implicit_control_flow` permits the conditional alternatives to continue into the following narrative;
 the choice options use explicit jumps.
 
-The two conditional lines close the same quote from the keeper's dialogue on separate paths. The following sentence should
-return to ordinary narrative styling. A command's string value, such as `"traveler"`, is separate from narrative
+The two conditional lines close the same quote from the keeper's dialogue on separate paths. The following sentence
+should return to ordinary narrative styling. A command's string value, such as `"traveler"`, is separate from narrative
 dialogue.
 
 ## 3. Try the editor features
@@ -94,32 +94,30 @@ dialogue.
 - Select prose and invoke **Bold Selection** or **Italicize Selection** to insert `[b]…[/b]` or `[i]…[/i]`.
 - Invoke **Show Narrative Word Count** for the current scene.
 
-Theme colors differ between editors. The classification is shared; a particular RGB color is not required.
-Rename is implemented, but review every proposed edit because the prerelease
-has [known edge cases](known-limitations.md#language-analysis-and-rename).
+Theme colors differ between editors. The classification is shared; a particular RGB color is not required. Rename is
+implemented, but review every proposed edit because the prerelease has
+[known edge cases](known-limitations.md#language-analysis-and-rename).
 
 As a recovery exercise, temporarily delete the final quote in `*create name "traveler"`. The editor should report
 `expression-string` on that line. Later commands should remain commands. Restore the quote before testing the game.
 
 ## 4. Run the official tests
 
-Trust the project through your editor's normal trust UI if you intend to execute it. Invoke **Run QuickTest**.
-Inspect the Bifoil ChoiceScript output/tool window and the Problems view.
+Trust the project through your editor's normal trust UI if you intend to execute it. Invoke **Run QuickTest**. Inspect
+the Bifoil ChoiceScript output/tool window and the Problems view.
 
 Then invoke **Run RandomTest**, set **iterations to 20** and **seed to 0**, and run it. Record those values when
-reporting
-a failure. RandomTest explores sampled playthroughs; passing does not establish that every possible story path works.
+reporting a failure. RandomTest explores sampled playthroughs; passing does not establish that every possible story path
+works.
 
 Available line coverage can help locate unvisited passages. Coverage is currently unreliable in JetBrains because of a
-notification integration defect; absent decorations are not proof that no lines ran.
-The [game-tools guide](game-tools.md)
-explains coverage and stale results.
+notification integration defect; absent decorations are not proof that no lines ran. The
+[game-tools guide](game-tools.md) explains coverage and stale results.
 
 ## 5. Play both choices
 
-Invoke **Run Game**. Choose each route in separate playthroughs and check the ending text and courage value.
-To check both keeper-dialogue alternatives, change the initial courage to `30`, invoke **Run Game** again, and then
-restore `50`.
+Invoke **Run Game**. Choose each route in separate playthroughs and check the ending text and courage value. To check
+both keeper-dialogue alternatives, change the initial courage to `30`, invoke **Run Game** again, and then restore `50`.
 
 Preview uses a staged snapshot. Editing a scene does not hot-reload a running game. Restart with **Run Game** to capture
 new buffers, and use **Stop Game or Tests** when finished. Reusing the old browser page after stopping is not a test of
@@ -132,8 +130,8 @@ the HTML in their exported relative paths. Existing files are preserved; choose 
 would collide.
 
 Open the exported game and check its text and assets. Export is not necessarily a single self-contained file, and the
-current compiler packaging has a [font-asset limitation](known-limitations.md#game-tools).
-Distributing the result still requires following the licenses for the engine and any game assets.
+current compiler packaging has a [font-asset limitation](known-limitations.md#game-tools). Distributing the result still
+requires following the licenses for the engine and any game assets.
 
 ## Next steps
 

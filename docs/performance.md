@@ -1,120 +1,97 @@
 # Performance and scale
 
-The acceptance targets are:
+The requirements are complete analysis, useful current responses below **1,000 ms** (ideally below **500 ms**), and at
+most **256 MiB of combined resident memory** for every plugin-owned runtime process. Scale includes games with tens of
+millions of narrative words. A heap limit, an empty answer or reduced analysis does not establish compliance.
 
-| Dimension           | Required behavior                                                                                       |
-| ------------------- | ------------------------------------------------------------------------------------------------------- |
-| Runtime memory      | At most **256 MiB combined resident memory** for plugin-owned language-server and game-tool processes   |
-| Interaction latency | Useful, current response **below 1,000 ms** after the interaction; ideal **below 500 ms**               |
-| Scale               | Games with **tens of millions of narrative words**, including representative control-flow complexity    |
-| Correctness         | Current versions, nonempty useful results, accurate ranges/classifications, and responsive cancellation |
+The installed language service is native Go. Both adapters use it by default, with bundled Node reserved for game tools.
+The earlier TypeScript server and its benchmarks remain available for regression comparisons; their fallback modes and
+memory policies do not describe the installed native backend.
 
-**These targets are not yet met across the required workloads.** Large/command-heavy analysis and official tools can
-exhaust their heaps, and native editor behavior has remaining bottlenecks. This page defines what must be measured;
-it does not claim that a heap flag enforces the total-memory requirement.
+## What counts
 
-## Count the right memory
+Add the language server, tooling broker, official generator/test/compiler workers and any other owned runtime processes
+at the same instant. Worker threads are already included in their host process. Report the **maximum simultaneous
+sum**, not a sum of unrelated per-process high-water marks. The resource evidence sampler uses a 10 ms interval and
+records server/tool contributions at the combined peak; sampling can miss shorter spikes.
 
-The language server process includes its worker threads in its RSS/working set. Do not add a second process-sized value
-for the same worker memory. Add simultaneous owned generator, test, and compiler child-process resident memory.
-Preview-server allocations inside the language server are already part of that process.
+The editor's whole extension host, IDE JVM, JCEF/browser, Gradle and test-client processes are separate measurements.
+They still affect host responsiveness and should be reported when significant. Do not label the entire IDE as the plugin
+runtime, or hide an oversized test client in a claim about low memory.
 
-The editor's whole extension host, IDE JVM, JCEF/browser host, Gradle daemon, and test harness are not interchangeable
-with the plugin-owned server/worker/tool budget. Report host responsiveness and other significant costs separately,
-rather than hiding them or labeling the entire IDE as language-server memory.
+The native Go runtime uses a 96 MiB soft memory target and at most four runtime processors. This is a collection target,
+not a resident-memory cap. The Node broker and official workers use independent heap policies in
+[`runtime.ts`](../packages/protocol/src/runtime.ts). Source-adapted official workers use a 48 MiB old-generation limit;
+legacy unadapted workers retain 64 MiB. Native buffers, stacks, code and mapped pages also consume resident memory.
 
-Shared policy in [`runtime.ts`](../packages/protocol/src/runtime.ts) currently uses:
+## Preserve work while reducing allocations
 
-| Component              | V8 heap policy                                      |
-| ---------------------- | --------------------------------------------------- |
-| Server                 | 96 MiB old generation, 2 MiB semispace              |
-| Analysis worker thread | 96 MiB old generation, 4 MiB young generation limit |
-| Game-tool child        | 64 MiB old generation, 2 MiB semispace              |
+The native implementation uses immutable file-backed sources, exact prose transfer summaries, persistent environments,
+paged query indexes and lossless repeating semantic-token blocks. It does not skip closed scenes or discard types,
+references or dialogue to obtain a lower memory number. A bounded cache reuses exact type/scope reads from immutable
+environments; it checks every operand, clears before collected handles are reused, and is bypassed when discovering call
+dependencies. Unsupported incremental changes trigger full analysis.
 
-Native allocations, stacks, buffers, code, young generations, and mappings also consume memory.
-Heap limits can cause a tool to fail without ever demonstrating successful work within 256 MiB.
+Official tools read bounded source pages and line indexes. Coverage transport streams complete counts. Export spools the
+unchanged compiler's intermediate scene JSON instead of retaining a whole game in its worker heap. Both adapters limit
+coverage decorations to visible rows while keeping all counts available.
 
-## Measure the user's interaction
+These mechanisms have passed focused large-game checks, including a 20-million-word individual scene during official
+RandomTest. A Windows x64 run measured 216.9 MiB combined resident memory, with current edits during execution in 563 ms;
+this is evidence for that workload, not every-workload acceptance. Giant single physical lines, many large open buffers,
+sustained edits and native UI delivery require their own measurements.
 
-Start the timer at the typing/hover/completion/navigation event and stop when the corresponding current result is
-available to the user. A server-only LSP round trip omits adapter processing, UI scheduling, token application, and
-paint.
+## Time the interaction that matters
 
-Record cold open, warm edits, structural edits, hover, completion, definitions, references, rename, and highlighting.
-Check the result and document version. An empty completion list where symbols should exist, stale semantic tokens,
-`ContentModified`, cancellation, or an error returned in 100 ms is not a successful 100 ms interaction.
+Start at a typing, hover, completion or navigation event. Stop when its useful current result is available to the user.
+Check the value, source version and ranges. Stale answers, placeholders, errors and `ContentModified` are failures for a
+latency gate even if returned quickly.
 
-Whole-project indexing and a long RandomTest run may take longer than one second. Their duration is a separate metric;
-foreground interactions must remain responsive while that background work runs.
+Measure cold open, warm and structural edits, hover, completion, definitions, references, rename, symbols and semantic
+highlighting. Include concurrent preview, official tests and export. A server-only LSP round trip omits adapter
+processing, token application and paint; report it as server/transport evidence, not native visual acceptance.
 
-## Describe the workload
+Whole-project inventory and a long RandomTest or compilation can take longer than a second. Their total duration is a
+separate metric. Foreground interactions must remain responsive throughout them.
 
-Words and lines are not interchangeable. Record:
+## Describe each workload
 
-- Actual narrative words, total source bytes, and physical lines.
-- Scene count and distribution of individual scene sizes, including the largest open file.
-- Command density, branch nesting, jumps, calls, recursion, arrays, and interpolation.
-- Open buffers, active projects, dirty versions, and whether indexing is complete.
-- Concurrent preview/test/export operations.
-- Host OS/architecture, packaged runtime, editor version, source revision, and warm/cold cache state.
+Record actual narrative words, source bytes, physical lines, scene sizes, command density, branching, jumps, calls,
+recursion, arrays and interpolation. Include open buffers, dirty versions, active projects, concurrent jobs, host
+OS/architecture, editor/runtime versions, artifact hashes and warm/cold cache state.
 
-A million short prose lines compress differently from a command-heavy game of the same word count.
-Many modest scenes and one giant scene exercise different paths. Results from one cannot be substituted for the other.
+Many small scenes, a giant scene with paragraphs, one giant physical paragraph and a command-heavy project stress
+different paths. Do not substitute one for another. An incomplete or malformed story is still a valid resilience input;
+its parser diagnostics are distinct from plugin crashes, invalid ranges or incomplete analysis.
 
-## Existing automated checks
-
-The [server performance suite](../packages/server/test/performance.test.ts) uses original synthetic games and production
-Node flags to check current semantic results and interaction timings. It is useful regression coverage, not all-editor
-end-to-end acceptance.
-
-The opt-in benchmark is:
+## Reproduce relevant checks
 
 ```sh
-pnpm build
+go test ./packages/core/src ./native/server
+go test -race ./packages/core/src ./native/server
+go vet ./packages/core/src ./native/server
+pnpm check
+```
+
+Use the SDK pinned in [`toolchain.json`](../native/toolchain.json). Build and extract an actual package before installed
+acceptance; [testing](testing.md) describes both editor workflows. Do not run compilers, Gradle or other heavy test
+campaigns concurrently with a benchmark unless they are the workload being measured.
+
+The existing opt-in reference benchmark is:
+
+```sh
 node --import tsx scripts/benchmark-large-game.mjs 1000 30000
 ```
 
-This generates 1,000 chapters with 30,000 narrative words each, plus startup: **30 million narrative words**.
-The first two arguments specify the number of chapters and the words per chapter. An optional report-path argument after those values
-selects the report path, for example:
+It generates 30 million narrative words across 1,000 chapters. It launches the reference TypeScript server, includes
+iterations that can become no-op edits, and lacks complete cross-platform child-process measurement. It must not be
+presented as acceptance of the installed native service.
 
-```sh
-node --import tsx scripts/benchmark-large-game.mjs 1000 30000 .bifoil-choicescript/development/scale/report.json
-```
+For a valid scale campaign, use original disposable sources and changing edits on every iteration. Verify full scene
+counts, complete semantic spans, actual type changes, diagnostics and navigation. Preserve immutable source hashes and
+verify official compiled output or full coverage. Monitor simultaneous resident memory and host availability, test
+cancellation/shutdown, and retain failures as well as passes.
 
-The source corpus is temporary and removed afterward; the JSON report is retained in ignored development output.
-The run is opt-in because source generation, indexing, and failures can consume substantial time and resources.
-
-Current benchmark limitations:
-
-- Repeated prose-edit iterations can become no-ops after the initial replacement.
-- Windows monitoring samples server working set, including threads, but no game-tool children are exercised.
-- Other platforms do not currently get resident-memory sampling from this harness.
-- It measures language-service responses, not native editor paint/application latency.
-- Its mostly prose workload does not establish command-heavy or giant-scene acceptance.
-
-Do not present this benchmark alone as a passed 256 MiB or native-editor scale gate.
-
-## Acceptance procedure
-
-Use a packaged candidate, original disposable games, and an available native editor session.
-Verify the loaded adapter/server artifacts correspond to the source revision under test.
-Run a prose-heavy many-scene game and independently stress command-heavy and large-open-scene cases.
-
-Use edits with a changing value every time. Assert updated source versions and expected semantic changes.
-Exercise official QuickTest, seeded RandomTest, export, and preview alongside language interactions.
-Sample the whole owned process tree frequently enough to catch concurrent peaks; retain sample scope and timestamps.
-
-For each editor, include cold and warm runs, UI-applied tokens/diagnostics, project-change notifications, coverage,
-cancelled preparation, shutdown, and process cleanup. Report failures and unverified dimensions explicitly.
-A heap crash, a native callback error, or a locked/unavailable desktop is not a passed performance check.
-
-## Optimization constraints
-
-Do not achieve a lower number by dropping needed symbols, skipping closed scenes, returning stale results, or disabling
-features without documenting a deliberate scope change. Projections and incremental updates must preserve the full
-analysis contract on their supported inputs.
-
-The current design uses compact scene summaries, bounded compressed caches, limited worker concurrency, and a shared
-tool-child slot. These help specific allocations; they are not an end-to-end resource guarantee.
-See [architecture](architecture.md) and [known limitations](known-limitations.md).
+Native editor execution, Plugin Verifier and manual light/dark/paint checks establish different things. Record exactly
+which editor paths and artifacts were exercised. Passing selected Windows x64 workloads does not prove every platform,
+IDE product or possible game. Remaining acceptance gaps belong in [known limitations](known-limitations.md).

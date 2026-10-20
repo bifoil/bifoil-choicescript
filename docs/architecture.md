@@ -1,146 +1,108 @@
 # Architecture
 
-Bifoil ChoiceScript has one editor-independent TypeScript language core and tooling service, with a TypeScript VS Code
-adapter and a Kotlin JetBrains adapter. Editor APIs belong in the adapters; syntax and control-flow semantics belong
-in the shared packages.
+Both editors use the same native Go language server. TypeScript provides the shared tooling broker and editor-independent
+protocol; Kotlin implements the JetBrains adapter. The earlier TypeScript analyzer remains in the repository for
+regressions and comparison. Installed adapters select the bundled native server and do not automatically fall back to
+partial analysis.
 
 ```mermaid
 flowchart TD
-    VS["VS Code adapter"] -->|"LSP + custom requests"| LS["Language server"]
-    JB["JetBrains native LSP adapter"] -->|"LSP + custom requests"| LS
-    LS --> IX["Scene inventory and compact request snapshots"]
-    LS --> AW["Analysis worker thread"]
-    AW --> CORE["Parser, projections, flow analysis, language features"]
-    LS --> TOOL["Project discovery and job runner"]
-    TOOL --> STAGE["Temporary engine, assets, and source snapshot"]
-    STAGE --> CHILD["Bundled Node: official tests and compiler"]
-    STAGE --> HTTP["Loopback preview server"]
+    VS["VS Code adapter"] -->|"LSP and versioned job requests"| LS["Native Go language server"]
+    JB["JetBrains built-in LSP adapter"] -->|"Same protocol"| LS
+    LS --> CORE["Shared parser, flow analysis, symbols and features"]
+    LS --> IX["Immutable source and paged query snapshots"]
+    LS --> TOOL["Bundled Node tooling broker"]
+    TOOL --> STAGE["Disposable engine, assets and captured sources"]
+    STAGE --> CHILD["Official generator, tests and compiler"]
+    TOOL --> HTTP["Loopback preview server"]
 ```
 
-This describes the implemented design. Resource limits and lifecycle defects are documented in
-[performance](performance.md) and [known limitations](known-limitations.md); the diagram is not a guarantee of bounded
-memory or successful cleanup on every path.
+## Source boundaries
 
-## Package boundaries
+| Component                | Source                                                                                        | Responsibility                                                                         |
+| ------------------------ | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Native core              | [`packages/core/src`](../packages/core/src) Go files                                          | Recovering parsing, flow, types, dialogue, semantic spans and feature queries          |
+| Native server            | [`native/server`](../native/server)                                                           | LSP framing, project discovery, open buffers, revisions, scheduling and tooling bridge |
+| Reference implementation | TypeScript in [`packages/core`](../packages/core) and [`packages/server`](../packages/server) | Earlier implementation and differential regression coverage                            |
+| Protocol                 | [`packages/protocol/src`](../packages/protocol/src)                                           | Versioned DTOs, validation, coverage and Node runtime policy                           |
+| Tooling                  | [`packages/tooling/src`](../packages/tooling/src)                                             | Staging, project creation, preview, official tools, export and process ownership       |
+| Adapters                 | [`editors/vscode`](../editors/vscode), [`editors/intellij`](../editors/intellij)              | Editor lifecycle, presentation, actions, trust and theme mapping                       |
+| Build                    | [`scripts`](../scripts), [`native/toolchain.json`](../native/toolchain.json)                  | Generation, native builds, provenance, runtime provisioning and packaging              |
 
-| Component     | Source                                              | Owns                                                                                  |
-| ------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Core          | [`packages/core/src`](../packages/core/src)         | Parsing, flow, abstract values, symbols, diagnostics, semantic spans, feature queries |
-| Server        | [`packages/server/src`](../packages/server/src)     | LSP, open buffers, revisions, indexing, worker scheduling, publication                |
-| Protocol      | [`packages/protocol/src`](../packages/protocol/src) | Shared DTOs, option validation, coverage state, runtime policy                        |
-| Tooling       | [`packages/tooling/src`](../packages/tooling/src)   | Discovery, creation, staging, preview, official jobs, process ownership               |
-| VS Code       | [`editors/vscode`](../editors/vscode)               | Client lifecycle, association, commands, progress, webviews, theme mapping            |
-| JetBrains     | [`editors/intellij`](../editors/intellij)           | Native LSP integration, substitution, actions, tool window, JCEF, colors              |
-| Build scripts | [`scripts`](../scripts)                             | Generation, engine verification, bundling, runtime provisioning, packages             |
+Editor APIs stay in the adapters. Command metadata remains in
+[`commands.json`](../packages/core/src/commands.json), which supplies generated help and fallback highlighting. The
+unmodified pinned interpreter and its tests govern ChoiceScript runtime behavior.
 
-## Parsing and abstract interpretation
+## Complete analysis with compact storage
 
-`parser.ts` builds an indentation tree from physical lines. `expression.ts` parses command expressions and recovers
-unterminated strings at line boundaries. Narrative quotation is a separate state used by `analysis.ts`.
-`environment.ts` and `worklist.ts` support value environments and analysis scheduling.
+The parser distinguishes physical lines, indentation, commands, expressions and prose. Expression strings recover at
+their own line boundary. Narrative dialogue has separate state that follows branches, jumps, scenes and subroutines.
+Conditional siblings inherit the same incoming state; reachable exits merge. Uncertain types and dialogue remain
+neutral rather than inventing certainty.
 
-Control-flow nodes represent executable structure rather than reading all source as one uninterrupted passage.
-Conditional siblings share their entry state; joins combine reachable exits. Calls use context summaries and
-subscribers. Loops and recursive calls iterate toward a fixed point with a finite work budget.
+The native core represents long prose runs through exact transfer summaries while preserving source ranges, word counts,
+quotation behavior and semantic spans. Commands and embedded expressions remain explicit. Control-flow analysis iterates
+to a fixed point, including calls and loops. Environments use persistent shared structure and bounded exact memoization;
+recycling clears memo entries that could otherwise retain invalid page handles.
 
-Abstract values track possible types and retain constants where justified. Assignment, scope changes, array bindings,
-dynamic destinations, and generated text can widen that information. Unknown values receive neutral styling.
-These operations must not execute source code to infer runtime values.
+Query snapshots retain definitions, references, inferred types, diagnostics and every semantic token. Repeating token
+blocks can use a period and line stride only after comparing every field; irregular blocks retain their full values.
+This is lossless storage compression. It does not skip scenes, lower analysis precision or drop highlighting spans.
 
-The result contains document models, semantic spans, diagnostics, symbols, references, inferred values, and word counts.
-`features.ts` exposes completion, hover, navigation, rename, symbols, folding, and selections over that result.
-`spans.ts` combines narrative with code/markup overlays without overlapping LSP tokens.
+Inactive query snapshots and lexical data can be paged to owned temporary files. Request leases keep a selected snapshot
+alive through response encoding. Large semantic-token responses stream from that snapshot rather than allocating a
+second complete JSON response. Switching projects waits for active readers before releasing their retained state.
 
-The [language guide](specification.md) is the user-visible model. The pinned runtime and focused differential
-regressions
-remain necessary checks of that model.
+## Source identity, versions and cancellation
 
-## Compact scenes and request snapshots
+Open sources use immutable file-backed captures and piece buffers. Text retention is bounded separately from line-offset
+metadata. Disk identity, content digests, URI-local versions and project generations prevent an old result from becoming
+current after edits, project removal or readdition. Aliases select the most recent source event; version numbers from
+different URIs are not comparable.
 
-Retaining every line of a huge game as a full syntax tree is expensive. The server therefore separates:
+Edits cancel superseded analysis. Restricted incremental paths update a snapshot only when their preconditions prove the
+same full result; other changes run full project flow again. Byte-identical disk analysis can be reused on opening a
+file, with diagnostics republished for the new open-document version. Explicitly selected loose files are analyzed
+without treating neighboring text files as a game.
 
-1. A scene inventory: identities and filesystem information.
-2. Full source for open/foreground scenes.
-3. Compact projections for closed scenes.
-4. Compressed request indexes used by interactive queries.
+Requests wait for current analysis or return cancellation/freshness errors. Returning an error quickly does not satisfy
+the interaction-latency requirement. [`indexStatus`](protocol.md) exposes complete project readiness independently of
+scene counts. A failed full analysis is not replaced automatically with syntax-only or foreground-scene assistance.
 
-`projection.ts` summarizes eligible prose runs with source extents, word counts, and dialogue transfer information.
-Commands, expressions, interpolation, and control flow remain explicit where required.
-A projected document can have sparse physical lines; consumers must use its lookup helpers rather than assuming
-`document.lines[n]` means source line `n`.
+## Official game tools
 
-`scene-index.ts` owns a temporary directory of compressed scene summaries and a process-wide 8 MiB compressed cache.
-The worker loads closed scenes incrementally. `snapshots.ts` provides compact indexes for lines, tokens, and references. These let the
-server respond without receiving the full analysis graph for every response.
+The native server lazily starts the bundled Node broker for tooling. The broker validates the
+[versioned job request](protocol.md), captures open buffers, stages selected engine files and game assets, and runs the
+pinned official generator, QuickTest, RandomTest or compiler in separate workers. A global child slot limits concurrent
+heavy tools. Preview runs in the broker's loopback HTTP server.
 
-This reduces retained prose, but command-heavy games and open giant files still impose substantial costs.
-The cache size does not bound every allocation, decoded tree, open buffer, or job snapshot.
+Large scene inputs use immutable staged source pages and file-backed line offsets. The adapter implements the exact
+source operations exercised by the pinned tools; it does not rewrite their interpreter or suppress legitimate engine
+limits. Optional upstream caches are bounded and recomputed after eviction. A giant single physical line can still
+require a large individual allocation.
 
-## Scheduling, versions, and invalidation
+Coverage uses lossless numeric chunks and bounded transport writes. Complete counts remain available while each editor
+creates decorations only for visible lines. Export runs the unchanged compiler with staging-only hooks that spool its
+scene JSON intermediate and stream the final HTML. Original regressions compare exact official output, including image
+transforms, Unicode, CRLF, CRCs and labels.
 
-The server owns one warm analysis worker for the active game. Unchanged projected syntax and request indexes can be
-reused. Switching active games or superseding busy work retires a worker; shutdown is awaited before replacement to
-avoid overlapping live workers.
+Output backpressure bounds pending writes; raw output is saved to owned logs. Jobs retain captured source versions and
+become stale after source or relevant asset edits. Preparation cancellation, active cancellation, preview restart,
+project removal and server shutdown each settle owned jobs and clean up their processes. Shutdown closes the broker and
+preview before acknowledging completion. Windows Job Objects and Unix process groups own descendants.
 
-Source stamps, content fingerprints, open-buffer versions, and project generations determine whether results are
-current. Edits invalidate the affected game while independent games retain their snapshots.
-A restricted plain-prose edit can update a request index directly when its line structure and semantic state are
-unchanged. Quotes, commands, interpolation, markup, and other structural changes require broader analysis.
+## Delivery and provenance
 
-Initial indexing is incomplete context. Incoming quotation may be unknown, some contextual warnings are deferred,
-and complete-project references/rename must wait. `choicescript/indexStatus` exposes readiness separately from the
-number of cached scenes.
+[`build-language-server.mjs`](../scripts/build-language-server.mjs) uses the pinned installed Go SDK, disables automatic
+toolchain downloads and CGO, and records source, compiler, linker, binary and license hashes. Bundling rejects a native
+artifact whose source digest or target is stale. Go is a build dependency; users do not need it installed.
 
-Interactive requests wait briefly for a current snapshot and support cancellation. If analysis does not become
-available within the request budget, the server can return `ContentModified` instead of a useful result.
-That prevents pretending an obsolete answer is current; it does **not** satisfy the latency acceptance requirement.
+VSIX files contain the selected target's native server and Node runtime. The universal JetBrains ZIP contains the six
+locked target pairs; `--current` prepares only a host development bundle. Extraction verifies archive/native hashes and
+restores executable permissions. JetBrains caches only the host native executable beside Node under a short name,
+avoiding duplicate binaries and Windows executable-path limits. Node archives follow [`runtime-lock.json`](../runtime-lock.json); the selected engine
+inventory follows [`runtime-files.json`](../vendor/runtime-files.json).
 
-Filesystem notifications and adapter watches participate in invalidation. Known gaps around external roots,
-directory-only changes, and retained job history are documented rather than assumed solved.
-
-## Game-job lifecycle
-
-The server forwards a [versioned job request](protocol.md) after checking project selection, options, and editor trust.
-The runner allocates a job ID, emits lifecycle events, captures scene buffers, prepares a temporary engine/game tree,
-then starts preview or an official tool.
-
-The runtime inventory in [`vendor/runtime-files.json`](../vendor/runtime-files.json) selects unmodified engine files.
-Disk scene copying checks for concurrent changes; open buffers are written from the captured version.
-Assets come from disk through the copy filter.
-
-Generator/test/compiler children share a global process slot, with per-project ordering for starts.
-Preview is an HTTP server in the server process, not another ChoiceScript analysis worker.
-Output parsing maps trusted runner locations to scene URIs, collects coverage, saves logs, and emits completion.
-Edits mark the originating job stale.
-
-The pinned compiler expects a `rootDir` global in its VM-loaded generator. Export supplies a temporary preload inside
-staging; it does not patch upstream source.
-
-Disposal attempts to stop direct child processes, close preview servers, remove owned staging/index directories, and
-settle jobs. Treat those as lifecycle obligations to test, especially failure and cancellation paths, rather than
-assuming
-the happy path proves cleanup.
-
-## Adapter responsibilities
-
-Both adapters consume the same semantic-token legend and diagnostics. They map presentation to editor themes, expose
-commands and trust decisions, and display output/coverage.
-
-VS Code uses `vscode-languageclient` and a webview. JetBrains uses the platform's built-in LSP infrastructure and
-LSP4J-backed custom messages. Direct DTO/helper tests do not replace exercising native transport and lifecycle.
-See [JetBrains notes](jetbrains-api-notes.md).
-
-Fallback grammars are generated or maintained from shared command categories. They stay line-local; adapters must not
-invent separate branch-dependent dialogue analysis.
-
-## Distribution boundary
-
-The build verifies the engine submodule revision and file hashes before copying the selected runtime.
-Node archives are pinned and checked by [`runtime-lock.json`](../runtime-lock.json).
-VSIX files contain one target runtime. A release JetBrains ZIP contains all six; host-only development preparation does
-not.
-
-The native adapter verifies bundled archives before extraction into IDE caches. IDE SDKs and JetBrains Runtime are
-build/test dependencies, not plugin contents.
-[Third-party notices](../THIRD_PARTY_NOTICES.md) travel with distributions.
-See [development](development.md) for generated paths and [releasing](releasing.md) for artifact boundaries.
+Legacy C/WASM and TypeScript sources remain available but are not the installed language-server path. Build/test SDKs,
+IDE installations and private local reports are not plugin contents. See [development](development.md),
+[performance](performance.md) and [release gates](releasing.md) for commands and the limits of current evidence.

@@ -1,7 +1,7 @@
 # Configuration reference
 
-Project configuration controls file paths and RandomTest defaults. Editor settings control presentation.
-Most conventional `scenes/startup.txt` projects need no configuration file.
+Project configuration controls file paths and RandomTest defaults. Editor settings control presentation. Most
+conventional `scenes/startup.txt` projects need no configuration file.
 
 ## Project configuration
 
@@ -39,19 +39,17 @@ For an engine checkout:
 }
 ```
 
-The configuration must be an object, without JSON comments or trailing commas. Unknown keys are currently ignored,
-not validated as supported features. There is no published config schema in the repository. Invalid known fields
-produce diagnostics; a valid config pointing to a nonexistent startup file simply fails to identify a project.
+The configuration must be an object, without JSON comments or trailing commas. Unknown keys are currently ignored, not
+validated as supported features. There is no published config schema in the repository. Invalid known fields produce
+diagnostics; a valid config pointing to a nonexistent startup file simply fails to identify a project.
 
 The bundled runner requires scenes directly in the scene directory. See [discovery rules](projects.md) before
-configuring
-multiple games beneath one workspace.
+configuring multiple games beneath one workspace.
 
 ## RandomTest defaults and ranges
 
 Iterations must be from **1 to 10,000,000**, inclusive. A seed must be a safe integer from **−9,007,199,254,740,991 to
-9,007,199,254,740,991**, inclusive.
-`seed + iterations - 1` must also fit that safe-integer range.
+9,007,199,254,740,991**, inclusive. `seed + iterations - 1` must also fit that safe-integer range.
 
 Editor inputs accept decimal integers, with an optional minus sign for seeds. They reject fractions, exponent notation,
 leading/trailing spaces, and a leading plus sign. Changing dialog values affects that run; it does not rewrite
@@ -94,9 +92,8 @@ The extension contributes these language-specific defaults:
 }
 ```
 
-You can override them through normal VS Code settings. Explicit completion works with quick suggestions disabled.
-Avoid a global `*.txt` association; [project-aware association](projects.md#which-text-files-become-choicescript) is
-narrower.
+You can override them through normal VS Code settings. Explicit completion works with quick suggestions disabled. Avoid
+a global `*.txt` association; [project-aware association](projects.md#which-text-files-become-choicescript) is narrower.
 
 ## Colors and semantic tokens
 
@@ -114,8 +111,7 @@ Colors inherit from the editor theme. Token categories are shared, while each ed
 | `markup`, `interpolation`                             | Narrative markup and substitution delimiters        |
 
 Modifiers are `declaration`, `readonly`, `bold`, and `italic`. They describe spans; not every theme renders every
-modifier.
-Typed-variable categories inherit variable behavior with fallback scope mappings for their value types.
+modifier. Typed-variable categories inherit variable behavior with fallback scope mappings for their value types.
 Dialogue has string-like fallback styling.
 
 To customize colors for a dark theme in VS Code:
@@ -140,8 +136,8 @@ To customize colors for a dark theme in VS Code:
 ```
 
 These are example colors, not required defaults; check contrast against your own theme. In JetBrains use **Settings →
-Editor → Color Scheme → Bifoil ChoiceScript**, including its executed-line coverage category.
-Test both light and dark schemes when overriding styles.
+Editor → Color Scheme → Bifoil ChoiceScript**, including its executed-line coverage category. Test both light and dark
+schemes when overriding styles.
 
 ## Command identifiers
 

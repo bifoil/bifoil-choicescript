@@ -1,7 +1,7 @@
 # Language server and tooling protocol
 
-The server speaks LSP over stdio and adds project/game operations. Current custom protocol version: **1**.
-This is a prerelease interface. The authoritative declarations are
+The server speaks LSP over stdio and adds project/game operations. Current custom protocol version: **1**. This is a
+prerelease interface. The authoritative declarations are
 [`packages/protocol/src/index.ts`](../packages/protocol/src/index.ts); option constraints live in
 [`options.ts`](../packages/protocol/src/options.ts). Kotlin DTOs must remain wire-compatible.
 
@@ -24,10 +24,9 @@ The server supports incremental document synchronization and these features:
 | Semantic tokens              | Full results; no range or delta implementation                               |
 | Workspace folders            | Discovery and invalidation across roots                                      |
 
-Initialize with `workspaceFolders` where available. The legacy `rootUri` remains a compatibility fallback.
-The optional initialization setting is `initializationOptions.quoteWarnings`, default `true`.
-Subsequent `workspace/didChangeConfiguration` reads
-`settings.bifoil.choicescript.quoteWarnings`.
+Initialize with `workspaceFolders` where available. The legacy `rootUri` remains a compatibility fallback. The optional
+initialization setting is `initializationOptions.quoteWarnings`, default `true`. Subsequent
+`workspace/didChangeConfiguration` reads `settings.bifoil.choicescript.quoteWarnings`.
 
 Document URIs are `file:` URIs. Filesystem path fields and URI fields are distinct; use a URI library instead of
 concatenating `file://` with a path containing spaces or Unicode. Positions and ranges use UTF-16.
@@ -37,7 +36,7 @@ concatenating `file://` with a path containing spaces or Unicode. Positions and 
 | Method                         | Direction           | Parameters / result                                  |
 | ------------------------------ | ------------------- | ---------------------------------------------------- |
 | `choicescript/projects`        | Client request      | No parameters → `Project[]`                          |
-| `choicescript/projectsChanged` | Server notification | Complete replacement `Project[]`                     |
+| `choicescript/projectsChanged` | Server notification | `{ protocolVersion: 1, projects: Project[] }`        |
 | `choicescript/indexStatus`     | Client request      | No parameters → `IndexStatus[]`                      |
 | `choicescript/wordCount`       | Client request      | `{ uri: string }` → active-document count            |
 | `choicescript/job`             | Client request      | `JobRequest` → `JobResult`                           |
@@ -47,13 +46,14 @@ concatenating `file://` with a path containing spaces or Unicode. Positions and 
 Use normal LSP document/file/workspace notifications too. `assetChanged` is not a replacement for source
 synchronization.
 
-A `Project` has `id`, `name`, `root`, `sceneDir`, `assetDir`, and optional `randomtest` defaults.
-The three directory fields are filesystem paths. The implementation derives `id` from the scene-directory URI, but
-clients should treat it as opaque and return it unchanged.
+A `Project` has `id`, `name`, `root`, `sceneDir`, `assetDir`, and optional `randomtest` defaults. The three directory
+fields are filesystem paths. The implementation derives `id` from the scene-directory URI, but clients should treat it
+as opaque and return it unchanged.
 
-Subscribe before requesting work: notifications can precede the corresponding request response.
-`projectsChanged` replaces a list rather than appending one. Native transports must correctly handle its array payload;
-the existing JetBrains binding has a [known issue](known-limitations.md#editor-integration).
+Subscribe before requesting work: notifications can precede the corresponding request response. `projectsChanged`
+replaces the `projects` list rather than appending one. Its versioned object envelope is required: a root JSON array
+can be interpreted as positional RPC arguments by native transports. Both servers and adapters must use the same
+envelope. Installed-editor discovery and coverage delivery require their own integration checks.
 
 ## Index status
 
@@ -69,10 +69,9 @@ Each status record contains:
 | `complete`  | Current, nontruncated analysis with complete context and no dirty project state |
 | `limited`   | The current snapshot reached its analysis work limit                            |
 
-`indexed === scenes` is not equivalent to `complete`. Counts can be partial while indexing.
-Startup scenes are always analyzed from full source and do not need a cached projection.
-`failures` is not a universal process-health counter; a worker-level crash need not appear as a failed file.
-This read-only request does not authorize game execution.
+`indexed === scenes` is not equivalent to `complete`. Counts can be partial while indexing. Startup scenes are always
+analyzed from full source and do not need a cached projection. `failures` is not a universal process-health counter; a
+worker-level crash need not appear as a failed file. This read-only request does not authorize game execution.
 
 ## Job requests
 
@@ -90,9 +89,8 @@ Required fields are `protocolVersion: 1` and `operation`.
 | `trusted`     | Optional boolean     | Editor trust decision; required truthy for operations other than stop   |
 
 Iterations default to `1000` and seed to `0` after project defaults. Bounds are in
-[configuration](configuration.md#randomtest-defaults-and-ranges).
-A start UUID must be fresh; active/recent duplicate IDs are rejected.
-Use `jobId` when cancelling before a start response has supplied an ID.
+[configuration](configuration.md#randomtest-defaults-and-ranges). A start UUID must be fresh; active/recent duplicate
+IDs are rejected. Use `jobId` when cancelling before a start response has supplied an ID.
 
 Example logical request parameters:
 
@@ -110,20 +108,18 @@ Example logical request parameters:
 
 Generate a new UUID for each actual run; do not reuse the example.
 
-The server also advertises six `workspace/executeCommand` names,
-`bifoil.choicescript.server.<operation>`. Supply the `JobRequest` as `arguments[0]`.
-The request object's operation is authoritative in the current handler; clients should keep it consistent with the
-command name. These commands are separate from editor command IDs.
+The server also advertises six `workspace/executeCommand` names, `bifoil.choicescript.server.<operation>`. Supply the
+`JobRequest` as `arguments[0]`. The request object's operation is authoritative in the current handler; clients should
+keep it consistent with the command name. These commands are separate from editor command IDs.
 
 ## Responses and lifecycle
 
-`JobResult` contains `jobId` and `projectId`, plus optional `url` or `output`.
-`output` is a saved-log path where applicable, not the compiled HTML contents.
+`JobResult` contains `jobId` and `projectId`, plus optional `url` or `output`. `output` is a saved-log path where
+applicable, not the compiled HTML contents.
 
-For test/export operations, the response follows preparation and process start; it does **not** mean completion.
-For a preview, the response follows server startup and includes the preview URL.
-Project creation completes directly, returns the sentinel job ID `"created"`, and does not follow the usual emitted
-start/output/completion stream.
+For test/export operations, the response follows preparation and process start; it does **not** mean completion. For a
+preview, the response follows server startup and includes the preview URL. Project creation completes directly, returns
+the sentinel job ID `"created"`, and does not follow the usual emitted start/output/completion stream.
 
 A typical test sequence is:
 
@@ -137,13 +133,12 @@ server emits output / diagnostic / coverage as available
 server emits completed
 ```
 
-Fast completion or preparation failure can alter the relative order of response and notifications.
-Correlate by UUID from the outset; never register the completion listener only after awaiting the response.
+Fast completion or preparation failure can alter the relative order of response and notifications. Correlate by UUID
+from the outset; never register the completion listener only after awaiting the response.
 
 ## Events
 
-Every `JobEvent` has `protocolVersion`, `jobId`, `projectId`, and `kind`.
-Other fields are optional.
+Every `JobEvent` has `protocolVersion`, `jobId`, `projectId`, and `kind`. Other fields are optional.
 
 | Kind         | Fields and meaning                                                              |
 | ------------ | ------------------------------------------------------------------------------- |
@@ -155,18 +150,17 @@ Other fields are optional.
 | `completed`  | `exitCode` and optional `message`, often the saved-log path                     |
 | `stale`      | Source changed relative to the captured snapshot                                |
 
-Coverage array indices are zero-based source lines. Missing entries/events do not establish zero coverage.
-`stale` may also be a flag on other events. Preserve output history, but do not present stale results as current
-diagnostics. The current implementation has documented invalidation gaps.
+Coverage array indices are zero-based source lines. Missing entries/events do not establish zero coverage. `stale` may
+also be a flag on other events. Preserve output history, but do not present stale results as current diagnostics. The
+current implementation has documented invalidation gaps.
 
-Completion `0` means success, `130` means cancellation, and other nonzero values mean failure.
-Progress is indeterminate; there is no percentage field.
+Completion `0` means success, `130` means cancellation, and other nonzero values mean failure. Progress is
+indeterminate; there is no percentage field.
 
 ## Stop and errors
 
-A stop request can specify `jobId`, `projectId`, or both. Omitting both stops all owned jobs.
-Stopping by owned identity does not require source files still to exist. Do not send an unscoped stop when only one
-project should be cancelled.
+A stop request can specify `jobId`, `projectId`, or both. Omitting both stops all owned jobs. Stopping by owned identity
+does not require source files still to exist. Do not send an unscoped stop when only one project should be cancelled.
 
 | Error                       | Meaning / client response                                                           |
 | --------------------------- | ----------------------------------------------------------------------------------- |
@@ -180,13 +174,13 @@ Not every preparation failure is mapped to a structured domain error. Preparatio
 presentation have known gaps. A completed event can accompany a rejected start, so client settlement must be idempotent.
 A lost server session must also settle outstanding progress/listeners.
 
-Neither a timeout nor an empty placeholder counts as a useful sub-second language response.
-The trust boolean is an adapter contract, not authorization for a network-exposed server.
+Neither a timeout nor an empty placeholder counts as a useful sub-second language response. The trust boolean is an
+adapter contract, not authorization for a network-exposed server.
 
 ## VS Code exported API
 
-Extension ID: `bifoil.choicescript`. After activation, the exported object provides `projects()` and `onJobEvent`.
-Use the normal extension API to obtain it:
+Extension ID: `bifoil.choicescript`. After activation, the exported object provides `projects()` and `onJobEvent`. Use
+the normal extension API to obtain it:
 
 ```typescript
 const extension = vscode.extensions.getExtension("bifoil.choicescript");
@@ -199,14 +193,14 @@ const projects = api.projects();
 // Dispose subscription when the integration no longer needs it.
 ```
 
-Editor tool commands accept optional `projectId`, `destination`, `iterations`, `seed`, and `jobId` options.
-Creation also accepts `openCreatedProject: false`. Omitted selections prompt interactively; supplying both RandomTest
-values avoids its option dialogs.
+Editor tool commands accept optional `projectId`, `destination`, `iterations`, `seed`, and `jobId` options. Creation
+also accepts `openCreatedProject: false`. Omitted selections prompt interactively; supplying both RandomTest values
+avoids its option dialogs.
 
-The editor enforces workspace trust; callers cannot override operation or protocol version.
-Test/export commands wait for completion before returning their handle, but that handle does not prove success.
-Listen before invoking and inspect completion. Those commands currently allocate their own start UUID rather than
-preserving a caller-supplied one. Cancellation or errors can yield no usable result.
+The editor enforces workspace trust; callers cannot override operation or protocol version. Test/export commands wait
+for completion before returning their handle, but that handle does not prove success. Listen before invoking and inspect
+completion. Those commands currently allocate their own start UUID rather than preserving a caller-supplied one.
+Cancellation or errors can yield no usable result.
 
-`wordCount` also returns its displayed number. Markup and About are editor actions, not job operations.
-The extension does not export a general-purpose raw language-client handle.
+`wordCount` also returns its displayed number. Markup and About are editor actions, not job operations. The extension
+does not export a general-purpose raw language-client handle.

@@ -1,7 +1,7 @@
 # Install Bifoil ChoiceScript
 
-This guide installs an existing package. To build one, use [development](development.md) and
-[packaging](releasing.md). To start a game afterward, follow the [walkthrough](getting-started.md).
+This guide installs an existing package. To build one, use [development](development.md) and [packaging](releasing.md).
+To start a game afterward, follow the [walkthrough](getting-started.md).
 
 ## Choose a build
 
@@ -23,8 +23,8 @@ use a universal package for a different host.
 | Linux with glibc | ARM64            | `linux-arm64`  |
 
 Choose the architecture of the environment running the extension. Remote extension hosts and mixed-architecture
-emulation are not established acceptance configurations; do not infer their support from a successful local installation.
-Musl-based Linux is not a declared runtime target.
+emulation are not established acceptance configurations; do not infer their support from a successful local
+installation. Musl-based Linux is not a declared runtime target.
 
 Installers include the server, Node.js 24, the pinned ChoiceScript engine, and license notices. You do not need system
 Node.js, pnpm, Git, or a separate engine checkout to use an installer. Building from source has different requirements.
@@ -37,7 +37,8 @@ The declared minimum is VS Code **1.109**.
 2. Open Extensions, choose its **…** menu, then **Install from VSIX…**.
 3. Select the VSIX and reload if prompted.
 4. Open your game folder, then `scenes/startup.txt`.
-5. Check that the language mode is **ChoiceScript** and that the Command Palette contains **Bifoil ChoiceScript** actions.
+5. Check that the language mode is **ChoiceScript** and that the Command Palette contains **Bifoil ChoiceScript**
+   actions.
 
 The equivalent CLI form, if the `code` command is installed, is:
 
@@ -48,13 +49,13 @@ code --install-extension "/path/to/bifoil-choicescript-linux-x64.vsix"
 Use your own package filename. A VSIX for another target can install incorrectly or fail when launching its runtime.
 
 The extension activates on startup and for explicitly selected ChoiceScript files. Automatic detection only changes
-plain-text scene files inside recognized games. It does not install a global `*.txt` association.
-See [projects](projects.md) if a file remains plain text.
+plain-text scene files inside recognized games. It does not install a global `*.txt` association. See
+[projects](projects.md) if a file remains plain text.
 
 ## IntelliJ IDEA, WebStorm, or PyCharm
 
-The declared baseline is **2026.1.4**, with exact product builds in [compatibility](jetbrains-compatibility.md).
-An older IDE with the same product name may lack the required built-in LSP APIs.
+The declared baseline is **2026.1.4**, with exact product builds in [compatibility](jetbrains-compatibility.md). An
+older IDE with the same product name may lack the required built-in LSP APIs.
 
 1. Open **Settings → Plugins**.
 2. Open the gear menu and choose **Install Plugin from Disk…**.
@@ -66,8 +67,8 @@ An older IDE with the same product name may lack the required built-in LSP APIs.
 Keep the ZIP intact when installing it. On first use the adapter extracts and verifies its bundled server/runtime into
 the IDE's cache. The plugin uses the IDE's own Java runtime; it does not install an IDE or JDK.
 
-JCEF provides the embedded game preview where available. A browser fallback is provided when it is unavailable.
-Coverage display currently has a [known JetBrains delivery issue](known-limitations.md#editor-integration).
+JCEF provides the embedded game preview where available. A browser fallback is provided when it is unavailable. Coverage
+display currently has a [known JetBrains delivery issue](known-limitations.md#editor-integration).
 
 ## Confirm the installation
 
@@ -82,13 +83,13 @@ Your score is ${score}.
 Hover over `*create` for command documentation and over `score` for symbol information. Navigate from the substitution
 to its declaration. Basic fallback colors may appear before semantic analysis finishes.
 
-Then use a complete game, such as the [walkthrough](getting-started.md), for **Run QuickTest** and **Run Game**.
-These operations require editor workspace trust. Their failure does not by itself mean the language service failed.
+Then use a complete game, such as the [walkthrough](getting-started.md), for **Run QuickTest** and **Run Game**. These
+operations require editor workspace trust. Their failure does not by itself mean the language service failed.
 
 ## Update, disable, or uninstall
 
-Install the replacement VSIX or plugin ZIP through the same UI, then reload/restart as prompted. Keep the editor
-adapter and its bundled server together; copying a server from another candidate can break their shared protocol.
+Install the replacement VSIX or plugin ZIP through the same UI, then reload/restart as prompted. Keep the editor adapter
+and its bundled server together; copying a server from another candidate can break their shared protocol.
 
 Disable/uninstall through the editor's extension/plugin manager. Game source files are not part of the installation and
 should be retained. Saved game-tool logs under `.bifoil-choicescript/logs/` are project data and are not automatically
@@ -101,6 +102,5 @@ handle the same files. Retain game files and review any explicit language associ
 
 Browser-only VS Code, Android Studio, older Community editions without the required LSP integration, debugging, and
 marketplace publication are outside the first release. Later IDE versions need validation rather than an assumption of
-compatibility. See [troubleshooting](troubleshooting.md) for launch failures
-and [known limitations](known-limitations.md)
-for current behavior that reinstalling will not fix.
+compatibility. See [troubleshooting](troubleshooting.md) for launch failures and
+[known limitations](known-limitations.md) for current behavior that reinstalling will not fix.

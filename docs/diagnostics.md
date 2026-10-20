@@ -8,13 +8,13 @@ runtime problems that static analysis cannot. A clean Problems view is not a rel
 
 ## Read a diagnostic
 
-Language diagnostic codes are listed below. Ordinary language errors use the `ChoiceScript` source; narrative
-warnings use `ChoiceScript dialogue` and warning severity.
-Ranges follow zero-based UTF-16 internally, while editors display familiar one-based line numbers.
+Language diagnostic codes are listed below. Ordinary language errors use the `ChoiceScript` source; narrative warnings
+use `ChoiceScript dialogue` and warning severity. Ranges follow zero-based UTF-16 internally, while editors display
+familiar one-based line numbers.
 
 Fix the earliest structural or expression error first: later messages can be consequences of an incomplete block or
-argument. While typing, temporary diagnostics are expected. If an error remains after the source is corrected,
-see [stale results](troubleshooting.md#stale-results-or-project-membership).
+argument. While typing, temporary diagnostics are expected. If an error remains after the source is corrected, see
+[stale results](troubleshooting.md#stale-results-or-project-membership).
 
 ## Expression and substitution errors
 
@@ -35,8 +35,8 @@ Example:
 *set score 4
 ```
 
-Only the first line's string is unterminated. The second directive must remain separately parsed.
-If it becomes part of a string, that is an editor defect worth reporting with a minimal example.
+Only the first line's string is unterminated. The second directive must remain separately parsed. If it becomes part of
+a string, that is an editor defect worth reporting with a minimal example.
 
 ## Commands and declarations
 
@@ -54,20 +54,20 @@ If it becomes part of a string, that is an editor defect worth reporting with a 
 | `missing-target`      | A literal jump destination cannot be found                            | Label spelling, scene name, and project discovery         |
 
 This list is not a complete catalogue of runtime errors. Some directives are recognized and documented without
-exhaustive
-static validation of every argument or hosted-service behavior.
+exhaustive static validation of every argument or hosted-service behavior.
 
 ## Indentation and blocks
 
-| Code                 | Meaning                                                                                  |
-|----------------------|------------------------------------------------------------------------------------------|
-| `mixed-indentation`  | Tabs and spaces are mixed, within indentation or across the document's indentation style |
-| `orphan-alternative` | `*else` / `*elseif` / `*elsif` has no matching preceding conditional at its indentation  |
-| `unexpected-indent`  | A child line appears beneath a construct that does not accept a block                    |
-| `missing-block`      | A block-taking command has no nonblank, noncomment child content                         |
+| Code                     | Meaning                                                                                  |
+|--------------------------|------------------------------------------------------------------------------------------|
+| `indentation-whitespace` | Nonblank indentation contains whitespace other than a space or tab                       |
+| `mixed-indentation`      | Tabs and spaces are mixed, within indentation or across the document's indentation style |
+| `orphan-alternative`     | `*else` / `*elseif` / `*elsif` has no matching preceding conditional at its indentation  |
+| `unexpected-indent`      | A child line appears beneath a construct that does not accept a block                    |
+| `missing-block`          | A block-taking command has no nonblank child content                                     |
 
 Align alternatives with their `*if`. Align choice option markers with one another and indent option bodies beneath them.
-A comments-only block does not supply executable/narrative content for the parser's block check.
+A comment-only conditional body is allowed. Blank lines, including Unicode whitespace-only lines, do not end a block.
 
 ## Narrative warnings
 
@@ -86,12 +86,12 @@ Unknown/generated state alone should remain neutral, not become a definite unmat
 
 ## Configuration and game-tool failures
 
-Configuration diagnostics point to `choicescript.json` for malformed JSON and invalid known fields.
-A valid path pointing at the wrong directory may instead cause no project to be detected.
+Configuration diagnostics point to `choicescript.json` for malformed JSON and invalid known fields. A valid path
+pointing at the wrong directory may instead cause no project to be detected.
 
 Official test output is parsed into locations only where it refers to a known scene. Compiler/runner/process failures
-without a reliable scene location stay in the output panel or log.
-Tool diagnostics belong to a job snapshot and become stale after edits.
+without a reliable scene location stay in the output panel or log. Tool diagnostics belong to a job snapshot and become
+stale after edits.
 
 A cancelled run is not a successful test. A memory failure, incomplete index, or request timeout also does not establish
 that the source is valid. Review [known limitations](known-limitations.md) when the output indicates a tooling failure
