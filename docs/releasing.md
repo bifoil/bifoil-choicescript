@@ -136,9 +136,12 @@ resolve its existing target. An existing tag can point to a different commit fro
 Also check that package/plugin versions and [candidate notes](release-notes.md) describe the intended revision and its
 remaining limitations. Creating a tag/release requires explicit maintainer authorization.
 
-The workflow calls [Build and verify](../.github/workflows/ci.yml); all six VS Code platform jobs and three JetBrains
-product jobs must pass before its publication job proceeds.
-It collects six VSIX files and the IDEA-built ZIP, then creates:
+The workflow calls [Build and verify](../.github/workflows/ci.yml) with `build_packages: true`; all six VS Code platform
+jobs and three JetBrains product jobs must pass before its publication job proceeds. Ordinary pushes and pull requests
+run source and native tests without producing installers. For package validation without publication, manually dispatch
+Build and verify with `build_packages` enabled.
+
+The prerelease workflow collects six VSIX files and the IDEA-built ZIP, then creates:
 
 - `release-manifest.json` with revision, version, targets, artifact sizes/hashes, and validation run.
 - `SHA256SUMS.txt` covering the release contents.
@@ -159,6 +162,12 @@ the source of the manifest.
 
 ## Storage and retention
 
-Keep installers and runtime binaries in build/release artifacts, not Git history.
-Reuse runtime/SDK caches. Remove only obsolete, task-owned extraction/report directories after their processes exit.
-Keep the minimal evidence needed to identify and reproduce a failed candidate.
+Installers uploaded by optional packaging runs expire after one day. The release workflow downloads them during the
+same run; assets attached to a completed GitHub Release have their own lifecycle. Only the IDEA-built JetBrains ZIP is
+uploaded, since it is the distribution artifact. WebStorm and PyCharm still receive package verification. Diagnostics
+are uploaded only after a job fails and expire after seven days.
+
+Retention changes apply to new uploads; existing artifacts retain their previous expiry dates. Routine successful
+pushes and pull requests upload no artifacts. Keep installers and runtime binaries out of Git history. Reuse runtime/SDK
+caches. Remove only obsolete, task-owned extraction/report directories after their processes exit. Keep the minimal
+evidence needed to identify and reproduce a failed candidate.

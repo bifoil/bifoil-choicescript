@@ -159,10 +159,16 @@ Line count alone, Node heap size, or the full IDE JVM's memory is not the requir
 
 ## CI and results
 
-[Build and verify](../.github/workflows/ci.yml) defines six VS Code OS/architecture jobs and three JetBrains product
-jobs.
-It builds packages and uploads artifacts/diagnostics where available. Workflow configuration is not evidence of a
-successful current run; inspect the jobs for the revision being reviewed.
+[Build and verify](../.github/workflows/ci.yml) runs shared builds, type checks, and tests on six OS/architecture
+combinations, plus native tests against three JetBrains products, on pushes and pull requests. Native tests prepare
+only the runner's bundled runtime resources; routine runs do not build or upload installers.
+
+To exercise packaging, bundled-runtime smoke tests, VS Code execution, and Plugin Verifier, manually dispatch the
+workflow with `build_packages` enabled. The private prerelease workflow enables that input automatically. Package runs
+upload six VSIX files and the IDEA-built ZIP for one day. WebStorm and PyCharm installers are verified without uploading
+duplicate ZIPs. Failing jobs can upload diagnostics for seven days; successful routine runs upload no artifacts.
+
+Workflow configuration is not evidence of a successful current run; inspect the jobs for the revision being reviewed.
 
 In the change report, list the commands and platforms actually checked, failures, and remaining unverified dimensions.
 Keep detailed local output in ignored `.bifoil-choicescript/development/`. Publication has its own

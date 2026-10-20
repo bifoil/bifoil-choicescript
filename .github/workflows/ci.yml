@@ -3,7 +3,17 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      build_packages:
+        description: Build installers and run packaged-editor verification
+        type: boolean
+        default: false
   workflow_call:
+    inputs:
+      build_packages:
+        description: Build installers and run packaged-editor verification
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -12,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-24.04, ubuntu-24.04-arm, windows-2025, windows-11-arm, macos-15, macos-15-intel ]
+        os: [ubuntu-24.04, ubuntu-24.04-arm, windows-2025, windows-11-arm, macos-15, macos-15-intel]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Preserve upstream line endings
@@ -25,29 +35,35 @@ jobs:
         with: { node-version: 24.21.0, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
-      - run: pnpm package:vscode
-      - run: node scripts/extract-vsix.mjs
-      - run: node scripts/test-bundle.mjs
-      - if: runner.os == 'Linux'
+      - if: inputs.build_packages
+        run: pnpm package:vscode
+      - if: inputs.build_packages
+        run: node scripts/extract-vsix.mjs
+      - if: inputs.build_packages
+        run: node scripts/test-bundle.mjs
+      - if: inputs.build_packages && runner.os == 'Linux'
         run: xvfb-run -a node scripts/test-vscode.mjs
-      - if: runner.os != 'Linux'
+      - if: inputs.build_packages && runner.os != 'Linux'
         run: node scripts/test-vscode.mjs
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: failure()
         with:
           name: diagnostics-${{ matrix.os }}
           path: dist/test-results
           if-no-files-found: ignore
+          retention-days: 7
       - uses: actions/upload-artifact@v7
+        if: inputs.build_packages
         with:
           name: vscode-${{ matrix.os }}
           path: dist/packages/*.vsix
+          retention-days: 1
   intellij:
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        product: [ idea, webstorm, pycharm ]
+        product: [idea, webstorm, pycharm]
     runs-on: ubuntu-24.04
     steps:
       - name: Reserve space for the selected IDE SDK
@@ -72,17 +88,29 @@ jobs:
           cache-disabled: true
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - run: pnpm package:intellij
-      - run: bash editors/intellij/gradlew -p editors/intellij -PplatformProduct=${{ matrix.product }} test buildPlugin verifyPlugin
+      - name: Prepare host runtime for native tests
+        if: ${{ !inputs.build_packages }}
+        run: pnpm package:intellij --current
+      - name: Prepare release runtime resources
+        if: inputs.build_packages
+        run: pnpm package:intellij
+      - name: Run native tests
+        run: bash editors/intellij/gradlew -p editors/intellij -PplatformProduct=${{ matrix.product }} test
+      - name: Build and verify installer
+        if: inputs.build_packages
+        run: bash editors/intellij/gradlew -p editors/intellij -PplatformProduct=${{ matrix.product }} buildPlugin verifyPlugin
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: failure()
         with:
           name: diagnostics-intellij-${{ matrix.product }}
           path: |
             editors/intellij/build/reports
             editors/intellij/build/test-results
           if-no-files-found: ignore
+          retention-days: 7
       - uses: actions/upload-artifact@v7
+        if: inputs.build_packages && matrix.product == 'idea'
         with:
           name: intellij-${{ matrix.product }}
           path: editors/intellij/build/distributions/*.zip
+          retention-days: 1
