@@ -13,6 +13,6 @@ execFileSync(node, [path.resolve("scripts/smoke-bundle.cjs")], {
   stdio: "inherit",
   env: {
     ...process.env,
-    BIFOIL_CHOICESCRIPT_SERVER_PATH: path.join(extension, "server/server.cjs"),
+    BIFOIL_CHOICESCRIPT_BUNDLE_ROOT: path.join(extension, "server"),
   },
 });

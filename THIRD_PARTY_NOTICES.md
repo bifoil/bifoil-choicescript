@@ -1,10 +1,8 @@
 # Third-party notices
 
 Bifoil ChoiceScript is an unofficial Bifoil Foundation project maintained by Chinay, unaffiliated with Choice of Games
-or upstream ChoiceScript.
-Original Bifoil ChoiceScript code is covered by the MIT license in `LICENSE`. Dependencies and upstream template
-material retain
-the licenses below; bundling them does not imply endorsement or change their terms.
+or upstream ChoiceScript. Original Bifoil ChoiceScript code is covered by the MIT license in `LICENSE`. Dependencies and
+upstream template material retain the licenses below; bundling them does not imply endorsement or change their terms.
 
 ## ChoiceScript
 
@@ -19,8 +17,15 @@ The engine is an unmodified Git submodule at `vendor/choicescript`. Original sou
 runtime, official test runners, template, and license files shipped in plugins and staged games; upstream development
 files remain in the source submodule.
 
-New games use the pinned upstream template and include `CHOICESCRIPT-LICENSE.txt` and `UPSTREAM-TEMPLATE.md`.
-Bifoil ChoiceScript's MIT license does not replace the license for that material.
+New games use the pinned upstream template and include `CHOICESCRIPT-LICENSE.txt` and `UPSTREAM-TEMPLATE.md`. Bifoil
+ChoiceScript's MIT license does not replace the license for that material.
+
+## Go runtime
+
+The native language server includes the Go runtime. The installed build SDK version is pinned in
+[native/toolchain.json](native/toolchain.json); users do not need to install it. Each native target includes
+`GO_LICENSE.txt` and a manifest recording source, compiler, linker, executable and license SHA-256 values. The original
+Go authors retain their copyright and BSD license terms.
 
 ## Node.js
 

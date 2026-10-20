@@ -65,17 +65,18 @@ object BundledRuntime {
 
 	/**
 	 * Return a ready host bundle, or verify/extract one under the manifest-specific cache.
+	 * The cache root can be supplied by a host or isolated verification fixture.
 	 * Reject archive entries outside their destination. The ready marker is written only
 	 * after both archives extract; an interrupted attempt must not be treated as ready.
 	 */
 	@Synchronized
-	fun directory(): Path {
+	fun directory(cacheRoot: Path = Path.of(PathManager.getSystemPath())): Path {
 		val manifestBytes = resource("manifest.json").use { it.readBytes() }
 		val manifest = JsonParser.parseString(manifestBytes.toString(Charsets.UTF_8)).asJsonObject
 		val platform = if (SystemInfo.isWindows) "win32" else if (SystemInfo.isMac) "darwin" else "linux"
 		val arch = if (System.getProperty("os.arch") in listOf("aarch64", "arm64")) "arm64" else "x64"
 		val target = Path.of(
-			PathManager.getSystemPath(), "bifoil-choicescript", digest(manifestBytes).take(20), "$platform-$arch"
+			cacheRoot.toString(), "bifoil-choicescript", digest("native-layout-2".toByteArray() + manifestBytes).take(20), "$platform-$arch"
 		)
 
 		if (Files.exists(target.resolve("ready"))) return target
@@ -91,8 +92,20 @@ object BundledRuntime {
 				var entry = zip.nextEntry
 
 				while (entry != null) {
-					val file = output.resolve(entry.name).normalize()
+					var file = output.resolve(entry.name).normalize()
 					check(file.startsWith(output)) { "Invalid runtime archive path" }
+
+					if (name == "server.zip" && entry.name.startsWith("native/")) {
+						val host = "native/$platform-$arch/"
+						if (!entry.name.startsWith(host)) {
+							entry = zip.nextEntry
+							continue
+						}
+						val executable = if (SystemInfo.isWindows) "bifoil-language-server.exe" else "bifoil-language-server"
+						// Keep the executable as short as the bundled Node path. Windows
+						// CreateProcess can reject a valid NIO path beyond 260 characters.
+						if (entry.name == host + executable) file = Path.of(languageServer(target))
+					}
 
 					if (entry.isDirectory) Files.createDirectories(file) else {
 						Files.createDirectories(file.parent)
@@ -104,7 +117,10 @@ object BundledRuntime {
 			}
 		}
 
-		if (!SystemInfo.isWindows) check(target.resolve("runtime/node").toFile().setExecutable(true))
+		if (!SystemInfo.isWindows) {
+			check(target.resolve("runtime/node").toFile().setExecutable(true))
+			check(Path.of(languageServer(target)).toFile().setExecutable(true))
+		}
 		Files.writeString(target.resolve("ready"), "verified")
 
 		return target
@@ -113,5 +129,8 @@ object BundledRuntime {
 	/**
 	 * Resolve the platform-specific executable inside a prepared bundle; this does not provision or verify it.
 	 */
+	fun languageServer(root: Path): String =
+		root.resolve(if (SystemInfo.isWindows) "runtime/lsp.exe" else "runtime/lsp").toString()
+
 	fun node(root: Path) = root.resolve(if (SystemInfo.isWindows) "runtime/node.exe" else "runtime/node").toString()
 }

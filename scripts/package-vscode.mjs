@@ -8,8 +8,10 @@ import { createVSIX } from "@vscode/vsce";
 import { cp, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { provision } from "./runtime.mjs";
+import { stageNativeArtifacts } from "./native-artifact.mjs";
 
 const target = process.argv[2] ?? `${process.platform}-${process.arch}`;
+await stageNativeArtifacts("editors/vscode/server", [target]);
 const runtime = await provision(target);
 await rm("editors/vscode/runtime", { recursive: true, force: true });
 await cp(runtime, "editors/vscode/runtime", { recursive: true });

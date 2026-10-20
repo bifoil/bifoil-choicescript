@@ -6,11 +6,16 @@ const path = require("node:path");
 const os = require("node:os");
 const assert = require("node:assert/strict");
 const root = path.resolve(__dirname, "..");
-const server = spawn(
-  process.execPath,
-  [process.env.BIFOIL_CHOICESCRIPT_SERVER_PATH || path.join(root, "dist/server/server.cjs"), "--stdio"],
-  { stdio: ["pipe", "pipe", "inherit"] },
+const bundle = process.env.BIFOIL_CHOICESCRIPT_BUNDLE_ROOT || path.join(root, "dist/server");
+const native = path.join(
+  bundle,
+  "native",
+  process.platform + "-" + process.arch,
+  process.platform === "win32" ? "bifoil-language-server.exe" : "bifoil-language-server",
 );
+const server = spawn(native, ["--stdio", "--bundle-root", bundle, "--node", process.execPath], {
+  stdio: ["pipe", "pipe", "inherit"],
+});
 const pending = new Map(),
   events = [],
   diagnostics = [];

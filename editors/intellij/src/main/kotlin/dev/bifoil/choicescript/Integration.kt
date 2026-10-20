@@ -101,15 +101,13 @@ class ChoiceDescriptor(project: Project) : ProjectWideLspClientDescriptor(projec
 	override fun createCommandLine(): GeneralCommandLine {
 		val root = BundledRuntime.directory()
 		val server = root.resolve("server")
-
+		val native = System.getenv("BIFOIL_CHOICESCRIPT_NATIVE_SERVER")?.takeIf { it.isNotBlank() }
+			?: BundledRuntime.languageServer(root)
+		check(java.nio.file.Files.isRegularFile(java.nio.file.Path.of(native))) {
+			"The native language server is missing; rebuild or reinstall Bifoil ChoiceScript."
+		}
 		return GeneralCommandLine(
-			BundledRuntime.node(root),
-			"--max-old-space-size=96",
-			"--max-semi-space-size=2",
-			server.resolve("server.cjs").toString(),
-			"--stdio",
-			"--bundle-root",
-			server.toString()
+			native, "--stdio", "--bundle-root", server.toString(), "--node", BundledRuntime.node(root)
 		)
 	}
 
@@ -138,29 +136,36 @@ class ChoiceDescriptor(project: Project) : ProjectWideLspClientDescriptor(projec
 			override val tokenModifiers = listOf("declaration", "readonly", "bold", "italic")
 
 			override fun getTextAttributesKey(tokenType: String, modifiers: List<String>) =
-				ChoiceColors.key(tokenType, modifiers)
+				ChoiceColors.semanticKey(tokenType, modifiers)
 		}
 	}
 
-	/**
-	 * Custom notifications are invoked reflectively by the native transport.
-	 * Test this path through the actual LSP manager, not just direct callback invocation:
-	 * projectsChanged's List payload currently has a known binding/coverage-delivery issue.
-	 */
+	/** Use a public receiver and object parameters for reflective LSP4J dispatch. */
 	override fun createLsp4jClient(handler: LspServerNotificationsHandler): Lsp4jClient =
-		object : Lsp4jClient(handler) {
-			// LSP4J invokes this callback through JSON-RPC reflection.
-			@Suppress("unused")
-			@JsonNotification("choicescript/projectsChanged")
-			fun projectsChanged(projects: List<GameProject>) {
-				ChoiceUi.get(project).projects = projects
-			}
+		ChoiceLanguageClient(project, handler)
+}
 
-			// LSP4J invokes this callback through JSON-RPC reflection.
-			@Suppress("unused")
-			@JsonNotification("choicescript/jobEvent")
-			fun jobEvent(event: JobEvent) {
-				ChoiceUi.get(project).event(event)
-			}
-		}
+/** Versioned discovery replacement; a root array would be positional JSON-RPC parameters. */
+data class ProjectsChangedParams(val protocolVersion: Int = 1, val projects: List<GameProject> = emptyList())
+
+/** Shared custom notification signatures used by the real native LSP4J receiver. */
+interface ChoiceClientNotifications {
+	@JsonNotification("choicescript/projectsChanged")
+	fun projectsChanged(params: ProjectsChangedParams)
+
+	@JsonNotification("choicescript/jobEvent")
+	fun jobEvent(event: JobEvent)
+}
+
+/** Public named receiver lets LSP4J invoke callbacks without anonymous-class access failures. */
+class ChoiceLanguageClient(private val project: Project, handler: LspServerNotificationsHandler) :
+	Lsp4jClient(handler), ChoiceClientNotifications {
+	override fun projectsChanged(params: ProjectsChangedParams) {
+		if (params.protocolVersion != 1) return
+		ChoiceUi.get(project).projects = params.projects
+	}
+
+	override fun jobEvent(event: JobEvent) {
+		ChoiceUi.get(project).event(event)
+	}
 }

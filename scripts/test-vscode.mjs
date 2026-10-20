@@ -49,7 +49,8 @@ try {
       platform: process.platform,
       arch: process.arch,
       editor: workflow.editor,
-      packaged: true,
+      packaged: !process.env.BIFOIL_CHOICESCRIPT_EXTENSION_PATH,
+      selection: process.env.BIFOIL_CHOICESCRIPT_EXTENSION_PATH ? "explicit development override" : "extracted package",
     }),
   );
 } catch (error) {

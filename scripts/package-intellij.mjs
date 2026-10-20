@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { provision } from "./runtime.mjs";
+import { stageNativeArtifacts } from "./native-artifact.mjs";
 
 const base = "editors/intellij/src/main/resources/bundle";
 const serverOnly = process.argv.includes("--server-only");
@@ -39,9 +40,16 @@ async function zipDir(source, name) {
 }
 
 const manifest = serverOnly ? JSON.parse(await readFile(path.join(base, "manifest.json"), { encoding: "utf8" })) : {};
-manifest["server.zip"] = await zipDir("dist/server", "server.zip");
-
 const lock = JSON.parse(await readFile("runtime-lock.json", { encoding: "utf8" }));
+const targets = serverOnly
+  ? Object.keys(manifest)
+      .filter((name) => name.startsWith("node-") && name.endsWith(".zip"))
+      .map((name) => name.slice(5, -4))
+  : process.argv.includes("--current")
+    ? [`${process.platform}-${process.arch}`]
+    : Object.keys(lock.archives);
+await stageNativeArtifacts("dist/server", targets);
+manifest["server.zip"] = await zipDir("dist/server", "server.zip");
 
 for (const target of serverOnly
   ? []

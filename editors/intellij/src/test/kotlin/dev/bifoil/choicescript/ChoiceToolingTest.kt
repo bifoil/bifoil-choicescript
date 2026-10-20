@@ -66,7 +66,9 @@ class ChoiceToolingTest {
 
 		assertEquals(listOf(4L), store.counts("one", "startup"))
 
-		store.invalidate("one")
+		assertTrue(store.invalidate("one"))
+		assertFalse(store.invalidate("one"))
+		assertFalse(store.invalidate("unknown"))
 		cover("one", "new", 99)
 
 		assertTrue(store.counts("one", "startup").isEmpty())

@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { LanguageClient, LSPErrorCodes, ResponseError, State, TransportKind } from "vscode-languageclient/node";
+import { LanguageClient, LSPErrorCodes, ResponseError, State } from "vscode-languageclient/node";
 import {
   CoverageStore,
   ITERATIONS_ERROR,
@@ -13,11 +13,11 @@ import {
   parseIterations,
   parseSeed,
   type Project,
+  type ProjectsChanged,
   PROTOCOL_VERSION,
   SEED_ERROR,
   SEED_RANGE_ERROR,
-  serverNodeArgs,
-  validSeedRange
+  validSeedRange,
 } from "@bifoil/choicescript-protocol";
 
 /**
@@ -63,13 +63,23 @@ export async function activate(context: vscode.ExtensionContext) {
     panels = new Map<string, vscode.WebviewPanel>();
   const bundle = context.asAbsolutePath("server"),
     runtime = context.asAbsolutePath(path.join("runtime", process.platform === "win32" ? "node.exe" : "node"));
+  const target = `${process.platform}-${process.arch}`;
+  const native =
+    process.env.BIFOIL_CHOICESCRIPT_NATIVE_SERVER ??
+    path.join(
+      bundle,
+      "native",
+      target,
+      process.platform === "win32" ? "bifoil-language-server.exe" : "bifoil-language-server",
+    );
+  if (!existsSync(native))
+    throw new Error("The native language server is missing; rebuild or reinstall Bifoil ChoiceScript.");
   client = new LanguageClient(
     "bifoil-choicescript",
     "Bifoil ChoiceScript",
     {
-      command: existsSync(runtime) ? runtime : process.execPath,
-      args: [...serverNodeArgs, path.join(bundle, "server.cjs"), "--stdio", "--bundle-root", bundle],
-      transport: TransportKind.stdio,
+      command: native,
+      args: ["--stdio", "--bundle-root", bundle, "--node", existsSync(runtime) ? runtime : process.execPath],
       options: {
         env: {
           ...process.env,
@@ -106,18 +116,30 @@ export async function activate(context: vscode.ExtensionContext) {
             .replace(/\.txt$/i, "")
         : "";
       const counts = project && /\.txt$/i.test(editor.document.fileName) ? coverageStore.counts(project.id, scene) : [];
-      editor.setDecorations(
-        coverage,
-        counts.flatMap((count, line) =>
-          count > 0 && line < editor.document.lineCount
-            ? [{ range: editor.document.lineAt(line).range, hoverMessage: "Executed " + count + " time(s)." }]
-            : [],
-        ),
-      );
+      const decorations: vscode.DecorationOptions[] = [];
+      const rendered = new Set<number>();
+      // Keep all coverage facts, but create editor objects only for visible rows.
+      // VS Code splits visibleRanges around folds; hidden rows need no markers.
+      for (const range of editor.visibleRanges) {
+        const end = Math.min(range.end.line, counts.length - 1, editor.document.lineCount - 1);
+        for (let line = Math.max(0, range.start.line); line <= end; line++) {
+          const count = counts[line];
+          if (count <= 0 || rendered.has(line)) continue;
+          rendered.add(line);
+          decorations.push({
+            range: editor.document.lineAt(line).range,
+            hoverMessage: "Executed " + count + " time(s).",
+          });
+        }
+      }
+      editor.setDecorations(coverage, decorations);
     }
   };
 
-  context.subscriptions.push(vscode.window.onDidChangeVisibleTextEditors(renderCoverage));
+  context.subscriptions.push(
+    vscode.window.onDidChangeVisibleTextEditors(renderCoverage),
+    vscode.window.onDidChangeTextEditorVisibleRanges(renderCoverage),
+  );
   context.subscriptions.push(
     vscode.workspace.onDidChangeTextDocument(({ document, contentChanges }) => {
       if (!contentChanges.length) return;
@@ -155,7 +177,13 @@ export async function activate(context: vscode.ExtensionContext) {
     renderCoverage();
   };
 
-  client.onNotification("choicescript/projectsChanged", update);
+  client.onNotification("choicescript/projectsChanged", (notification: ProjectsChanged) => {
+    if (notification.protocolVersion !== PROTOCOL_VERSION || !Array.isArray(notification.projects)) {
+      output.appendLine("Unsupported project discovery notification; reinstall matching server and adapter versions.");
+      return;
+    }
+    return update(notification.projects);
+  });
   client.onNotification("choicescript/jobEvent", (event: JobEvent) => {
     if (coverageStore.update(event)) renderCoverage();
 

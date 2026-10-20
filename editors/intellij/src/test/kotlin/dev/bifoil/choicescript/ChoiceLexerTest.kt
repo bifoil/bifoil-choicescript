@@ -17,9 +17,9 @@ class ChoiceLexerTest {
 			lexer.advance()
 		}
 
-		assertTrue(tokens.contains("string" to "\"broken"))
-		assertTrue(tokens.contains("keyword" to "*print"))
-		assertTrue(tokens.contains("number" to "42"))
+		assertTrue("string" to "\"broken" in tokens)
+		assertTrue("keyword" to "*print" in tokens)
+		assertTrue("number" to "42" in tokens)
 	}
 
 	@Test
@@ -51,8 +51,28 @@ class ChoiceLexerTest {
 			lexer.advance()
 		}
 
-		assertTrue(tokens.contains("string" to "\"broken"))
-		assertTrue(tokens.contains("keyword" to "*print"))
+		assertTrue("string" to "\"broken" in tokens)
+		assertTrue("keyword" to "*print" in tokens)
+	}
+
+	@Test
+	fun inlineChoiceProseKeepsNarrativeFallbackAcrossRestarts() {
+		for (prefix in listOf(
+			"*if name = \"#quoted\" #", "*if (flag) #", "*selectable_if flag #",
+			"*hide_reuse #", "*disable_reuse #", "*allow_reuse #"
+		)) {
+			val text = "$prefix Original option text\n*print 42"
+			val begin = text.indexOf("Original")
+			val lexer = ChoiceLexer()
+			lexer.start(text, 0, text.length, 0)
+			while (lexer.tokenType != null && lexer.tokenStart < begin) lexer.advance()
+			org.junit.Assert.assertEquals("narrative", lexer.tokenType.toString())
+			org.junit.Assert.assertEquals("Original option text", text.substring(lexer.tokenStart, lexer.tokenEnd))
+			lexer.start(text, begin, text.length, 0)
+			org.junit.Assert.assertEquals("narrative", lexer.tokenType.toString())
+			while (lexer.tokenType != null && lexer.tokenType.toString() != "keyword") lexer.advance()
+			org.junit.Assert.assertEquals("*print", text.substring(lexer.tokenStart, lexer.tokenEnd))
+		}
 	}
 
 }

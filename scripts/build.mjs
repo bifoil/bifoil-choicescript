@@ -8,6 +8,7 @@ import { build } from "esbuild";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { builtinModules, createRequire } from "node:module";
 import path from "node:path";
+import { ensureNativeArtifact, stageNativeArtifacts } from "./native-artifact.mjs";
 
 await import("./check-engine.mjs");
 await import("./check-native.mjs");
@@ -15,6 +16,8 @@ await import("./generate.mjs");
 
 const { writeDependencyNotices } = await import("./notices.mjs");
 const builds = [];
+const nativeTarget = `${process.platform}-${process.arch}`;
+await ensureNativeArtifact(nativeTarget);
 // Rebuild owned bundle directories, so removed dependencies and engine files cannot survive.
 await rm("dist/server", { recursive: true, force: true });
 await mkdir("dist/server", { recursive: true });
@@ -63,6 +66,7 @@ builds.push(
 );
 
 for (const [entry, output] of [
+  ["packages/tooling/src/broker.ts", "tool-broker.cjs"],
   ["packages/tooling/src/tool-source-preload.ts", "tool-source-preload.cjs"],
   ["packages/tooling/src/export-source-preload.ts", "export-source-preload.cjs"],
 ]) {
@@ -99,6 +103,7 @@ builds.push(
 await writeDependencyNotices(builds);
 await cp("THIRD_PARTY_NOTICES.md", "dist/server/THIRD_PARTY_NOTICES.md");
 await cp("LICENSE", "dist/server/LICENSE");
+await stageNativeArtifacts("dist/server", [nativeTarget]);
 await rm("editors/vscode/server", { recursive: true, force: true });
 await cp("dist/server", "editors/vscode/server", { recursive: true });
 

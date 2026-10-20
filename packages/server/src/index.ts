@@ -385,7 +385,7 @@ async function refreshProjects() {
     await Promise.all(removed.map((project) => runner.stopProject(project.id)));
     for (const project of removed) testResults.delete(project.id);
 
-    await connection.sendNotification("choicescript/projectsChanged", projects);
+    await connection.sendNotification("choicescript/projectsChanged", { protocolVersion: PROTOCOL_VERSION, projects });
   } catch (error) {
     connection.window.showErrorMessage(String(error));
   }

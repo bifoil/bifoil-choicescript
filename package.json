@@ -10,7 +10,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test --test-isolation=none packages/protocol/test/*.test.ts packages/core/test/*.test.ts packages/tooling/test/*.test.ts packages/server/test/*.test.ts",
+    "test": "node --import tsx --test --test-isolation=none packages/protocol/test/*.test.ts packages/core/test/*.test.ts packages/tooling/test/*.test.ts packages/server/test/*.test.ts scripts/test/*.test.mjs editors/vscode/test/*.test.mjs",
     "test:corpus": "node --import tsx scripts/test-corpus.mjs",
     "check": "pnpm build && pnpm typecheck && pnpm test",
     "generate": "node scripts/generate.mjs",
@@ -19,7 +19,8 @@
     "package:intellij": "node scripts/package-intellij.mjs",
     "format": "prettier --write \"packages/**/*.ts\" \"editors/vscode/src/*.ts\" \"editors/vscode/test/*.cjs\" \"scripts/*.{mjs,cjs}\" \"**/*.{xml,svg}\"",
     "package:all": "pnpm build && node scripts/package-all.mjs && pnpm package:intellij",
-    "native:build": "node scripts/build-native.mjs"
+    "native:build": "node scripts/build-native.mjs",
+    "build:language-server": "node scripts/build-language-server.mjs"
   },
   "devDependencies": {
     "@prettier/plugin-xml": "^3.4.2",

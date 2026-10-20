@@ -24,6 +24,12 @@ export interface Project {
   randomtest?: { iterations?: number; seed?: number };
 }
 
+/** Object parameters prevent a game list from being read as positional RPC arguments. */
+export interface ProjectsChanged {
+  protocolVersion: typeof PROTOCOL_VERSION;
+  projects: Project[];
+}
+
 /**
  * Parameters for choicescript/job and the first workspace/executeCommand argument.
  * Creation/export need destination; ordinary starts need a discovered projectId.
@@ -107,7 +113,7 @@ export * from "./runtime.js";
  * Read-only status returned by choicescript/indexStatus.
  * indexed counts cached scenes, not completed flow analysis; use complete for readiness.
  * words can be partial. failures counts recorded per-file failures, not every worker crash.
- * limited indicates an exhausted analysis budget, which cannot establish full acceptance.
+ * limited indicates exhausted analysis resources or work budget; current-scene recovery is not complete project analysis.
  */
 export interface IndexStatus {
   projectId: string;

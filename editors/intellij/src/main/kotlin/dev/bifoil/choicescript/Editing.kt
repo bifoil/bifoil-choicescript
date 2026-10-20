@@ -52,7 +52,7 @@ class ChoiceEnterHandler : EnterHandlerDelegateAdapter() {
 
 		if (current.isBlank() && Regex(pattern).matches(previous)) {
 			val indent = previous.takeWhile { it == ' ' || it == '\t' }
-			val wanted = indent + if (indent.contains('\t')) "\t" else "  "
+			val wanted = indent + if ('\t' in indent) "\t" else "  "
 			doc.replaceString(doc.getLineStartOffset(line), offset, wanted)
 			editor.caretModel.moveToOffset(doc.getLineStartOffset(line) + wanted.length)
 		}

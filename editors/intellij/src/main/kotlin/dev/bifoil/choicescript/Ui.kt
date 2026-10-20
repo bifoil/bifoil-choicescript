@@ -24,6 +24,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.openapi.wm.ToolWindowManager
@@ -146,6 +147,10 @@ class ChoiceUi(private val project: Project) : Disposable {
 			if (file != null) console.printHyperlink(
 				"${file.name}:${(event.line ?: 0) + 1}\n", OpenFileHyperlinkInfo(project, file, event.line ?: 0)
 			)
+		}
+
+		if (event.kind == "preview" && event.url != null) {
+			console.printHyperlink("Preview: ${event.url}\n") { BrowserUtil.browse(event.url) }
 		}
 
 		if (event.kind == "stale") previews[event.jobId]?.displayName =
@@ -417,7 +422,7 @@ open class ToolAction(private val operation: String) : AnAction() {
 			if (operation == "exportHtml") {
 				val file = FileChooserFactory.getInstance().createSaveFileDialog(
 					FileSaverDescriptor("Export HTML", "Choose a new output file", "html"), project
-				).save(null as com.intellij.openapi.vfs.VirtualFile?, "game.html") ?: return@request
+				).save(null as VirtualFile?, "game.html") ?: return@request
 
 				args["destination"] = file.file.absolutePath
 			}

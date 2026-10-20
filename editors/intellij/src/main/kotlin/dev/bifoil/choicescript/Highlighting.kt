@@ -91,6 +91,15 @@ object ChoiceColors {
 		return key
 	}
 
+	/**
+	 * Plain prose already receives this exact key from the fallback lexer. Avoid
+	 * creating a redundant LSP highlighter for every prose row in a large game.
+	 * Full token classifications remain available; dialogue and styled prose still
+	 * overlay their distinct semantic attributes.
+	 */
+	fun semanticKey(name: String, modifiers: List<String>): TextAttributesKey? =
+		if (name == "narrative" && modifiers.none { it == "bold" || it == "italic" }) null else key(name, modifiers)
+
 	val tokens = names.associateWith { IElementType(it, ChoiceLanguage) }
 }
 
@@ -107,6 +116,7 @@ class ChoiceLexer : LexerBase() {
 	private var lineStart = -1
 	private var lineEnd = -1
 	private var commandLine = false
+	private var proseStart = Int.MAX_VALUE
 	private var type: IElementType? = null
 
 	override fun start(buffer: CharSequence, startOffset: Int, endOffset: Int, initialState: Int) {
@@ -137,6 +147,33 @@ class ChoiceLexer : LexerBase() {
 		type = ChoiceColors.tokens[name]
 	}
 
+	/** Locate the line-local prose after an inline choice, including lexer restarts inside it. */
+	private fun inlineProse(first: Int): Int {
+		var end = first + 1
+		while (end < lineEnd && word(buffer[end])) end++
+		val command = buffer.subSequence(first + 1, end).toString().lowercase()
+		val reuse = command in listOf("hide_reuse", "disable_reuse", "allow_reuse")
+		if (!reuse && command != "if" && command != "selectable_if") return Int.MAX_VALUE
+		var quoted = false
+		var depth = 0
+		var at = end
+		while (at < lineEnd) {
+			val char = buffer[at]
+			if (char == '\\' && quoted) {
+				at += 2
+				continue
+			}
+			if (char == '"') quoted = !quoted
+			if (!quoted) {
+				if (char == '(') depth++
+				if (char == ')') depth--
+				if (char == '#' && depth == 0 && (reuse || at == end || buffer[at - 1].isWhitespace())) return at + 1
+			}
+			at++
+		}
+		return Int.MAX_VALUE
+	}
+
 	override fun advance() {
 		start = end
 
@@ -160,9 +197,10 @@ class ChoiceLexer : LexerBase() {
 			var first = lineStart
 			while (first < lineEnd && buffer[first].isWhitespace()) first++
 			commandLine = first < lineEnd && buffer[first] == '*'
+			proseStart = if (commandLine) inlineProse(first) else first
 		}
 
-		if (!commandLine) {
+		if (!commandLine || start >= proseStart) {
 			token("narrative", lineEnd)
 			return
 		}

@@ -14,6 +14,7 @@ import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.StandardFileSystems
+import java.awt.Point
 import java.nio.file.Path
 
 /**
@@ -49,11 +50,13 @@ internal class CoverageStore {
 		return true
 	}
 
-	fun invalidate(projectId: String) {
-		results[projectId]?.let {
-			it.stale = true
-			it.coverage = emptyMap()
-		}
+	/** Mark the source stale, returning whether any visible coverage could have changed. */
+	fun invalidate(projectId: String): Boolean {
+		val result = results[projectId] ?: return false
+		val changed = result.coverage.isNotEmpty()
+		result.stale = true
+		result.coverage = emptyMap()
+		return changed
 	}
 
 	fun retain(projectIds: Set<String>) {
@@ -79,6 +82,10 @@ class ChoiceCoverage(private val project: Project) : Disposable, EditorFactoryLi
 
 	init {
 		factory.addEditorFactoryListener(this, this)
+		factory.eventMulticaster.addVisibleAreaListener({ event ->
+			val editor = event.editor
+			if (editor.project == project) onEdt { if (!editor.isDisposed) render(editor) }
+		}, this)
 		factory.eventMulticaster.addDocumentListener(object : DocumentListener {
 			override fun documentChanged(event: DocumentEvent) {
 				val file = FileDocumentManager.getInstance().getFile(event.document) ?: return
@@ -87,7 +94,7 @@ class ChoiceCoverage(private val project: Project) : Disposable, EditorFactoryLi
 				val filePath = file.toNioPath()
 				onEdt {
 					val game = gameFor(filePath)
-					game?.let { results.invalidate(it.id) }
+					val changed = game?.let { results.invalidate(it.id) } ?: false
 
 					if (game == null && games.any {
 							filePath.startsWith(Path.of(it.assetDir))
@@ -98,7 +105,7 @@ class ChoiceCoverage(private val project: Project) : Disposable, EditorFactoryLi
 						})
 					}
 
-					refresh()
+					if (changed) refresh()
 				}
 			}
 		}, this)
@@ -139,8 +146,8 @@ class ChoiceCoverage(private val project: Project) : Disposable, EditorFactoryLi
 
 	/**
 	 * Replace this editor's owned markers from current line counts.
-	 * This rebuild runs on the EDT and is proportional to coverage size; it is not a
-	 * constant-time operation. Native scale tests must include marker application cost.
+	 * Keep complete coverage in the store while bounding EDT marker work to visible
+	 * visual rows. Sampling visual positions also skips collapsed logical line ranges.
 	 */
 	private fun render(editor: Editor) {
 		highlights.remove(editor)?.forEach { it.dispose() }
@@ -156,13 +163,21 @@ class ChoiceCoverage(private val project: Project) : Disposable, EditorFactoryLi
 
 		val relative = Path.of(game.sceneDir).normalize().relativize(filePath.normalize()).toString().replace('\\', '/')
 		val counts = results.counts(game.id, relative.dropLast(4))
-		highlights[editor] = counts.mapIndexedNotNull { line, count ->
-			if (count <= 0 || line >= editor.document.lineCount) null else {
-				editor.markupModel.addLineHighlighter(ChoiceColors.coverage, line, HighlighterLayer.ADDITIONAL_SYNTAX)
-					.apply {
-						errorStripeTooltip = BifoilBundle.message("coverage.line.executions", count)
-					}
+		// No coverage means no viewport or layout work, including for hidden editors.
+		if (counts.isEmpty()) return
+		val visible = editor.scrollingModel.visibleArea
+		val height = editor.lineHeight.coerceAtLeast(1)
+		val rows = mutableSetOf<Int>()
+		if (visible.height > 0 && counts.isNotEmpty()) {
+			val bottom = visible.y + visible.height + height
+			for (y in (visible.y - height).coerceAtLeast(0)..bottom step height) {
+				val line = editor.xyToLogicalPosition(Point(visible.x, y)).line
+				if (line < counts.size && line < editor.document.lineCount && counts[line] > 0) rows.add(line)
 			}
+		}
+		highlights[editor] = rows.map { line ->
+			editor.markupModel.addLineHighlighter(ChoiceColors.coverage, line, HighlighterLayer.ADDITIONAL_SYNTAX)
+				.apply { errorStripeTooltip = BifoilBundle.message("coverage.line.executions", counts[line]) }
 		}
 	}
 
