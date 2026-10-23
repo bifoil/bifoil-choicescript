@@ -5,7 +5,9 @@ The adapter owns native integration and UI; shared syntax and flow semantics liv
 
 ## Source map
 
-Files are under [`editors/intellij/src/main/kotlin/dev/bifoil/choicescript`](../editors/intellij/src/main/kotlin/dev/bifoil/choicescript).
+The Kotlin adapter starts in
+[Integration.kt](../editors/intellij/src/main/kotlin/dev/bifoil/choicescript/Integration.kt), which owns the LSP connection.
+The files below divide its remaining responsibilities.
 
 | File                             | Area                                                  |
 | -------------------------------- | ----------------------------------------------------- |

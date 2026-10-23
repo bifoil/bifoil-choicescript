@@ -54,7 +54,7 @@ Distinguish Gradle deprecation warnings, Kotlin compiler warnings, Plugin Verifi
 exceptions. They originate in different components and require different fixes. Use Gradle `--warning-mode all` to
 expand Gradle deprecation details when investigating a build.
 
-The current [JetBrains coverage defect](known-limitations.md#editor-integration) is a runtime transport issue, not proof
+The current [JetBrains coverage defect](known-limitations.md#native-editor-delivery) is a runtime transport issue, not proof
 that the package fails binary compatibility verification.
 
 ## Change the platform baseline

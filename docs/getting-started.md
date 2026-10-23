@@ -130,8 +130,8 @@ the HTML in their exported relative paths. Existing files are preserved; choose 
 would collide.
 
 Open the exported game and check its text and assets. Export is not necessarily a single self-contained file, and the
-current compiler packaging has a [font-asset limitation](known-limitations.md#game-tools). Distributing the result still
-requires following the licenses for the engine and any game assets.
+current compiler packaging has a [font-asset limitation](known-limitations.md#game-tools-and-snapshots). Distributing the
+result still requires following the licenses for the engine and any game assets.
 
 ## Next steps
 

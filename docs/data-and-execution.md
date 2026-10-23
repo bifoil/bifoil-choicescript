@@ -61,8 +61,8 @@ unreviewed game or full log. The plugin does not impose a total log-storage quot
 
 Owned direct processes and temporary directories are cleaned up when a job stops or the server shuts down, with retries
 for some failures. Known cancellation and cleanup gaps remain, including arbitrary descendants and queued jobs; see
-[known limitations](known-limitations.md#game-tools). Preserve evidence of a failure before removing task-owned
-leftovers.
+[known limitations](known-limitations.md#game-tools-and-snapshots). Preserve evidence of a failure before removing
+task-owned leftovers.
 
 Development reports belong in ignored local output, not public docs. Test fixtures and issue examples should be original
 or material you are authorized to share. See [contributing](../CONTRIBUTING.md) for reporting and review expectations.

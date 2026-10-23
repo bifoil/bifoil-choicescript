@@ -68,7 +68,7 @@ Keep the ZIP intact when installing it. On first use the adapter extracts and ve
 the IDE's cache. The plugin uses the IDE's own Java runtime; it does not install an IDE or JDK.
 
 JCEF provides the embedded game preview where available. A browser fallback is provided when it is unavailable. Coverage
-display currently has a [known JetBrains delivery issue](known-limitations.md#editor-integration).
+display currently has a [known JetBrains delivery issue](known-limitations.md#native-editor-delivery).
 
 ## Confirm the installation
 

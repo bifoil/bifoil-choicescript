@@ -1,14 +1,15 @@
 # Architecture
 
-Both editors use the same native Go language server. TypeScript provides the shared tooling broker and editor-independent
+Both editors use the same native Go language server. TypeScript provides the shared tooling broker and
+editor-independent
 protocol; Kotlin implements the JetBrains adapter. The earlier TypeScript analyzer remains in the repository for
 regressions and comparison. Installed adapters select the bundled native server and do not automatically fall back to
 partial analysis.
 
 ```mermaid
 flowchart TD
-    VS["VS Code adapter"] -->|"LSP and versioned job requests"| LS["Native Go language server"]
-    JB["JetBrains built-in LSP adapter"] -->|"Same protocol"| LS
+    VS["VS Code adapter"] -->|" LSP and versioned job requests "| LS["Native Go language server"]
+    JB["JetBrains built-in LSP adapter"] -->|" Same protocol "| LS
     LS --> CORE["Shared parser, flow analysis, symbols and features"]
     LS --> IX["Immutable source and paged query snapshots"]
     LS --> TOOL["Bundled Node tooling broker"]
@@ -19,15 +20,17 @@ flowchart TD
 
 ## Source boundaries
 
-| Component                | Source                                                                                        | Responsibility                                                                         |
-| ------------------------ | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Native core              | [`packages/core/src`](../packages/core/src) Go files                                          | Recovering parsing, flow, types, dialogue, semantic spans and feature queries          |
-| Native server            | [`native/server`](../native/server)                                                           | LSP framing, project discovery, open buffers, revisions, scheduling and tooling bridge |
-| Reference implementation | TypeScript in [`packages/core`](../packages/core) and [`packages/server`](../packages/server) | Earlier implementation and differential regression coverage                            |
-| Protocol                 | [`packages/protocol/src`](../packages/protocol/src)                                           | Versioned DTOs, validation, coverage and Node runtime policy                           |
-| Tooling                  | [`packages/tooling/src`](../packages/tooling/src)                                             | Staging, project creation, preview, official tools, export and process ownership       |
-| Adapters                 | [`editors/vscode`](../editors/vscode), [`editors/intellij`](../editors/intellij)              | Editor lifecycle, presentation, actions, trust and theme mapping                       |
-| Build                    | [`scripts`](../scripts), [`native/toolchain.json`](../native/toolchain.json)                  | Generation, native builds, provenance, runtime provisioning and packaging              |
+These entry points show each component’s source and its role.
+
+| Component                | Source                                                                                                                                               | Responsibility                                                                         |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Native core              | [`model.go`](../packages/core/src/model.go) in `packages/core`                                                                                       | Recovering parsing, flow, types, dialogue, semantic spans and feature queries          |
+| Native server            | [`lsp.go`](../native/server/lsp.go) in `native/server`                                                                                               | LSP framing, project discovery, open buffers, revisions, scheduling and tooling bridge |
+| Reference implementation | [`core/index.ts`](../packages/core/src/index.ts) and [`server/index.ts`](../packages/server/src/index.ts)                                            | Earlier implementation and differential regression coverage                            |
+| Protocol                 | [`protocol/index.ts`](../packages/protocol/src/index.ts)                                                                                             | Versioned DTOs, validation, coverage and Node runtime policy                           |
+| Tooling                  | [`tooling/index.ts`](../packages/tooling/src/index.ts)                                                                                               | Staging, project creation, preview, official tools, export and process ownership       |
+| Adapters                 | [`extension.ts`](../editors/vscode/src/extension.ts), [`Integration.kt`](../editors/intellij/src/main/kotlin/dev/bifoil/choicescript/Integration.kt) | Editor lifecycle, presentation, actions, trust and theme mapping                       |
+| Build                    | [`build.mjs`](../scripts/build.mjs), [`native/toolchain.json`](../native/toolchain.json)                                                             | Generation, native builds, provenance, runtime provisioning and packaging              |
 
 Editor APIs stay in the adapters. Command metadata remains in
 [`commands.json`](../packages/core/src/commands.json), which supplies generated help and fallback highlighting. The
@@ -100,7 +103,8 @@ artifact whose source digest or target is stale. Go is a build dependency; users
 VSIX files contain the selected target's native server and Node runtime. The universal JetBrains ZIP contains the six
 locked target pairs; `--current` prepares only a host development bundle. Extraction verifies archive/native hashes and
 restores executable permissions. JetBrains caches only the host native executable beside Node under a short name,
-avoiding duplicate binaries and Windows executable-path limits. Node archives follow [`runtime-lock.json`](../runtime-lock.json); the selected engine
+avoiding duplicate binaries and Windows executable-path limits. Node archives follow [
+`runtime-lock.json`](../runtime-lock.json); the selected engine
 inventory follows [`runtime-files.json`](../vendor/runtime-files.json).
 
 Legacy C/WASM and TypeScript sources remain available but are not the installed language-server path. Build/test SDKs,
