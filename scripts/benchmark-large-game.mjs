@@ -7,7 +7,7 @@
  */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -15,6 +15,7 @@ import { narrativeWords as count } from "../packages/core/src/plain-text.ts";
 import { classification, startServer, waitFor } from "../packages/server/test/helpers.ts";
 import { artifactPath } from "./artifact-paths.mjs";
 import { hostTool } from "./host-tools.mjs";
+import { finishBenchmark } from "./benchmark-cleanup.mjs";
 
 const scenes = Number(process.argv[2] ?? 1000),
   wordsPerScene = Number(process.argv[3] ?? 30000);
@@ -84,7 +85,7 @@ const report = {
   errors: [],
   completed: false,
 };
-let server, monitor;
+let server, monitor, monitorError;
 
 try {
   const startup =
@@ -129,6 +130,9 @@ try {
     monitor = spawn(await hostTool("powershell"), ["-NoProfile", "-NonInteractive", "-Command", ps], {
       windowsHide: true,
       stdio: ["ignore", "ignore", "inherit"],
+    });
+    monitor.on("error", (error) => {
+      monitorError = error;
     });
   }
 
@@ -273,28 +277,8 @@ try {
   report.failure = String(error);
   process.exitCode = 1;
 } finally {
-  await server?.close();
-
-  if (monitor) {
-    await waitFor(() => monitor.exitCode !== null, undefined, 10000);
-
-    const memoryJson = await readFile(resultFile + ".memory.json", { encoding: "utf8" });
-    report.memory = JSON.parse(memoryJson.replace(/^\uFEFF/, ""));
-
-    if (!report.memory.samples.length) {
-      report.failure =
-        (report.failure ? report.failure + "; " : "") + "Runtime memory sampling ended without any samples";
-      process.exitCode = 1;
-      report.completed = false;
-    } else if (report.memory.peakMiB > 256) {
-      report.failure = (report.failure ? report.failure + "; " : "") + "Combined runtime memory exceeded 256 MiB";
-      process.exitCode = 1;
-      report.completed = false;
-    }
-  }
-
-  await writeFile(resultFile, JSON.stringify(report, null, 2));
-  await rm(dir, { recursive: true, force: true });
+  await finishBenchmark({ server, monitor, monitorError, report, resultFile, directory: dir });
+  if (!report.completed) process.exitCode = 1;
   console.log(
     JSON.stringify({
       phase: "finished",
