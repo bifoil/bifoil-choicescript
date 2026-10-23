@@ -2,8 +2,8 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-const source = (await readFile("native/environment/environment.c", "utf8")).replace(/\r\n/g, "\n");
-const generated = await readFile("packages/core/src/environment-binary.ts", "utf8");
+const source = (await readFile("native/environment/environment.c", { encoding: "utf8" })).replace(/\r\n/g, "\n");
+const generated = await readFile("packages/core/src/environment-binary.ts", { encoding: "utf8" });
 const sourceSha = /environmentSourceSha256 = "([a-f0-9]{64})"/.exec(generated)?.[1];
 const binarySha = /environmentBinarySha256 = "([a-f0-9]{64})"/.exec(generated)?.[1];
 const body = generated.slice(

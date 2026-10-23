@@ -33,7 +33,7 @@ try {
     { stdio: "inherit" },
   );
   const bytes = await readFile(output),
-    sourceBytes = (await readFile(source, "utf8")).replace(/\r\n/g, "\n");
+    sourceBytes = (await readFile(source, { encoding: "utf8" })).replace(/\r\n/g, "\n");
   const sha = (value) => createHash("sha256").update(value).digest("hex");
   const module = `/** Generated from native/environment/environment.c; regenerate with pnpm native:build. */\nexport const environmentSourceSha256 = "${sha(sourceBytes)}";\nexport const environmentBinarySha256 = "${sha(bytes)}";\nexport const environmentBinary =\n${bytes
     .toString("base64")

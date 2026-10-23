@@ -31,13 +31,17 @@ export async function buildCoverageTests(files, { liveEntryURLs = false } = {}) 
         name: "original-module-urls",
         setup(builder) {
           builder.onLoad({ filter: /\.(?:ts|mjs|cjs)$/ }, async ({ path: file }) => {
-            const source = await readFile(file, "utf8");
-            const result = await transform(source, {
+            const source = await readFile(file, { encoding: "utf8" });
+            /** @type {import("esbuild").TransformOptions} */
+            const options = {
               loader: file.endsWith(".ts") ? "ts" : "js",
               sourcefile: file,
               sourcemap: "inline",
-              define: selfHosted.has(file) ? {} : { "import.meta.url": JSON.stringify(pathToFileURL(file).href) },
-            });
+              define: selfHosted.has(file)
+                ? undefined
+                : { "import.meta.url": JSON.stringify(pathToFileURL(file).href) },
+            };
+            const result = await transform(source, options);
             return { contents: result.code, loader: "js", resolveDir: path.dirname(file) };
           });
         },

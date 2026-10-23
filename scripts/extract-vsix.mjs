@@ -58,7 +58,7 @@ try {
     throw new Error("Packaged runtime checksum mismatch");
 
   const nativeDirectory = path.join(extension, "server/native", target);
-  const nativeManifest = JSON.parse(await readFile(path.join(nativeDirectory, "manifest.json"), "utf8"));
+  const nativeManifest = JSON.parse(await readFile(path.join(nativeDirectory, "manifest.json"), { encoding: "utf8" }));
   const nativeName = process.platform === "win32" ? "bifoil-language-server.exe" : "bifoil-language-server";
   if (nativeManifest.format !== 1 || nativeManifest.target !== target || nativeManifest.executable !== nativeName)
     throw new Error("Packaged native target mismatch");

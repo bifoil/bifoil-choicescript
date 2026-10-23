@@ -32,7 +32,7 @@ test("private tooling transport rejects malformed requests and settles shutdown 
   });
   const raw = (line) => child.stdin.write(line + "\n");
   const response = (id) =>
-    new Promise((resolve, reject) => {
+    new globalThis.Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error("No private reply for " + id + ": " + errors)), 10000);
       pending.set(id, (message) => {
         clearTimeout(timeout);
@@ -77,11 +77,7 @@ test("private tooling transport rejects malformed requests and settles shutdown 
     // Deliver the requests in one pipe write. A request sent after the input
     // has already closed cannot be expected to receive a shutdown reply.
     raw(
-      [
-        { id: terminal, method: "dispose" },
-        { id: rejected, method: "unknown" },
-        { method: "stale" },
-      ]
+      [{ id: terminal, method: "dispose" }, { id: rejected, method: "unknown" }, { method: "stale" }]
         .map((message) => JSON.stringify(message))
         .join("\n"),
     );

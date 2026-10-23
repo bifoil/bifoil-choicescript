@@ -105,7 +105,7 @@ function installExport(stage: string): () => void {
     return originalMap.call(this, callback, thisArg);
   } as typeof Array.prototype.map;
 
-  const hook = ((code: string, options?: vm.RunningScriptOptions | string) => {
+  vm.runInThisContext = ((code: string, options?: vm.RunningScriptOptions | string) => {
     const result = originalRun.call(vm, code, options);
     const filename = typeof options === "string" ? options : options?.filename;
     if (filename && path.basename(filename) === "headless.js") {
@@ -119,7 +119,6 @@ function installExport(stage: string): () => void {
     }
     return result;
   }) as typeof vm.runInThisContext;
-  vm.runInThisContext = hook;
 
   fs.writeFileSync = ((file: fs.PathOrFileDescriptor, data: unknown, options?: fs.WriteFileOptions) => {
     if (typeof file !== "string" || path.resolve(file) !== output || typeof data !== "string")

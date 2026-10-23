@@ -10,6 +10,7 @@ import { artifactPath, confinedPath, releaseFile, repositoryRoot } from "../arti
 import { hostTool } from "../host-tools.mjs";
 import { provision } from "../runtime.mjs";
 
+/** @type {typeof import("node:child_process").execFile.__promisify__} */
 const run = promisify(execFile);
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 

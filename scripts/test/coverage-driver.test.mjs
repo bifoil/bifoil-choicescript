@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { test } from "node:test";
 import { repositoryRoot } from "../artifact-paths.mjs";
+/** @type {typeof import("node:child_process").execFile.__promisify__} */
 const run = promisify(execFile);
 
 test("coverage driver normalizes child output and keeps the timing child uninstrumented", async () => {
@@ -57,7 +58,7 @@ test("coverage driver normalizes child output and keeps the timing child uninstr
         timeout: 10000,
       });
     assert.match((await invoke("success")).stdout, /Recorded 1 V8 branches without source locations/);
-    const calls = JSON.parse(await readFile(trace, "utf8"));
+    const calls = JSON.parse(await readFile(trace, { encoding: "utf8" }));
     assert.equal(calls.length, 2);
     assert(calls[0].args.some((arg) => arg.includes("c8")));
     assert(calls[1].args.some((arg) => arg.endsWith("performance.test.ts")));
@@ -65,18 +66,22 @@ test("coverage driver normalizes child output and keeps the timing child uninstr
       calls.every((call) => call.instrumented === false),
       "Driver leaked coverage into timing execution",
     );
-    const normalized = await readFile(path.join(repositoryRoot, "dist/coverage/javascript.lcov"), "utf8");
+    const normalized = await readFile(path.join(repositoryRoot, "dist/coverage/javascript.lcov"), { encoding: "utf8" });
     assert.match(normalized, /DA:1,1/);
     assert(!normalized.includes("BRDA:undefined"));
     assert.equal(
-      JSON.parse(await readFile(path.join(repositoryRoot, "dist/coverage/mapping-warnings.json"), "utf8"))
+      JSON.parse(await readFile(path.join(repositoryRoot, "dist/coverage/mapping-warnings.json"), { encoding: "utf8" }))
         .unmappedBranches.length,
       1,
     );
     await assert.rejects(invoke("error"), /Original process-boundary failure/);
-    assert.equal(JSON.parse(await readFile(trace, "utf8")).length, 1, "Timing continued after functional failure");
+    assert.equal(
+      JSON.parse(await readFile(trace, { encoding: "utf8" })).length,
+      1,
+      "Timing continued after functional failure",
+    );
     await assert.rejects(invoke("exit"), (error) => error.code === 2);
-    assert.equal(JSON.parse(await readFile(trace, "utf8")).length, 1);
+    assert.equal(JSON.parse(await readFile(trace, { encoding: "utf8" })).length, 1);
   } finally {
     // Synthetic report data must never become a real analysis input.
     for (const [file, bytes] of saved) {

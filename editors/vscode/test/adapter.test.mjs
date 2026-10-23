@@ -196,10 +196,10 @@ async function adapter(options = {}) {
     }
     onDidChangeState = this.changed.event;
     async start() {}
-    async stop() {
+    stop = async () => {
       this.state = 3;
       this.changed.fire({ newState: 3 });
-    }
+    };
     async sendNotification(name, params) {
       notifications.push({ name, params });
       if (state.notificationError) throw Error("Notification failed");
@@ -226,7 +226,8 @@ async function adapter(options = {}) {
     }
   }
   const require = createRequire(compiled);
-  const loaded = new Module(compiled);
+  // The real CommonJS loader is the test boundary for injecting editor APIs.
+  const loaded = /** @type {Module & { _compile(code: string, filename: string): void }} */ (new Module(compiled));
   loaded.require = (name) =>
     name === "vscode"
       ? vscode
@@ -322,7 +323,7 @@ test("adapter retains visible coverage, invalidates edits, and separates asset e
   assert.equal(a.notifications.at(-1).name, "choicescript/assetChanged");
   a.notificationError = true;
   a.changes.fire({ document: asset, contentChanges: [{}] });
-  await new Promise((resolve) => setImmediate(resolve));
+  await new globalThis.Promise((resolve) => setImmediate(resolve));
   assert(a.messages.some((m) => String(m).includes("Notification failed")));
 });
 

@@ -46,8 +46,8 @@ export async function nativeSourceDigest() {
 export async function verifyNativeArtifact(target) {
   if (!Object.hasOwn(nativeTargets, target)) throw new Error("Unsupported native target: " + target);
   const directory = path.join(repositoryRoot, "dist/native", target);
-  const manifest = JSON.parse(await readFile(path.join(directory, "manifest.json"), "utf8"));
-  const sdk = JSON.parse(await readFile(path.join(repositoryRoot, "native/toolchain.json"), "utf8"));
+  const manifest = JSON.parse(await readFile(path.join(directory, "manifest.json"), { encoding: "utf8" }));
+  const sdk = JSON.parse(await readFile(path.join(repositoryRoot, "native/toolchain.json"), { encoding: "utf8" }));
   const executable = "bifoil-language-server" + (nativeTargets[target][0] === "windows" ? ".exe" : "");
   if (
     manifest.format !== 1 ||

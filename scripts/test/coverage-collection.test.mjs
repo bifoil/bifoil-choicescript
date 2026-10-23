@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { test } from "node:test";
 import { buildSync } from "esbuild";
 import { repositoryRoot } from "../artifact-paths.mjs";
+/** @type {typeof import("node:child_process").execFile.__promisify__} */
 const run = promisify(execFile);
 
 test("source-mapped child coverage preserves unexecuted functions and branch bodies", async () => {
@@ -57,7 +58,7 @@ test("source-mapped child coverage preserves unexecuted functions and branch bod
       [path.join(repositoryRoot, "node_modules/c8/bin/c8.js"), "report", "--config", config],
       { cwd: repositoryRoot },
     );
-    const lcov = await readFile(path.join(report, "lcov.info"), "utf8");
+    const lcov = await readFile(path.join(report, "lcov.info"), { encoding: "utf8" });
     assert.match(lcov, /^DA:3,[1-9]\d*$/m, "executed return must have hits");
     assert.match(lcov, /^DA:5,0$/m, "unexecuted branch must remain uncovered");
     assert.match(lcov, /^DA:8,0$/m, "unexecuted function must remain uncovered");

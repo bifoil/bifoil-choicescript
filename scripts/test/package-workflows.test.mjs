@@ -8,6 +8,7 @@ import { test } from "node:test";
 import { promisify } from "node:util";
 import { repositoryRoot } from "../artifact-paths.mjs";
 
+/** @type {typeof import("node:child_process").execFile.__promisify__} */
 const run = promisify(execFile);
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const invoke = (file, args = [], extra = {}) =>
@@ -17,7 +18,7 @@ test("release provenance includes all locked targets, original notices, and veri
   const root = await mkdtemp(path.join(repositoryRoot, "dist/release-provenance-"));
   try {
     const targets = Object.keys(
-      JSON.parse(await readFile(path.join(repositoryRoot, "runtime-lock.json"), "utf8")).archives,
+      JSON.parse(await readFile(path.join(repositoryRoot, "runtime-lock.json"), { encoding: "utf8" })).archives,
     );
     const build = (extra) =>
       invoke("scripts/release-manifest.mjs", [root], { env: { ...process.env, GITHUB_SHA: "a".repeat(40), ...extra } });
@@ -28,7 +29,7 @@ test("release provenance includes all locked targets, original notices, and veri
     await writeFile(path.join(root, "bifoil-choicescript-0.1.0.zip"), "Original installer");
     await assert.rejects(build({ GITHUB_SHA: "invalid" }), /verified source commit/);
     assert.match((await build({ GITHUB_RUN_ID: "original-run" })).stdout, /seven packages/);
-    const manifest = JSON.parse(await readFile(path.join(root, "release-manifest.json"), "utf8"));
+    const manifest = JSON.parse(await readFile(path.join(root, "release-manifest.json"), { encoding: "utf8" }));
     assert.equal(manifest.commit, "a".repeat(40));
     assert.equal(manifest.validationRun, "original-run");
     assert.equal(manifest.artifacts.length, 7);
@@ -39,8 +40,8 @@ test("release provenance includes all locked targets, original notices, and veri
     }
     assert.match((await invoke("scripts/verify-release.mjs", [root])).stdout, /Verified/);
     assert.equal(
-      await readFile(path.join(root, "BIFOIL_CHOICESCRIPT-LICENSE.txt"), "utf8"),
-      await readFile(path.join(repositoryRoot, "LICENSE"), "utf8"),
+      await readFile(path.join(root, "BIFOIL_CHOICESCRIPT-LICENSE.txt"), { encoding: "utf8" }),
+      await readFile(path.join(repositoryRoot, "LICENSE"), { encoding: "utf8" }),
     );
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -61,7 +62,7 @@ test("VSIX extraction validates provenance and leaves the installed selection in
   const node = Buffer.from("Original inert runtime bytes"),
     native = Buffer.from("Original inert native bytes"),
     license = Buffer.from("Original license");
-  const lock = JSON.parse(await readFile(path.join(repositoryRoot, "runtime-lock.json"), "utf8"));
+  const lock = JSON.parse(await readFile(path.join(repositoryRoot, "runtime-lock.json"), { encoding: "utf8" }));
   const nativeName = process.platform === "win32" ? "bifoil-language-server.exe" : "bifoil-language-server";
   const base = `extension/server/native/${target}/`;
   const files = {
@@ -83,8 +84,11 @@ test("VSIX extraction validates provenance and leaves the installed selection in
   try {
     await writeFile(artifact, zipSync(files));
     assert.match((await extract()).stdout, /Verified and extracted/);
-    const selection = JSON.parse(await readFile(pointer, "utf8"));
-    assert.equal(await readFile(path.join(selection.path, "package.json"), "utf8"), '{"name":"original"}');
+    const selection = JSON.parse(await readFile(pointer, { encoding: "utf8" }));
+    assert.equal(
+      await readFile(path.join(selection.path, "package.json"), { encoding: "utf8" }),
+      '{"name":"original"}',
+    );
     const selected = await readFile(pointer);
     await writeFile(artifact, zipSync({ ...files, [base + nativeName]: Buffer.from("tampered") }));
     await assert.rejects(extract(), /native checksum mismatch/);

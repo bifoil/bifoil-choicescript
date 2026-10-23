@@ -43,6 +43,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const [destination, ...inputs] = process.argv.slice(2);
   if (!destination || !inputs.length) throw new Error("Supply an output coverage path and input Go profiles.");
   const output = await artifactPath(destination);
-  const profiles = await Promise.all(inputs.map(async (input) => readFile(await artifactPath(input), "utf8")));
+  const profiles = await globalThis.Promise.all(
+    inputs.map(async (input) => readFile(await artifactPath(input), "utf8")),
+  );
   await writeFile(output, mergeGoCoverage(profiles));
 }

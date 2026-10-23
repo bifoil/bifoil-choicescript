@@ -8,6 +8,7 @@ import { test } from "node:test";
 import { buildCoverageTests } from "../coverage-build.mjs";
 import { repositoryRoot } from "../artifact-paths.mjs";
 import { mergeGoCoverage } from "../merge-go-coverage.mjs";
+/** @type {typeof import("node:child_process").execFile.__promisify__} */
 const run = promisify(execFile);
 const invoke = (file, args = [], extra = {}) =>
   run(process.execPath, [file, ...args], { cwd: repositoryRoot, timeout: 90000, ...extra });
@@ -54,7 +55,7 @@ test("read-only corpus CLI distinguishes syntax errors from invalid plugin range
       return error.code === 1;
     });
     await assert.rejects(invoke(entry, ["--worker", path.join(good, "scenes/startup.txt")]), /Command failed/);
-    assert.equal(await readFile(path.join(good, "scenes/startup.txt"), "utf8"), source);
+    assert.equal(await readFile(path.join(good, "scenes/startup.txt"), { encoding: "utf8" }), source);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -72,7 +73,7 @@ test("synthetic benchmark CLI reports complete original scenes and deletes dispo
     } catch (error) {
       exitCode = error.code;
     }
-    const result = JSON.parse(await readFile(report, "utf8"));
+    const result = JSON.parse(await readFile(report, { encoding: "utf8" }));
     assert.equal(result.completed, exitCode === 0);
     if (exitCode !== 0) {
       assert.equal(exitCode, 1);
