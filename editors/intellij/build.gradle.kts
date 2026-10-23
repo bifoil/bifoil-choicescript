@@ -17,7 +17,7 @@ listOf("compileClasspath", "runtimeClasspath", "testCompileClasspath", "testRunt
 dependencyLocking {
 	lockMode.set(LockMode.STRICT)
 	// Product archives have their exact versions declared in intellijPlatform below.
-	ignoredDependencies.addAll("idea:*", "webstorm:*", "pycharm:*", "com.jetbrains.intellij.platform:*")
+	ignoredDependencies.addAll("idea:*", "webstorm:*", "pycharm:*", "python:pycharm", "com.jetbrains.intellij.platform:*")
 }
 
 group = "dev.bifoil.choicescript"
