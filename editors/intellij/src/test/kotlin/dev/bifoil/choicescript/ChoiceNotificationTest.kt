@@ -20,18 +20,16 @@ class ChoiceNotificationTest : TestCase() {
 	}
 
 	fun testDiscoveryObjectIsDecodedThroughNativeJsonRpcReflection() {
-		val body = """{"jsonrpc":"2.0","method":"choicescript/projectsChanged","params":{"protocolVersion":1,"projects":[{"id":"original","name":"Original Ω","root":"/original","sceneDir":"/original/scenes","assetDir":"/original"}]}}"""
+		val body =
+			"""{"jsonrpc":"2.0","method":"choicescript/projectsChanged","params":{"protocolVersion":1,"projects":[{"id":"original","name":"Original Ω","root":"/original","sceneDir":"/original/scenes","assetDir":"/original"}]}}"""
 		val payload = body.toByteArray(StandardCharsets.UTF_8)
 		val input = ByteArrayInputStream(
 			"Content-Length: ${payload.size}\r\n\r\n".toByteArray(StandardCharsets.US_ASCII) + payload
 		)
 		val receiver = Receiver()
-		val launcher = Launcher.Builder<ChoiceClientNotifications>()
-			.setLocalService(receiver)
-			.setRemoteInterface(ChoiceClientNotifications::class.java)
-			.setInput(input)
-			.setOutput(ByteArrayOutputStream())
-			.create()
+		val launcher = Launcher.Builder<ChoiceClientNotifications>().setLocalService(receiver)
+			.setRemoteInterface(ChoiceClientNotifications::class.java).setInput(input)
+			.setOutput(ByteArrayOutputStream()).create()
 		val listening = launcher.startListening()
 		try {
 			val result = receiver.received.get(5, TimeUnit.SECONDS)

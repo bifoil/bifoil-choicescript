@@ -1,24 +1,29 @@
 package dev.bifoil.choicescript
 
+import org.eclipse.lsp4j.jsonrpc.ResponseErrorException
+import org.eclipse.lsp4j.jsonrpc.messages.ResponseError
 import org.junit.Assert.*
 import org.junit.Test
+import java.util.concurrent.CancellationException
+import java.util.concurrent.ExecutionException
 
 class ChoiceToolingTest {
 	@Test
 	fun seedsPreserveSafeIntegersBeyondThe32BitRange() {
 		for (value in listOf(
-			-RandomTestInput.MAX_SEED,
-			-2_147_483_649L,
-			0L,
-			2_147_483_648L,
-			RandomTestInput.MAX_SEED
-		)) {
-			assertEquals(value, RandomTestInput.seed(value.toString()))
-		}
+			-RandomTestInput.MAX_SEED, -2_147_483_649L, 0L, 2_147_483_648L, RandomTestInput.MAX_SEED
+		)) assertEquals(value, RandomTestInput.seed(value.toString()))
 
-		for (value in listOf("", " ", "1.5", "1e3", "Infinity", "NaN", "9007199254740992", "-9007199254740992")) {
-			assertNull(value, RandomTestInput.seed(value))
-		}
+		for (value in listOf(
+			"",
+			" ",
+			"1.5",
+			"1e3",
+			"Infinity",
+			"NaN",
+			"9007199254740992",
+			"-9007199254740992"
+		)) assertNull(value, RandomTestInput.seed(value))
 
 		assertEquals(1, RandomTestInput.iterations("1"))
 		assertEquals(10_000_000, RandomTestInput.iterations("10000000"))
@@ -45,10 +50,7 @@ class ChoiceToolingTest {
 
 		fun cover(project: String, job: String, vararg counts: Long) = store.update(
 			JobEvent(
-				projectId = project,
-				jobId = job,
-				kind = "coverage",
-				coverage = mapOf("startup" to counts.toList())
+				projectId = project, jobId = job, kind = "coverage", coverage = mapOf("startup" to counts.toList())
 			)
 		)
 		start("one", "old")
@@ -91,15 +93,12 @@ class ChoiceToolingTest {
 
 	@Test
 	fun cancelledPreparationIsHandledWithoutHidingRealFailures() {
-		fun rpc(message: String, code: Int = -32603) =
-			org.eclipse.lsp4j.jsonrpc.ResponseErrorException(
-				org.eclipse.lsp4j.jsonrpc.messages.ResponseError(code, message, null)
-			)
+		fun rpc(message: String, code: Int = -32603) = ResponseErrorException(ResponseError(code, message, null))
 
 		val cancelled = rpc("Operation cancelled.", -32800)
 
-		assertTrue(GameToolCancellation.isCancellation(java.util.concurrent.ExecutionException(cancelled)))
-		assertTrue(GameToolCancellation.isCancellation(java.util.concurrent.CancellationException()))
+		assertTrue(GameToolCancellation.isCancellation(ExecutionException(cancelled)))
+		assertTrue(GameToolCancellation.isCancellation(CancellationException()))
 		assertFalse(GameToolCancellation.isCancellation(rpc("Runtime checksum mismatch")))
 		assertFalse(GameToolCancellation.isCancellation(rpc("Operation cancelled.")))
 		assertFalse(GameToolCancellation.isCancellation(IllegalStateException("Operation cancelled.")))

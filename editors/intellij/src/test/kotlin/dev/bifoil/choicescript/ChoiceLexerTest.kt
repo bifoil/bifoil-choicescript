@@ -1,5 +1,6 @@
 package dev.bifoil.choicescript
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -58,20 +59,24 @@ class ChoiceLexerTest {
 	@Test
 	fun inlineChoiceProseKeepsNarrativeFallbackAcrossRestarts() {
 		for (prefix in listOf(
-			"*if name = \"#quoted\" #", "*if (flag) #", "*selectable_if flag #",
-			"*hide_reuse #", "*disable_reuse #", "*allow_reuse #"
+			"*if name = \"#quoted\" #",
+			"*if (flag) #",
+			"*selectable_if flag #",
+			"*hide_reuse #",
+			"*disable_reuse #",
+			"*allow_reuse #"
 		)) {
 			val text = "$prefix Original option text\n*print 42"
 			val begin = text.indexOf("Original")
 			val lexer = ChoiceLexer()
 			lexer.start(text, 0, text.length, 0)
 			while (lexer.tokenType != null && lexer.tokenStart < begin) lexer.advance()
-			org.junit.Assert.assertEquals("narrative", lexer.tokenType.toString())
-			org.junit.Assert.assertEquals("Original option text", text.substring(lexer.tokenStart, lexer.tokenEnd))
+			assertEquals("narrative", lexer.tokenType.toString())
+			assertEquals("Original option text", text.substring(lexer.tokenStart, lexer.tokenEnd))
 			lexer.start(text, begin, text.length, 0)
-			org.junit.Assert.assertEquals("narrative", lexer.tokenType.toString())
+			assertEquals("narrative", lexer.tokenType.toString())
 			while (lexer.tokenType != null && lexer.tokenType.toString() != "keyword") lexer.advance()
-			org.junit.Assert.assertEquals("*print", text.substring(lexer.tokenStart, lexer.tokenEnd))
+			assertEquals("*print", text.substring(lexer.tokenStart, lexer.tokenEnd))
 		}
 	}
 

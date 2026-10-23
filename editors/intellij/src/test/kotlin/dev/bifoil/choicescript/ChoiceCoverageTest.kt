@@ -28,9 +28,16 @@ class ChoiceCoverageTest : BasePlatformTestCase() {
 			editor.scrollPane.doLayout()
 			editor.scrollPane.viewport.extentSize = Dimension(500, 240)
 			editor.foldingModel.runBatchFoldingOperation {
-				editor.foldingModel.addFoldRegion(document.getLineStartOffset(5), document.getLineStartOffset(180), "…")!!.isExpanded = false
+				editor.foldingModel.addFoldRegion(
+					document.getLineStartOffset(5), document.getLineStartOffset(180), "…"
+				)!!.isExpanded = false
 			}
-			val game = GameProject(id = "original", root = directory.toString(), sceneDir = scenes.toString(), assetDir = directory.toString())
+			val game = GameProject(
+				id = "original",
+				root = directory.toString(),
+				sceneDir = scenes.toString(),
+				assetDir = directory.toString()
+			)
 			coverage.projectsChanged(listOf(game))
 			coverage.event(JobEvent("first", game.id, "started"))
 			coverage.event(JobEvent("first", game.id, "coverage", coverage = mapOf("STARTUP" to List(200) { 1L })))
@@ -45,7 +52,9 @@ class ChoiceCoverageTest : BasePlatformTestCase() {
 			WriteCommandAction.runWriteCommandAction(project) { document.insertString(0, "Changed ") }
 			assertTrue(editor.markupModel.allHighlighters.none { it.textAttributesKey == ChoiceColors.coverage })
 			coverage.event(JobEvent("first", game.id, "coverage", coverage = mapOf("startup" to List(200) { 99L })))
-			assertTrue("Late coverage revived stale markers", editor.markupModel.allHighlighters.none { it.textAttributesKey == ChoiceColors.coverage })
+			assertTrue(
+				"Late coverage revived stale markers",
+				editor.markupModel.allHighlighters.none { it.textAttributesKey == ChoiceColors.coverage })
 			coverage.sessionEnded()
 			coverage.projectsChanged(emptyList())
 		} finally {

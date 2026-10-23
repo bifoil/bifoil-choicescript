@@ -1,18 +1,20 @@
 package dev.bifoil.choicescript
 
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.platform.lsp.api.LspClientManager
 import com.intellij.platform.lsp.api.LspServerState
-import com.intellij.testFramework.PsiTestUtil
 import com.intellij.testFramework.PlatformTestUtil
+import com.intellij.testFramework.PsiTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import com.intellij.openapi.fileEditor.FileDocumentManager
 import org.eclipse.lsp4j.HoverParams
 import org.eclipse.lsp4j.Position
 import org.eclipse.lsp4j.TextDocumentIdentifier
+import java.net.URI
 import java.nio.file.Files
+import java.nio.file.Path
 
 /** Exercise the IDE-owned manager, synchronization and actual custom receiver together. */
 class ChoiceManagerTest : BasePlatformTestCase() {
@@ -34,20 +36,27 @@ class ChoiceManagerTest : BasePlatformTestCase() {
 				manager.getClients(ChoiceIntegration::class.java).any { it.state == LspServerState.Running }
 			}, 20)
 			val client = manager.getClients(ChoiceIntegration::class.java).single()
-			assertEquals(source.toUri().path.lowercase(),
-				java.net.URI(client.getDocumentIdentifier(file).uri).path.lowercase())
+			assertEquals(
+				source.toUri().path.lowercase(), URI(client.getDocumentIdentifier(file).uri).path.lowercase()
+			)
 			assertTrue(client.getDocumentVersion(FileDocumentManager.getInstance().getDocument(file)!!) >= 0)
 			val queried = PlatformTestUtil.callOnBgtSynchronously({
 				client.sendRequestSync(1000) { (it as ChoiceServer).projects() }
 			}, 10)
 			assertEquals(1, queried!!.size)
-			PlatformTestUtil.waitWithEventsDispatching("Native project notification did not reach the actual receiver", {
-				ChoiceUi.get(project).projects.any { java.nio.file.Path.of(it.sceneDir).normalize() == source.parent.normalize() }
-			}, 10)
+			PlatformTestUtil.waitWithEventsDispatching(
+				"Native project notification did not reach the actual receiver", {
+					ChoiceUi.get(project).projects.any { Path.of(it.sceneDir).normalize() == source.parent.normalize() }
+				}, 10
+			)
 
 			val hover = PlatformTestUtil.callOnBgtSynchronously({
 				client.sendRequestSync(1000) {
-					it.textDocumentService.hover(HoverParams(TextDocumentIdentifier(source.toUri().toString()), Position(0, 9)))
+					it.textDocumentService.hover(
+						HoverParams(
+							TextDocumentIdentifier(source.toUri().toString()), Position(0, 9)
+						)
+					)
 				}
 			}, 10)
 			assertNotNull("Manager synchronization did not make current source available", hover)

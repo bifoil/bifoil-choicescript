@@ -11,6 +11,8 @@ import com.intellij.platform.lsp.api.customization.LspSemanticTokensSupport
 import com.intellij.psi.PsiFile
 import org.eclipse.lsp4j.jsonrpc.services.JsonNotification
 import org.eclipse.lsp4j.jsonrpc.services.JsonRequest
+import java.nio.file.Files.isRegularFile
+import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
 
 /**
@@ -103,7 +105,7 @@ class ChoiceDescriptor(project: Project) : ProjectWideLspClientDescriptor(projec
 		val server = root.resolve("server")
 		val native = System.getenv("BIFOIL_CHOICESCRIPT_NATIVE_SERVER")?.takeIf { it.isNotBlank() }
 			?: BundledRuntime.languageServer(root)
-		check(java.nio.file.Files.isRegularFile(java.nio.file.Path.of(native))) {
+		check(isRegularFile(Path.of(native))) {
 			"The native language server is missing; rebuild or reinstall Bifoil ChoiceScript."
 		}
 		return GeneralCommandLine(
@@ -158,8 +160,8 @@ interface ChoiceClientNotifications {
 }
 
 /** Public named receiver lets LSP4J invoke callbacks without anonymous-class access failures. */
-class ChoiceLanguageClient(private val project: Project, handler: LspServerNotificationsHandler) :
-	Lsp4jClient(handler), ChoiceClientNotifications {
+class ChoiceLanguageClient(private val project: Project, handler: LspServerNotificationsHandler) : Lsp4jClient(handler),
+	ChoiceClientNotifications {
 	override fun projectsChanged(params: ProjectsChangedParams) {
 		if (params.protocolVersion != 1) return
 		ChoiceUi.get(project).projects = params.projects

@@ -51,24 +51,22 @@ object ChoiceProjects {
 
 			val config = directory.findChild("choicescript.json")
 
-			if (config != null) {
-				return runCatching {
-					val settings = JsonParser.parseString(
-						String(config.contentsToByteArray(), Charsets.UTF_8)
-					).asJsonObject
+			if (config != null) return runCatching {
+				val settings = JsonParser.parseString(
+					String(config.contentsToByteArray(), Charsets.UTF_8)
+				).asJsonObject
 
-					val configuredScenes = settings.get("scenes")
-					check(
-						configuredScenes == null || (configuredScenes.isJsonPrimitive && configuredScenes.asJsonPrimitive.isString)
-					) { "Scenes must be a relative directory." }
+				val configuredScenes = settings.get("scenes")
+				check(
+					configuredScenes == null || (configuredScenes.isJsonPrimitive && configuredScenes.asJsonPrimitive.isString)
+				) { "Scenes must be a relative directory." }
 
-					val scenes = Path.of(configuredScenes?.asString ?: "scenes")
-					check(!scenes.isAbsolute) { "Scenes must be a relative directory." }
+				val scenes = Path.of(configuredScenes?.asString ?: "scenes")
+				check(!scenes.isAbsolute) { "Scenes must be a relative directory." }
 
-					val root = directory.toNioPath().resolve(scenes).normalize()
-					Files.isRegularFile(root.resolve("startup.txt")) && file.toNioPath().startsWith(root)
-				}.getOrDefault(false)
-			}
+				val root = directory.toNioPath().resolve(scenes).normalize()
+				Files.isRegularFile(root.resolve("startup.txt")) && file.toNioPath().startsWith(root)
+			}.getOrDefault(false)
 
 			if (directory.path == project.basePath) break
 			directory = directory.parent

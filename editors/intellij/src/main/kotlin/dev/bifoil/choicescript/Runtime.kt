@@ -76,7 +76,10 @@ object BundledRuntime {
 		val platform = if (SystemInfo.isWindows) "win32" else if (SystemInfo.isMac) "darwin" else "linux"
 		val arch = if (System.getProperty("os.arch") in listOf("aarch64", "arm64")) "arm64" else "x64"
 		val target = Path.of(
-			cacheRoot.toString(), "bifoil-choicescript", digest("native-layout-2".toByteArray() + manifestBytes).take(20), "$platform-$arch"
+			cacheRoot.toString(),
+			"bifoil-choicescript",
+			digest("native-layout-2".toByteArray() + manifestBytes).take(20),
+			"$platform-$arch"
 		)
 
 		if (Files.exists(target.resolve("ready"))) return target
@@ -101,7 +104,8 @@ object BundledRuntime {
 							entry = zip.nextEntry
 							continue
 						}
-						val executable = if (SystemInfo.isWindows) "bifoil-language-server.exe" else "bifoil-language-server"
+						val executable =
+							if (SystemInfo.isWindows) "bifoil-language-server.exe" else "bifoil-language-server"
 						// Keep the executable as short as the bundled Node path. Windows
 						// CreateProcess can reject a valid NIO path beyond 260 characters.
 						if (entry.name == host + executable) file = Path.of(languageServer(target))

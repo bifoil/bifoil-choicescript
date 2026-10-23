@@ -1,7 +1,6 @@
 package dev.bifoil.choicescript
 
 import com.intellij.openapi.util.io.FileUtil
-import com.intellij.platform.eel.fs.EelFiles
 import junit.framework.TestCase
 import java.nio.file.Files
 import java.nio.file.Path
@@ -13,7 +12,7 @@ class ChoiceRuntimeTest : TestCase() {
 		try {
 			val root = BundledRuntime.directory(cache)
 			assertTrue(root.startsWith(cache))
-			assertEquals("verified", EelFiles.readString(root.resolve("ready")))
+			assertEquals("verified", Files.newBufferedReader(root.resolve("ready")).use { it.readText() })
 			val node = Path.of(BundledRuntime.node(root))
 			val native = Path.of(BundledRuntime.languageServer(root))
 			assertTrue(Files.size(node) > 1_000_000)

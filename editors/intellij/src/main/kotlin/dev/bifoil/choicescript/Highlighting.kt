@@ -72,7 +72,7 @@ object ChoiceColors {
 
 	/**
 	 * Resolve a semantic style and merge bold/italic with the current scheme's attributes.
-	 * Derived keys include the attributes hash so switching schemes does not reuse stale colors.
+	 * Derived keys include the attributes hash, so switching schemes do not reuse stale colors.
 	 */
 	fun key(name: String, modifiers: List<String>): TextAttributesKey? {
 		val base = keys[name] ?: return null
@@ -219,10 +219,8 @@ class ChoiceLexer : LexerBase() {
 		if (buffer[start] == '"') {
 			var stop = start + 1
 
-			while (stop < lineEnd) {
-				if (buffer[stop] == '\\') stop = (stop + 2).coerceAtMost(lineEnd)
-				else if (buffer[stop++] == '"') break
-			}
+			while (stop < lineEnd) if (buffer[stop] == '\\') stop = (stop + 2).coerceAtMost(lineEnd)
+			else if (buffer[stop++] == '"') break
 
 			token("string", stop)
 			return

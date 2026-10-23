@@ -39,6 +39,7 @@ import java.awt.BorderLayout
 import java.net.URI
 import java.nio.file.Path
 import java.util.*
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap.newKeySet
 import java.util.concurrent.atomic.AtomicLong
 import javax.swing.Icon
@@ -149,8 +150,10 @@ class ChoiceUi(private val project: Project) : Disposable {
 			)
 		}
 
-		if (event.kind == "preview" && event.url != null) {
-			console.printHyperlink("Preview: ${event.url}\n") { BrowserUtil.browse(event.url) }
+		if (event.kind == "preview" && event.url != null) console.printHyperlink("Preview: ${event.url}\n") {
+			BrowserUtil.browse(
+				event.url
+			)
 		}
 
 		if (event.kind == "stale") previews[event.jobId]?.displayName =
@@ -301,7 +304,7 @@ class ChoiceToolWindow : ToolWindowFactory {
  */
 fun <T> request(
 	project: Project,
-	callback: (ChoiceServer) -> java.util.concurrent.CompletableFuture<T>,
+	callback: (ChoiceServer) -> CompletableFuture<T>,
 	onError: () -> Unit = {},
 	done: (T?) -> Unit = {}
 ) {

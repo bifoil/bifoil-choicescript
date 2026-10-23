@@ -16,6 +16,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.StandardFileSystems
 import java.awt.Point
 import java.nio.file.Path
+import java.util.concurrent.CompletableFuture
 
 /**
  * Latest-job coverage state mirrored from the shared TypeScript store.
@@ -98,12 +99,10 @@ class ChoiceCoverage(private val project: Project) : Disposable, EditorFactoryLi
 
 					if (game == null && games.any {
 							filePath.startsWith(Path.of(it.assetDir))
-						}) {
-						request(project, { server ->
-							server.assetChanged(mapOf("uri" to filePath.toUri().toString()))
-							java.util.concurrent.CompletableFuture.completedFuture(Unit)
-						})
-					}
+						}) request(project, { server ->
+						server.assetChanged(mapOf("uri" to filePath.toUri().toString()))
+						CompletableFuture.completedFuture(Unit)
+					})
 
 					if (changed) refresh()
 				}

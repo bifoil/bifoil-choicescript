@@ -17,8 +17,11 @@ import org.eclipse.lsp4j.Position
 import org.eclipse.lsp4j.SemanticTokensParams
 import org.eclipse.lsp4j.TextDocumentIdentifier
 import org.eclipse.lsp4j.services.LanguageServer
+import java.lang.management.ManagementFactory
 import java.nio.file.Files
+import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.atomic.AtomicLong
 
 /** Original disposable scale fixture, exercised through the IDE-owned client and document synchronizer. */
 class ChoiceScaleTest : BasePlatformTestCase() {
@@ -32,20 +35,18 @@ class ChoiceScaleTest : BasePlatformTestCase() {
 			writer.append("*finish\n")
 		}
 		val narrative = "one two three four five six seven eight nine ten ".repeat(10).trimEnd()
-		for (chapter in 1..20) {
-			Files.newBufferedWriter(scenes.resolve("chapter$chapter.txt")).use { writer ->
-				var row = 0
-				while (row < 10000) {
-					if (row % 500 == 0) {
-						writer.append("\"$narrative\n*if flag\n  $narrative\"\n*else\n  $narrative\"\n")
-						row += 3
-					} else {
-						writer.append(narrative).append('\n')
-						row++
-					}
+		for (chapter in 1..20) Files.newBufferedWriter(scenes.resolve("chapter$chapter.txt")).use { writer ->
+			var row = 0
+			while (row < 10000) {
+				if (row % 500 == 0) {
+					writer.append("\"$narrative\n*if flag\n  $narrative\"\n*else\n  $narrative\"\n")
+					row += 3
+				} else {
+					writer.append(narrative).append('\n')
+					row++
 				}
-				writer.append("*gosub increment\n*finish\n*label increment\n*set score +1\n*return\n")
 			}
+			writer.append("*gosub increment\n*finish\n*label increment\n*set score +1\n*return\n")
 		}
 		val root = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(directory)!!
 		root.refresh(false, true)
@@ -73,8 +74,8 @@ class ChoiceScaleTest : BasePlatformTestCase() {
 			val phase = activeEdit
 			val began = System.nanoTime()
 			val epochMs = System.currentTimeMillis()
-			val sent = java.util.concurrent.atomic.AtomicLong()
-			val received = java.util.concurrent.atomic.AtomicLong()
+			val sent = AtomicLong()
+			val received = AtomicLong()
 			val result = PlatformTestUtil.callOnBgtSynchronously({
 				client.sendRequestSync(1000) { server ->
 					sent.set(System.nanoTime())
@@ -101,7 +102,7 @@ class ChoiceScaleTest : BasePlatformTestCase() {
 			}, 20)
 			val client = manager.getClients(ChoiceIntegration::class.java).single()
 			PlatformTestUtil.waitWithEventsDispatching("Scale project notification was not delivered", {
-				ChoiceUi.get(project).projects.any { java.nio.file.Path.of(it.sceneDir) == scenes }
+				ChoiceUi.get(project).projects.any { Path.of(it.sceneDir) == scenes }
 			}, 10)
 			val startupID = TextDocumentIdentifier(startup.toUri().toString())
 			timed("initial-hover") {
@@ -123,9 +124,10 @@ class ChoiceScaleTest : BasePlatformTestCase() {
 					request(client) { it.textDocumentService.semanticTokensFull(SemanticTokensParams(id)) }!!
 				}
 				assertFalse("Empty scale highlighting", tokens.data.isEmpty())
-				for (index in tokens.data.indices step 5) {
-					if (ChoiceColors.names[tokens.data[index + 3]] in listOf("narrative", "dialogue")) narrativeSpans++
-				}
+				for (index in tokens.data.indices step 5) if (ChoiceColors.names[tokens.data[index + 3]] in listOf(
+						"narrative", "dialogue"
+					)
+				) narrativeSpans++
 				words += timed("word-count-${source.fileName}") {
 					request(client) { (it as ChoiceServer).wordCount(mapOf("uri" to source.toUri().toString())) }!!
 				}
@@ -140,8 +142,7 @@ class ChoiceScaleTest : BasePlatformTestCase() {
 			)) {
 				activeEdit = type
 				timed("typing-to-current-hover-$type") {
-					val beforeGC =
-						java.lang.management.ManagementFactory.getGarbageCollectorMXBeans().sumOf { it.collectionTime }
+					val beforeGC = ManagementFactory.getGarbageCollectorMXBeans().sumOf { it.collectionTime }
 					val started = System.nanoTime()
 					WriteCommandAction.runWriteCommandAction(project) {
 						document.replaceString(14, 14 + previous.length, value)
@@ -150,13 +151,11 @@ class ChoiceScaleTest : BasePlatformTestCase() {
 					val requested = System.nanoTime()
 					val hover =
 						request(client) { it.textDocumentService.hover(HoverParams(startupID, Position(0, 9))) }!!
-					editPhases.add(
-						mapOf(
+					editPhases += mapOf(
 						"type" to type,
 						"writeMs" to writeMs,
 						"requestMs" to (System.nanoTime() - requested) / 1_000_000.0,
-						"gcMs" to java.lang.management.ManagementFactory.getGarbageCollectorMXBeans()
-							.sumOf { it.collectionTime } - beforeGC))
+						"gcMs" to ManagementFactory.getGarbageCollectorMXBeans().sumOf { it.collectionTime } - beforeGC)
 					assertTrue("Stale scale type after edit", "Type: `$type`" in hover.contents.right.value)
 					previous = value
 				}

@@ -11,7 +11,9 @@ import org.eclipse.lsp4j.jsonrpc.Launcher
 import org.eclipse.lsp4j.services.LanguageClient
 import java.awt.Font
 import java.nio.file.Files
+import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
@@ -61,8 +63,10 @@ class ChoiceIntegrationTest : BasePlatformTestCase() {
 		val text = "Original ordinary prose."
 		lexer.start(text, 0, text.length, 0)
 		assertEquals(ChoiceColors.tokens.getValue("narrative"), lexer.tokenType)
-		assertEquals(listOf(ChoiceColors.keys.getValue("narrative")),
-			ChoiceHighlighter().getTokenHighlights(lexer.tokenType!!).toList())
+		assertEquals(
+			listOf(ChoiceColors.keys.getValue("narrative")),
+			ChoiceHighlighter().getTokenHighlights(lexer.tokenType!!).toList()
+		)
 		assertNull(ChoiceColors.semanticKey("narrative", emptyList()))
 		assertNotNull(ChoiceColors.semanticKey("narrative", listOf("bold")))
 		assertNotNull(ChoiceColors.semanticKey("narrative", listOf("italic")))
@@ -77,19 +81,23 @@ class ChoiceIntegrationTest : BasePlatformTestCase() {
 		Files.writeString(directory.resolve("scenes/startup.txt"), text)
 		Files.writeString(directory.resolve("notes.txt"), "Unrelated notes")
 
-		val file = LocalFileSystem.getInstance()
-			.refreshAndFindFileByNioFile(directory.resolve("scenes/startup.txt"))!!
-		val notes = LocalFileSystem.getInstance()
-			.refreshAndFindFileByNioFile(directory.resolve("notes.txt"))!!
+		val file = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(directory.resolve("scenes/startup.txt"))!!
+		val notes = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(directory.resolve("notes.txt"))!!
 		assertTrue(ChoiceProjects.supports(project, file))
 		assertFalse(ChoiceProjects.supports(project, notes))
 		assertEquals(ChoiceLanguage, PsiManager.getInstance(project).findFile(file)!!.language)
 
 		val runtime = BundledRuntime.directory()
-		val executable = java.nio.file.Path.of(BundledRuntime.languageServer(runtime))
+		val executable = Path.of(BundledRuntime.languageServer(runtime))
 		assertTrue("Host native executable was not extracted", Files.isRegularFile(executable))
-		assertFalse("Native executable was extracted twice", Files.exists(runtime.resolve("server/native/win32-x64/bifoil-language-server.exe")))
-		assertTrue("Native executable path exceeds the existing Node launch path", executable.toString().length <= BundledRuntime.node(runtime).length)
+		assertFalse(
+			"Native executable was extracted twice",
+			Files.exists(runtime.resolve("server/native/win32-x64/bifoil-language-server.exe"))
+		)
+		assertTrue(
+			"Native executable path exceeds the existing Node launch path",
+			executable.toString().length <= BundledRuntime.node(runtime).length
+		)
 		val process = ChoiceDescriptor(project).startServerProcess().process
 		val diagnostics = LinkedBlockingQueue<PublishDiagnosticsParams>()
 		val client = object : LanguageClient {
@@ -111,9 +119,9 @@ class ChoiceIntegrationTest : BasePlatformTestCase() {
 			override fun refreshSemanticTokens() = CompletableFuture.completedFuture<Void>(null)
 		}
 
-		val launcher = Launcher.Builder<ChoiceServer>().setLocalService(client)
-			.setRemoteInterface(ChoiceServer::class.java).setInput(process.inputStream).setOutput(process.outputStream)
-			.create()
+		val launcher =
+			Launcher.Builder<ChoiceServer>().setLocalService(client).setRemoteInterface(ChoiceServer::class.java)
+				.setInput(process.inputStream).setOutput(process.outputStream).create()
 		val listening = launcher.startListening()
 
 		try {
@@ -133,10 +141,7 @@ class ChoiceIntegrationTest : BasePlatformTestCase() {
 			server.textDocumentService.didOpen(
 				DidOpenTextDocumentParams(
 					TextDocumentItem(
-						uri,
-						"choicescript",
-						1,
-						text
+						uri, "choicescript", 1, text
 					)
 				)
 			)
@@ -190,7 +195,7 @@ class ChoiceIntegrationTest : BasePlatformTestCase() {
 					)
 				).get(10, TimeUnit.SECONDS)
 				fail("Untrusted execution must be refused")
-			} catch (error: java.util.concurrent.ExecutionException) {
+			} catch (error: ExecutionException) {
 				assertTrue("Trust" in error.cause.toString())
 			}
 

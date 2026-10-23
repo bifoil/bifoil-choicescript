@@ -2,18 +2,14 @@ package dev.bifoil.choicescript
 
 import com.intellij.execution.impl.ConsoleViewImpl
 import com.intellij.ide.trustedProjects.TrustedProjects
-import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.actionSystem.DataContext
-import com.intellij.openapi.actionSystem.ActionPlaces
-import com.intellij.openapi.actionSystem.ActionUiKind
+import com.intellij.openapi.actionSystem.*
+import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.components.service
 import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.TestDialogManager
 import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.project.DumbService
-import com.intellij.openapi.actionSystem.AnAction
-import com.intellij.openapi.actionSystem.Presentation
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.platform.lsp.api.LspClientManager
@@ -53,14 +49,18 @@ class ChoiceUiTest : BasePlatformTestCase() {
 
 		fun awaitOutput(needle: String) {
 			try {
-				PlatformTestUtil.waitWithEventsDispatching("Missing operation output: $needle", { needle in text() }, 20)
+				PlatformTestUtil.waitWithEventsDispatching(
+					"Missing operation output: $needle", { needle in text() }, 20
+				)
 			} catch (error: AssertionError) {
 				throw AssertionError("$needle; console=${text()}; dialogs=$dialogs", error)
 			}
 		}
 
 		fun perform(action: AnAction) {
-			PlatformTestUtil.waitWithEventsDispatching("Indexing did not settle before action", { !DumbService.isDumb(project) }, 20)
+			PlatformTestUtil.waitWithEventsDispatching(
+				"Indexing did not settle before action", { !DumbService.isDumb(project) }, 20
+			)
 			assertTrue("Action disabled: ${action.javaClass.simpleName}", myFixture.testAction(action).isEnabled)
 		}
 
@@ -123,9 +123,17 @@ class ChoiceUiTest : BasePlatformTestCase() {
 			val current = ui.sessionStarted()
 			ui.sessionEnded(retired)
 			UIUtil.dispatchAllInvocationEvents()
-			assertEquals("Older server exit cleared current UI", previousStops, Regex("Language server stopped").findAll(text()).count())
+			assertEquals(
+				"Older server exit cleared current UI",
+				previousStops,
+				Regex("Language server stopped").findAll(text()).count()
+			)
 			ui.sessionEnded(current)
-			PlatformTestUtil.waitWithEventsDispatching("Current server exit was not displayed", { Regex("Language server stopped").findAll(text()).count() == previousStops + 1 }, 10)
+			PlatformTestUtil.waitWithEventsDispatching(
+				"Current server exit was not displayed",
+				{ Regex("Language server stopped").findAll(text()).count() == previousStops + 1 },
+				10
+			)
 		} finally {
 			if (previousProgressMode == null) System.clearProperty("intellij.progress.task.ignoreHeadless")
 			else System.setProperty("intellij.progress.task.ignoreHeadless", previousProgressMode)
@@ -139,11 +147,20 @@ class ChoiceUiTest : BasePlatformTestCase() {
 	}
 
 	fun testActionsWithoutAProjectDoNotStartRequests() {
-		val event = AnActionEvent.createEvent(DataContext.EMPTY_CONTEXT,
-			Presentation(), ActionPlaces.UNKNOWN, ActionUiKind.NONE, null)
-		for (action in listOf(NewProjectAction(), RunAction(), StopAction(), QuickTestAction(), RandomTestAction(), ExportAction(), WordCountAction(), BoldAction())) {
-			action.actionPerformed(event)
-		}
+		val event = AnActionEvent.createEvent(
+			DataContext.EMPTY_CONTEXT, Presentation(), ActionPlaces.UNKNOWN, ActionUiKind.NONE, null
+		)
+		for (action in listOf(
+			NewProjectAction(),
+			RunAction(),
+			StopAction(),
+			QuickTestAction(),
+			RandomTestAction(),
+			ExportAction(),
+			WordCountAction(),
+			BoldAction()
+		))
+			ActionUtil.performAction(action, event)
 		assertTrue(QuoteWarningsAction().isSelected(event))
 		QuoteWarningsAction().setSelected(event, false)
 	}
