@@ -51,11 +51,7 @@ const targets = serverOnly
 await stageNativeArtifacts("dist/server", targets);
 manifest["server.zip"] = await zipDir("dist/server", "server.zip");
 
-for (const target of serverOnly
-  ? []
-  : process.argv.includes("--current")
-    ? [`${process.platform}-${process.arch}`]
-    : Object.keys(lock.archives)) {
+for (const target of serverOnly ? [] : targets) {
   const dir = await provision(target);
   manifest[`node-${target}.zip`] = await zipDir(dir, `node-${target}.zip`);
 }

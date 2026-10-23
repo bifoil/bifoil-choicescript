@@ -97,25 +97,6 @@ func countWords(text string) uint32 {
 	return words
 }
 
-// Pure prose needs only source extents, punctuation events, and a 14-state
-// transfer. Its full text can be released even while every semantic result remains
-// available. This is lossless compaction, not a syntax-only or scene-only mode.
-func (d *Document) compactText(checks ...func() error) {
-	d.Widths = make([]uint32, d.RowCount())
-	d.WordCounts = make([]uint32, d.RowCount())
-	d.RawRows = make(map[uint32]string)
-	d.Templates = make(map[uint32]textTemplate)
-	for line := uint32(1); line < uint32(d.RowCount()); line++ {
-		if line&63 == 0 && len(checks) > 0 && checks[0] != nil {
-			if err := checks[0](); err != nil {
-				panic(cancelledParse{err})
-			}
-		}
-		d.compactRow(line, d.raw(line))
-	}
-	d.Text = ""
-}
-
 func (d *Document) proseTransfer(line uint32, quote uint8, paragraph bool) uint8 {
 	template, has := d.Templates[line]
 	if !has {

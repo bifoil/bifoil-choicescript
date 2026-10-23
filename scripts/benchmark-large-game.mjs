@@ -23,9 +23,10 @@ const scenes = Number(process.argv[2] ?? 1000),
 assert(Number.isSafeInteger(scenes) && scenes >= 2 && scenes <= 10000);
 assert(Number.isSafeInteger(wordsPerScene) && wordsPerScene >= 1000 && wordsPerScene <= 1000000);
 
-const resultFile = await artifactPath(process.argv[4] ?? ".bifoil-choicescript/development/large-game/benchmark.json", [
-  ".bifoil-choicescript/development",
-]);
+const resultFile = await artifactPath(
+  process.argv[4] ?? ".bifoil-choicescript/development/evidence/performance-30m/benchmark.json",
+  [".bifoil-choicescript/development"],
+);
 await mkdir(path.dirname(resultFile), { recursive: true });
 
 const dir = await mkdtemp(path.join(os.tmpdir(), "bifoil thirty million Ω "));
