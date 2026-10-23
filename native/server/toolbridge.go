@@ -296,8 +296,8 @@ func (s *nativeServer) executeTool(ctx context.Context, request toolRequest) (an
 	var project *gameProject
 	for i := range s.projects {
 		if s.projects[i].ID == request.ProjectID {
-			copy := s.projects[i]
-			project = &copy
+			cloned := s.projects[i]
+			project = &cloned
 			break
 		}
 	}
@@ -329,7 +329,7 @@ func (s *nativeServer) executeTool(ctx context.Context, request toolRequest) (an
 	if err != nil {
 		return nil, err
 	}
-	defer os.RemoveAll(capture)
+	defer removeNativeTemporaryDirectory(capture)
 	refs := make([]capturedBuffer, 0, len(buffers))
 	for i, buffer := range buffers {
 		if err = pendingCtx.Err(); err != nil {

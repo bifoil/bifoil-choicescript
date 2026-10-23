@@ -16,15 +16,15 @@ type proseEvent struct {
 // strings remain opaque code. Multireplace alternatives retain their independent
 // paragraph-entry state, including repeated opening quotation conventions.
 func proseEvents(raw string, allowFirst bool) []proseEvent {
-	result := []proseEvent{}
+	var result []proseEvent
 	first := true
 	for i := 0; i < len(raw); {
 		if kind, open, ok := substitution(raw, i); ok {
-			close := matching(raw, open)
-			if close < 0 {
+			closing := matching(raw, open)
+			if closing < 0 {
 				return append(result, proseEvent{kind: '!', text: raw[i:]})
 			}
-			body := raw[open+1 : close]
+			body := raw[open+1 : closing]
 			if kind == '$' {
 				result = append(result, proseEvent{kind: '$', text: body})
 			} else {
@@ -54,12 +54,12 @@ func proseEvents(raw string, allowFirst bool) []proseEvent {
 				}
 			}
 			first = false
-			i = close + 1
+			i = closing + 1
 			continue
 		}
 		if raw[i] == '[' {
-			if close := strings.IndexByte(raw[i+1:], ']'); close >= 0 {
-				end := i + close + 2
+			if closing := strings.IndexByte(raw[i+1:], ']'); closing >= 0 {
+				end := i + closing + 2
 				result = append(result, proseEvent{kind: '[', text: raw[i:end]})
 				i = end
 				continue

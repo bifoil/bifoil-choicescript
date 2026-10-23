@@ -209,8 +209,8 @@ func (d *Document) cloneSourceRows() {
 		copied.pages = append([]*sourceRowPage(nil), original.pages...)
 		for index, page := range copied.pages {
 			if page != nil {
-				copy := *page
-				copied.pages[index] = &copy
+				cloned := *page
+				copied.pages[index] = &cloned
 			}
 		}
 	}
@@ -222,15 +222,15 @@ func (d *Document) cloneSourceRows() {
 func (d *Document) cloneQueryLineTable() {
 	if d.rowData != nil {
 		original := d.rowData
-		copy := *original
-		copy.nodes = make([]queryRow, len(original.nodes))
-		for index := range copy.nodes {
-			copy.nodes[index] = original.node(index)
+		cloned := *original
+		cloned.nodes = make([]queryRow, len(original.nodes))
+		for index := range cloned.nodes {
+			cloned.nodes[index] = original.node(index)
 		}
-		copy.pages = nil
-		copy.owner = nil
-		copy.linksShared = true
-		d.rowData = &copy
+		cloned.pages = nil
+		cloned.owner = nil
+		cloned.linksShared = true
+		d.rowData = &cloned
 	}
 }
 

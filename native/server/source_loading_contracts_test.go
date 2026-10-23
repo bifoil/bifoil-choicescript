@@ -79,7 +79,7 @@ func TestSmallSourceReaderHandlesGrowthAndClosedInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	text := "Original 😀\r\nsecond line"
 	if _, err = file.WriteString(text); err != nil {
 		t.Fatal(err)
@@ -108,7 +108,9 @@ func TestSmallSourceReaderHandlesGrowthAndClosedInputs(t *testing.T) {
 	if sameDiskSnapshot(info, after) {
 		t.Fatal("changed file retained cache identity")
 	}
-	file.Close()
+	if err = file.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = readSmallSource(context.Background(), file, 10); err == nil {
 		t.Fatal("closed source error hidden")
 	}

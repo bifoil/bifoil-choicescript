@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"reflect"
 	"strings"
@@ -52,7 +53,7 @@ func TestLineSizingPreservesBoundariesPositionAndCompleteParse(t *testing.T) {
 	cancel()
 	reader := bytes.NewReader([]byte("original"))
 	_, _ = reader.Seek(2, io.SeekStart)
-	if _, err := CountSourceLines(ctx, reader); err != context.Canceled {
+	if _, err := CountSourceLines(ctx, reader); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	if position, _ := reader.Seek(0, io.SeekCurrent); position != 2 {

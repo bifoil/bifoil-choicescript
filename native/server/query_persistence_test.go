@@ -61,7 +61,7 @@ func TestEvictionPersistsEveryResultAndWaitsForResponseReaders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	restored, err := core.ReadSnapshot(file)
 	if err != nil {
 		t.Fatal(err)

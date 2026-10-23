@@ -145,9 +145,9 @@ func (d *sourceJSON) value(path string, depth int) error {
 		}
 	case '{', '[':
 		d.output.WriteByte(b)
-		close := byte('}')
+		closeSource := byte('}')
 		if b == '[' {
-			close = ']'
+			closeSource = ']'
 		}
 		if err := d.space(); err != nil {
 			return err
@@ -156,8 +156,8 @@ func (d *sourceJSON) value(path string, depth int) error {
 		if err != nil {
 			return err
 		}
-		if next == close {
-			d.output.WriteByte(close)
+		if next == closeSource {
+			d.output.WriteByte(closeSource)
 			break
 		}
 		_ = d.input.UnreadByte()
@@ -207,7 +207,7 @@ func (d *sourceJSON) value(path string, depth int) error {
 				return err
 			}
 			d.output.WriteByte(delimiter)
-			if delimiter == close {
+			if delimiter == closeSource {
 				break
 			}
 			if delimiter != ',' {

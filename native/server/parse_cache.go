@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/sha256"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -153,7 +152,7 @@ func (c *parseCache) loadReader(ctx context.Context, identity core.Source, reade
 		counted := began
 		defer func() {
 			if size > 8*1024*1024 && os.Getenv("BIFOIL_NATIVE_TIMINGS") != "" {
-				fmt.Fprintf(os.Stderr, "native lexical bytes=%d reader=%T count=%.1f parse=%.1f\n", size, reader, float64(counted.Sub(began).Microseconds())/1000, float64(time.Since(counted).Microseconds())/1000)
+				writeStderrf("native lexical bytes=%d reader=%T count=%.1f parse=%.1f\n", size, reader, float64(counted.Sub(began).Microseconds())/1000, float64(time.Since(counted).Microseconds())/1000)
 			}
 		}()
 		if size <= 8*1024*1024 {

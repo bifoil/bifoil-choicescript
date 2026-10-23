@@ -327,11 +327,11 @@ func (e *expressionParser) value() uint32 {
 		return 0
 	}
 	if t.Text == "(" || t.Text == "{" {
-		close := ")"
+		closing := ")"
 		if t.Text == "{" {
-			close = "}"
+			closing = "}"
 		}
-		value := e.expression(close, false)
+		value := e.expression(closing, false)
 		if t.Text == "{" {
 			return p.appendExpr(expr{Kind: exIndirect, A: value})
 		}

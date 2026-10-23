@@ -15,7 +15,7 @@ var metadataCommands = map[string]bool{"scene_list": true, "stat_chart": true, "
 var declarationCommands = map[string]bool{"create": true, "temp": true, "create_array": true, "temp_array": true}
 var expressionCommands = map[string]bool{"if": true, "elseif": true, "elsif": true, "selectable_if": true, "print": true, "looplimit": true}
 var transferCommands = map[string]bool{"goto": true, "goto_scene": true, "redirect_scene": true, "gotoref": true, "finish": true, "ending": true, "return": true, "abort": true, "restart": true}
-var markupPattern = regexp.MustCompile(`(?i)^\[/?(?:b|i|u|s|url|n|c)(?:=[^\]]*)?/?]`)
+var markupPattern = regexp.MustCompile(`(?i)^\[/?(?:b|i|u|s|url|n|c)(?:=[^]]*)?/?]`)
 var chartPattern = regexp.MustCompile(`^(percent|opposed_pair|text)\s+(\w+)`)
 var randomCondition = regexp.MustCompile(`\*if\s+\((.*)\)\s+\S+\s*$`)
 
@@ -70,15 +70,15 @@ func (p *parser) narrative(text string, line, offset uint32) {
 		}
 		kind, open, found := substitution(text, i)
 		if found {
-			close := matching(text, open)
+			closing := matching(text, open)
 			startColumn := column
-			if close < 0 {
+			if closing < 0 {
 				p.doc.Diagnostics = append(p.doc.Diagnostics, diagnostic(line, startColumn, units(text[i:]), "interpolation-close", "Substitution must close on this line.", 1))
 				p.doc.Syntax = append(p.doc.Syntax, Token{Line: line, Start: startColumn, Length: units(text[i:]), Type: Interpolation})
 				return
 			}
-			p.doc.Syntax = append(p.doc.Syntax, Token{Line: line, Start: startColumn, Length: uint32(open - i + 1), Type: Interpolation}, Token{Line: line, Start: column + units(text[i:close]), Length: 1, Type: Interpolation})
-			body := text[open+1 : close]
+			p.doc.Syntax = append(p.doc.Syntax, Token{Line: line, Start: startColumn, Length: uint32(open - i + 1), Type: Interpolation}, Token{Line: line, Start: column + units(text[i:closing]), Length: 1, Type: Interpolation})
+			body := text[open+1 : closing]
 			bodyColumn := column + uint32(open-i+1)
 			if kind == '$' {
 				id := p.addExpression(body, line, bodyColumn, false)
@@ -103,13 +103,13 @@ func (p *parser) narrative(text string, line, offset uint32) {
 					}
 				}
 				if cut < 0 {
-					p.doc.Diagnostics = append(p.doc.Diagnostics, diagnostic(line, startColumn, units(text[i:close+1]), "multireplace-options", "Multireplace requires an expression and alternatives separated by |.", 1))
+					p.doc.Diagnostics = append(p.doc.Diagnostics, diagnostic(line, startColumn, units(text[i:closing+1]), "multireplace-options", "Multireplace requires an expression and alternatives separated by |.", 1))
 				} else {
 					p.addExpression(body[:cut], line, bodyColumn, false)
 					_, spaceBytes := utf8.DecodeRuneInString(body[cut:])
 					options := body[cut+spaceBytes:]
 					if !strings.Contains(options, "|") {
-						p.doc.Diagnostics = append(p.doc.Diagnostics, diagnostic(line, startColumn, units(text[i:close+1]), "multireplace-options", "Provide at least two alternatives.", 1))
+						p.doc.Diagnostics = append(p.doc.Diagnostics, diagnostic(line, startColumn, units(text[i:closing+1]), "multireplace-options", "Provide at least two alternatives.", 1))
 					}
 					position := bodyColumn + units(body[:cut+spaceBytes])
 					for part := range strings.SplitSeq(options, "|") {
@@ -118,8 +118,8 @@ func (p *parser) narrative(text string, line, offset uint32) {
 					}
 				}
 			}
-			column += units(text[i : close+1])
-			i = close + 1
+			column += units(text[i : closing+1])
+			i = closing + 1
 			continue
 		}
 		if text[i] == '[' {
@@ -610,7 +610,7 @@ func parseSourceLines(source Source, scope uint32, names *registry, values *valu
 			} else {
 				p.narrative(body, line, indentUnits)
 			}
-		} else if kind == prose || kind == option {
+		} else {
 			start := indentBytes
 			if kind == option {
 				doc.Syntax = append(doc.Syntax, Token{Line: line, Start: indentUnits, Length: 1, Type: Operator})
@@ -622,7 +622,7 @@ func parseSourceLines(source Source, scope uint32, names *registry, values *valu
 			node = doc.rowAt(int(index))
 		}
 		commandName := names.Names[node.Command]
-		if kind != blank && kind != comment {
+		if kind != comment {
 			prev := frame.previous
 			previousCommand := ""
 			if prev != 0 {

@@ -176,7 +176,7 @@ func parseNativeSource(ctx context.Context, file string, buffers map[string]open
 		}
 		diskInfo = info
 		if info.Size() > 1024*1024 {
-			defer input.Close()
+			defer closeNativeFile(input)
 			source := core.Source{URI: pathURI(file)}
 			var digest sourceDigest
 			var parsed *core.ParsedSource

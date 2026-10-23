@@ -65,7 +65,7 @@ func (p *Project) AddParsed(parsed *ParsedSource) *Document {
 // analysis can mutate. The original detached parse remains safe to serialize in
 // a bounded cache worker; source strings and other immutable arenas stay shared.
 func (p *ParsedSource) CloneForTransfer() *ParsedSource {
-	copy := *p
+	cloned := *p
 	document := *p.document
 	document.Rows = append([]row(nil), document.Rows...)
 	document.cloneSourceRows()
@@ -76,6 +76,6 @@ func (p *ParsedSource) CloneForTransfer() *ParsedSource {
 		maps.Copy(names, document.TokenName)
 		document.TokenName = names
 	}
-	copy.document = &document
-	return &copy
+	cloned.document = &document
+	return &cloned
 }

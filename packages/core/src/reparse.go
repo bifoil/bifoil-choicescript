@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// A line recipe describes an exact same-line transformation from an immutable
+// SourceLineEdit describes an exact same-line transformation from an immutable
 // parsed baseline. The host creates recipes from validated document edits; no
 // caller-supplied pathname or cache record is adopted.
 type SourceLineEdit struct{ Before, After string }

@@ -209,7 +209,7 @@ type textStoreReader struct {
 
 func (r *textStoreReader) PhysicalLineCount() int { return r.lineCount }
 
-// This fingerprint belongs to immutable owned captures, never to a client-supplied
+// SourceDigest fingerprints immutable owned captures, never a client-supplied
 // pathname. Edited piece tables have no fingerprint until their new bytes are read.
 func (r *textStoreReader) SourceDigest() ([32]byte, bool) { return r.digest, r.hasDigest }
 func (s *textStore) reader() *textStoreReader {
@@ -342,7 +342,7 @@ func bufferMatchesFile(buffer openBuffer, name string) bool {
 	if err != nil {
 		return false
 	}
-	defer file.Close()
+	defer closeNativeFile(file)
 	left, right := make([]byte, 65536), make([]byte, 65536)
 	source := bufferReader(buffer)
 	for {

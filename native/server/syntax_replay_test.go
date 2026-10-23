@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -178,7 +179,7 @@ func TestSyntaxReplayMultipleLinesAndObsoleteCompletion(t *testing.T) {
 	}
 	cancelled, stop := context.WithCancel(ctx)
 	stop()
-	if _, err = cache.replay(cancelled, core.Source{URI: uri, Version: 3}); err != context.Canceled {
+	if _, err = cache.replay(cancelled, core.Source{URI: uri, Version: 3}); !errors.Is(err, context.Canceled) {
 		t.Fatal("cancelled replay succeeded", err)
 	}
 }

@@ -10,7 +10,7 @@ const mixedScope = ^uint32(0)
 // Observed token facts replace per-line environment snapshots. Full flow still
 // carries its complete environment; display keeps only each reference's value
 // and binding scope. Narrative substitutions separately retain their quote facts.
-func (p *Project) recordRowTokens(d *Document, n *row, line, root uint32, expressionValue Value) {
+func (p *Project) recordRowTokens(d *Document, n *row, root uint32, expressionValue Value) {
 	index := d.Scope - 1
 	c := p.names.Names[n.Command]
 	parameter := 0

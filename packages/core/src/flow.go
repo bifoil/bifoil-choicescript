@@ -717,7 +717,7 @@ func (p *Project) run(ctx context.Context) error {
 			if !p.disableTokenFacts {
 				for _, current := range run.FactRows {
 					node := d.lexicalRow(int(current))
-					p.recordRowTokens(d, &node, current, input.env, UnknownType)
+					p.recordRowTokens(d, &node, input.env, UnknownType)
 				}
 			} else if run.whole {
 				observed.env = input.env
@@ -750,7 +750,7 @@ func (p *Project) run(ctx context.Context) error {
 			expressionValue = p.eval(d, n.Expr, input.env)
 		}
 		if !p.disableTokenFacts {
-			p.recordRowTokens(d, &n, line, input.env, expressionValue)
+			p.recordRowTokens(d, &n, input.env, expressionValue)
 		} else {
 			for id := n.TokenStart; id < n.TokenStart+n.TokenCount; id++ {
 				if name := d.TokenName[id]; name != 0 {

@@ -78,7 +78,7 @@ func literalLine(text string) (*ParsedSource, []Token, bool) {
 	return parsed, d.Syntax[1:], true
 }
 
-// An unused literal has no consumers in the completed dependency inventory.
+// PatchUnusedLiteral updates a literal with no consumers in the completed dependency inventory.
 // Relexing proves the command, binding, indentation and declaration prefix stay
 // identical. All other flow/type/dialogue facts are therefore still complete;
 // this updates the changed declaration's exact type and UTF-16 ranges only.

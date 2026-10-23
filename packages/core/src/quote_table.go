@@ -33,12 +33,12 @@ func quoteTextVector(raw string, state [14]uint8, paragraphs uint16, depth int) 
 	first := true
 	for i := 0; i < len(raw); {
 		if kind, open, ok := substitution(raw, i); ok {
-			close := matching(raw, open)
-			if close < 0 {
+			closing := matching(raw, open)
+			if closing < 0 {
 				return state, false
 			}
 			if kind == '@' {
-				body := raw[open+1 : close]
+				body := raw[open+1 : closing]
 				cut, nesting := -1, 0
 				for j, ch := range body {
 					if ch == '(' {
@@ -73,12 +73,12 @@ func quoteTextVector(raw string, state [14]uint8, paragraphs uint16, depth int) 
 				state = joined
 			}
 			first = false
-			i = close + 1
+			i = closing + 1
 			continue
 		}
 		if raw[i] == '[' {
-			if close := strings.IndexByte(raw[i+1:], ']'); close >= 0 {
-				i += close + 2
+			if closing := strings.IndexByte(raw[i+1:], ']'); closing >= 0 {
+				i += closing + 2
 				continue
 			}
 		}

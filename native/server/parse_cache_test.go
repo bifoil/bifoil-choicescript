@@ -108,7 +108,9 @@ func TestUnavailableAndCorruptSyntaxCachesKeepCompleteAnalysis(t *testing.T) {
 				cache.write(original, sha256.Sum256([]byte(source.Text)))
 				original.Discard()
 				if kind == "closed" {
-					cache.file.Close()
+					if err := cache.file.Close(); err != nil {
+						t.Fatal(err)
+					}
 				} else {
 					if _, err := cache.file.WriteAt([]byte("corrupt"), 0); err != nil {
 						t.Fatal(err)
@@ -153,7 +155,9 @@ func TestSyntaxCacheCompactionFailuresKeepFreshAnalysisAvailable(t *testing.T) {
 				}
 			case "read-only":
 				name := cache.file.Name()
-				cache.file.Close()
+				if err := cache.file.Close(); err != nil {
+					t.Fatal(err)
+				}
 				var err error
 				cache.file, err = os.Open(name)
 				if err != nil {

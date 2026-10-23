@@ -24,9 +24,9 @@ func TestNativeEnvironmentSnapshotsAndCollection(t *testing.T) {
 	collections := 0
 	for step := range 240000 {
 		if step%7500 == 0 {
-			copy := make(map[uint32]Value, len(expected))
-			maps.Copy(copy, expected)
-			saved = append(saved, snapshot{root, copy})
+			cloned := make(map[uint32]Value, len(expected))
+			maps.Copy(cloned, expected)
+			saved = append(saved, snapshot{root, cloned})
 		}
 		key := keys[(step*7919)%len(keys)]
 		if step%7 == 0 {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,14 +10,28 @@ import (
 )
 
 func TestShutdownCancelsOwnedWorkAndClosesToolAdmission(t *testing.T) {
-	active, request, pending := false, false, false
-	server := &nativeServer{ctx: context.Background(), changed: make(chan struct{}), wake: make(chan struct{}, 1), activeCancel: func() { active = true }, requests: map[string]*nativeRequest{"original": {cancel: func() { request = true }}}, toolStarts: map[string]toolPending{"original": {Cancel: func() { pending = true }}}}
+	active, cancelActive := context.WithCancel(context.Background())
+	defer cancelActive()
+	request, cancelRequest := context.WithCancel(context.Background())
+	defer cancelRequest()
+	pending, cancelPending := context.WithCancel(context.Background())
+	defer cancelPending()
+	server := &nativeServer{
+		ctx:          context.Background(),
+		changed:      make(chan struct{}),
+		wake:         make(chan struct{}, 1),
+		activeCancel: cancelActive,
+		requests:     map[string]*nativeRequest{"original": {cancel: cancelRequest}},
+		toolStarts:   map[string]toolPending{"original": {Cancel: cancelPending}},
+	}
 	server.tools = &toolBridge{server: server}
 	if _, err := server.request(context.Background(), rpcMessage{Method: "shutdown"}); err != nil {
 		t.Fatal(err)
 	}
-	if !active || !request || !pending {
-		t.Fatal("shutdown left owned work active")
+	for name, owned := range map[string]context.Context{"analysis": active, "request": request, "tool": pending} {
+		if !errors.Is(owned.Err(), context.Canceled) {
+			t.Errorf("shutdown left %s work active: %v", name, owned.Err())
+		}
 	}
 	if _, err := server.tools.start(); err == nil {
 		t.Fatal("shutdown allowed a new owned process")

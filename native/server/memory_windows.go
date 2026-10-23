@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"syscall"
 	"unsafe"
 )
@@ -59,7 +60,7 @@ func (p *ownedProcess) residentBytes() int64 {
 	for _, pid := range list.PIDs[:list.Count] {
 		handle, err := syscall.OpenProcess(0x1000|0x10, false, uint32(pid))
 		if err != nil {
-			if err == syscall.Errno(87) || err == syscall.Errno(1168) {
+			if errors.Is(err, syscall.Errno(87)) || errors.Is(err, syscall.Errno(1168)) {
 				continue
 			}
 			return -1

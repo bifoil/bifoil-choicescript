@@ -4,7 +4,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"runtime"
 	"runtime/debug"
@@ -24,7 +23,7 @@ func main() {
 	if value := os.Getenv("BIFOIL_NATIVE_MEMORY_LIMIT_MIB"); value != "" {
 		parsed, err := strconv.ParseInt(value, 10, 64)
 		if err != nil || parsed < 32 || parsed > 192 {
-			fmt.Fprintln(os.Stderr, "Invalid native memory target")
+			writeStderr("Invalid native memory target")
 			os.Exit(2)
 		}
 		limit = parsed
@@ -34,12 +33,12 @@ func main() {
 		if path := os.Getenv("BIFOIL_NATIVE_CPU_PROFILE"); path != "" {
 			file, err := os.Create(path)
 			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
+				writeStderr(err)
 				os.Exit(1)
 			}
 			if err = pprof.StartCPUProfile(file); err != nil {
 				_ = file.Close()
-				fmt.Fprintln(os.Stderr, err)
+				writeStderr(err)
 				os.Exit(1)
 			}
 			defer func() { pprof.StopCPUProfile(); _ = file.Close() }()
@@ -47,7 +46,7 @@ func main() {
 		options := nativeOptions{}
 		for i := 2; i < len(os.Args); i += 2 {
 			if i+1 >= len(os.Args) {
-				fmt.Fprintln(os.Stderr, "Missing server option value")
+				writeStderr("Missing server option value")
 				os.Exit(2)
 			}
 			switch os.Args[i] {
@@ -56,24 +55,24 @@ func main() {
 			case "--node":
 				options.Node = os.Args[i+1]
 			default:
-				fmt.Fprintln(os.Stderr, "Unknown server option")
+				writeStderr("Unknown server option")
 				os.Exit(2)
 			}
 		}
 		if err := serveNative(os.Stdin, os.Stdout, options); err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			writeStderr(err)
 			os.Exit(1)
 		}
 		return
 	}
 	if len(os.Args) > 2 && os.Args[1] == "--analyze" {
 		if err := analyzeDirectory(os.Args[2]); err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			writeStderr(err)
 			os.Exit(1)
 		}
 		return
 	}
-	fmt.Fprintln(os.Stderr, "Use --analyze followed by a scene directory.")
+	writeStderr("Use --analyze followed by a scene directory.")
 	os.Exit(2)
 }
 func analyzeDirectory(root string) error {
@@ -82,7 +81,7 @@ func analyzeDirectory(root string) error {
 		if err != nil {
 			return err
 		}
-		defer f.Close()
+		defer closeNativeFile(f)
 		if err := pprof.StartCPUProfile(f); err != nil {
 			return err
 		}
@@ -96,7 +95,7 @@ func analyzeDirectory(root string) error {
 	}
 	parsed := time.Since(started)
 	if os.Getenv("BIFOIL_NATIVE_TRACE") != "" {
-		fmt.Fprintln(os.Stderr, "parsed", parsed)
+		writeStderr("parsed", parsed)
 	}
 	ctx := context.Background()
 	if duration := os.Getenv("BIFOIL_NATIVE_ANALYSIS_TIMEOUT"); duration != "" {
@@ -110,7 +109,7 @@ func analyzeDirectory(root string) error {
 	}
 	if os.Getenv("BIFOIL_NATIVE_TRACE") != "" {
 		p.Trace = func(phase string, steps uint64, states, queue, contexts int) {
-			fmt.Fprintln(os.Stderr, phase, steps, states, queue, contexts)
+			writeStderr(phase, steps, states, queue, contexts)
 		}
 	}
 	if err = p.Analyze(ctx); err != nil {

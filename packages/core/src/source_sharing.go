@@ -167,8 +167,8 @@ func (p *ParsedSource) Discard() {
 	p.values = valuePool{}
 }
 
-// Waiting before a large query-table conversion prevents two full line tables
-// from overlapping. The cache already writes concurrently with complete analysis;
+// WaitForLargeSourceTransfers prevents two full line tables from overlapping
+// during query-table conversion. The cache already writes concurrently with analysis;
 // cancellation abandons obsolete work rather than publishing a partial index.
 func (p *Project) WaitForLargeSourceTransfers(ctx context.Context) error {
 	for {

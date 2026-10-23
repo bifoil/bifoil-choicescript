@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -82,7 +83,7 @@ func TestSourceReplayRejectsStructuralChangesAndCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	parsed := ParseSource(Source{Text: "*create score 1\n*print score\n*ending"})
-	if ok, err := parsed.ApplySourceLineEdit(ctx, 0, SourceLineEdit{Before: "*create score 1", After: "*create score 2"}, 2); ok || err != context.Canceled {
+	if ok, err := parsed.ApplySourceLineEdit(ctx, 0, SourceLineEdit{Before: "*create score 1", After: "*create score 2"}, 2); ok || !errors.Is(err, context.Canceled) {
 		t.Fatal("cancelled replay succeeded", err)
 	}
 }

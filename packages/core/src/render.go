@@ -95,8 +95,8 @@ func (p *Project) appendTextTransfer(spans []Token, d *Document, line uint32, st
 		first := true
 		for i := begin; i < end; {
 			if substitutionKind, open, ok := substitution(raw, i); ok {
-				close := matching(raw, open)
-				if close < 0 || close >= end {
+				closing := matching(raw, open)
+				if closing < 0 || closing >= end {
 					break
 				}
 				emit(column)
@@ -126,7 +126,7 @@ func (p *Project) appendTextTransfer(spans []Token, d *Document, line uint32, st
 					}
 					mask = branch.quote
 				} else {
-					body := raw[open+1 : close]
+					body := raw[open+1 : closing]
 					cut, depth := -1, 0
 					for j, ch := range body {
 						if ch == '(' {
@@ -160,16 +160,16 @@ func (p *Project) appendTextTransfer(spans []Token, d *Document, line uint32, st
 						}
 					}
 				}
-				column += units(raw[i : close+1])
-				i = close + 1
+				column += units(raw[i : closing+1])
+				i = closing + 1
 				run = column
 				kind = quoteType(mask)
 				first = false
 				continue
 			}
 			if raw[i] == '[' {
-				if close := strings.IndexByte(raw[i+1:end], ']'); close >= 0 {
-					length := close + 2
+				if closing := strings.IndexByte(raw[i+1:end], ']'); closing >= 0 {
+					length := closing + 2
 					column += units(raw[i : i+length])
 					i += length
 					continue
@@ -381,7 +381,7 @@ func (p *Project) render() {
 			var base []Token
 			direct := !p.disableDirectRender && n.Kind == prose && n.Flags&1 != 0 && n.TokenCount == 0
 			if direct {
-				copy := state
+				cloned := state
 				if d.Templates[line].Count == 0 {
 					// The complete lexical scan proved this row has no quotation marks or
 					// syntax islands. Its inherited quote state still comes from full flow.
@@ -389,11 +389,11 @@ func (p *Project) render() {
 						p.Tokens[index] = append(p.Tokens[index], Token{Line: line - 1, Start: n.Indent, Length: end - n.Indent, Type: quoteType(state.quote)})
 					}
 				} else {
-					p.Tokens[index] = p.appendTextTransfer(p.Tokens[index], d, line, &copy, true, 0, 0, false)
+					p.Tokens[index] = p.appendTextTransfer(p.Tokens[index], d, line, &cloned, true, 0, 0, false)
 				}
 			} else if n.Kind == prose || n.Kind == option || n.Inline != noOffset {
-				copy := state
-				base = p.textTransfer(d, line, &copy, true, 0, 0, false)
+				cloned := state
+				base = p.textTransfer(d, line, &cloned, true, 0, 0, false)
 			}
 			if p.QuoteWarnings && state.quote != 7 && state.quote&(state.quote-1) != 0 && n.Kind == prose {
 				length := d.widthAt(line) - n.Indent

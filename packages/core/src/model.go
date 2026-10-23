@@ -49,7 +49,6 @@ const (
 )
 const (
 	declared uint8 = 1
-	readonly uint8 = 2
 	bold     uint8 = 4
 	italic   uint8 = 8
 )
@@ -111,7 +110,7 @@ type expr struct {
 }
 
 const (
-	exUnknown uint8 = iota
+	_ uint8 = iota // Zero represents an absent or unknown expression.
 	exLiteral
 	exVariable
 	exIndirect
@@ -332,7 +331,7 @@ func (d *Document) children(parent uint32) []uint32 {
 	if parent == 0 {
 		return d.Roots
 	}
-	result := []uint32{}
+	var result []uint32
 	for i := d.rowAt(int(parent)).FirstChild; i != 0; i = d.rowAt(int(i)).NextSibling {
 		result = append(result, i)
 	}

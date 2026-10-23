@@ -92,10 +92,10 @@ func (p *Project) writeNumericSnapshot(destination io.Writer, metadata QuerySnap
 	for index, original := range p.Documents {
 		d := original
 		if d.hasSourceRows() {
-			copy := *d
-			copy.cloneQueryLineTable()
-			copy.compactQueryRows()
-			d = &copy
+			cloned := *d
+			cloned.cloneQueryLineTable()
+			cloned.compactQueryRows()
+			d = &cloned
 		}
 		output.flush()
 		if output.err != nil {

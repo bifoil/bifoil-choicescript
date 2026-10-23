@@ -98,10 +98,10 @@ func (p *Project) Rename(doc uint32, position Position, name string) (*Workspace
 	if !identifierPattern.MatchString(name) {
 		return nil, errors.New("names must start with a letter and contain only letters, digits, or underscores")
 	}
-	if p.PrepareRename(doc, position) == nil {
+	t := p.TokenAt(doc, position)
+	if t == nil || p.PrepareRename(doc, position) == nil {
 		return nil, nil
 	}
-	t := p.TokenAt(doc, position)
 	old := p.Symbols[t.Symbol]
 	variable := old.Kind == "global" || old.Kind == "local"
 	if variable && !validName(name) {

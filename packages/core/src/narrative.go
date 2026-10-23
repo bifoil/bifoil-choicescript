@@ -73,8 +73,8 @@ func countWords(text string) uint32 {
 	inside := false
 	for i := 0; i < len(text); {
 		if text[i] == '[' {
-			if close := strings.IndexByte(text[i+1:], ']'); close >= 0 {
-				i += close + 2
+			if closing := strings.IndexByte(text[i+1:], ']'); closing >= 0 {
+				i += closing + 2
 				continue
 			}
 		}
@@ -201,8 +201,8 @@ func (d *Document) summarizeProse(raw string, start int) (words, width uint32) {
 			continue
 		}
 		if raw[i] == '[' {
-			if close := strings.IndexByte(raw[i+1:], ']'); close >= 0 {
-				end := i + close + 2
+			if closing := strings.IndexByte(raw[i+1:], ']'); closing >= 0 {
+				end := i + closing + 2
 				width += units(raw[i:end])
 				i = end
 				continue

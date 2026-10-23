@@ -77,7 +77,7 @@ func serveNative(r io.Reader, w io.Writer, options ...nativeOptions) error {
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(cache)
+	defer removeNativeTemporaryDirectory(cache)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	s := &nativeServer{stream: newRPC(r, w), ctx: ctx, cancel: cancel, buffers: make(map[string]openBuffer), revisions: make(map[string]uint64), indexes: make(map[string]nativeIndex), requests: make(map[string]*nativeRequest), changed: make(chan struct{}), wake: make(chan struct{}, 1), cacheDir: cache, quoteWarnings: true, saveResourceReport: saveReport}
@@ -95,7 +95,7 @@ func serveNative(r io.Reader, w io.Writer, options ...nativeOptions) error {
 	s.worker.Go(func() { s.analysisLoop() })
 	defer func() {
 		if err := s.closeRuntime(); err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			writeStderr(err)
 		}
 	}()
 	for {
@@ -547,8 +547,8 @@ func (s *nativeServer) analysisLoop() {
 					continue
 				}
 				if selected == nil || p.ID == s.preferred {
-					copy := *p
-					selected = &copy
+					cloned := *p
+					selected = &cloned
 				}
 				if p.ID == s.preferred {
 					break
@@ -612,7 +612,7 @@ func (s *nativeServer) analysisLoop() {
 				}
 			}
 			if os.Getenv("BIFOIL_NATIVE_TIMINGS") != "" {
-				fmt.Fprintf(os.Stderr, "native phases parse=%.1f semantic=%.1f compact=%.1f total=%.1f resident=%.1f peak=%.1f steps=%d error=%v\n", float64(parsedAt.Sub(started).Microseconds())/1000, float64(analyzedAt.Sub(parsedAt).Microseconds())/1000, float64(time.Since(analyzedAt).Microseconds())/1000, float64(time.Since(started).Microseconds())/1000, float64(currentResidentBytes())/1048576, peakResidentMiB(), p.Steps, err)
+				writeStderrf("native phases parse=%.1f semantic=%.1f compact=%.1f total=%.1f resident=%.1f peak=%.1f steps=%d error=%v\n", float64(parsedAt.Sub(started).Microseconds())/1000, float64(analyzedAt.Sub(parsedAt).Microseconds())/1000, float64(time.Since(analyzedAt).Microseconds())/1000, float64(time.Since(started).Microseconds())/1000, float64(currentResidentBytes())/1048576, peakResidentMiB(), p.Steps, err)
 			}
 			cancel()
 			s.mu.Lock()

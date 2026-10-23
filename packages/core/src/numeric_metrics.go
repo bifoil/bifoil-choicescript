@@ -69,8 +69,8 @@ func (m *numericMetrics) at(index uint32) uint32 {
 	return block.values[at]
 }
 func (m *numericMetrics) updated(index, value uint32) *numericMetrics {
-	copy := *m
-	copy.blocks = append([]metricBlock(nil), m.blocks...)
+	cloned := *m
+	cloned.blocks = append([]metricBlock(nil), m.blocks...)
 	blockIndex := index / metricBlockSize
 	previous := m.blocks[blockIndex]
 	values := make([]uint32, previous.count)
@@ -79,9 +79,9 @@ func (m *numericMetrics) updated(index, value uint32) *numericMetrics {
 	}
 	values[index%metricBlockSize] = value
 	block := makeMetricBlock(values)
-	copy.blocks[blockIndex] = block
-	copy.total = m.total - previous.total + block.total
-	return &copy
+	cloned.blocks[blockIndex] = block
+	cloned.total = m.total - previous.total + block.total
+	return &cloned
 }
 func (d *Document) packMetrics() {
 	if len(d.Widths) > metricPackingThreshold && !d.keepDenseRows {

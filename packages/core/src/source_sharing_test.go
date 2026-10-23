@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -81,7 +82,7 @@ func TestLargeSourceTransferWaitIsCancellableAndReleases(t *testing.T) {
 	project := &Project{Documents: []*Document{{rowData: &sourceRows{nodes: make([]queryRow, 8*1024*1024/24+1), owner: owner}}}}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
-	if err := project.WaitForLargeSourceTransfers(ctx); err != context.DeadlineExceeded {
+	if err := project.WaitForLargeSourceTransfers(ctx); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal("source wait did not cancel", err)
 	}
 	second.state.release()

@@ -51,7 +51,7 @@ func ownProcess(command *exec.Cmd) (*ownedProcess, error) {
 		_ = owner.Close()
 		return nil, err
 	}
-	defer syscall.CloseHandle(process)
+	defer func() { _ = syscall.CloseHandle(process) }()
 	ok, _, err = kernel.NewProc("AssignProcessToJobObject").Call(job, uintptr(process))
 	if ok == 0 {
 		_ = owner.Close()
