@@ -1,7 +1,7 @@
 {
   "format": 1,
   "repository": "https://github.com/bifoil/bifoil-language-server.git",
-  "commit": "f38e5ded4a62df43c430ebb5535b8811acf6e3d5",
+  "commit": "668ff5944d52e30f8080577a23601c800ca6e192",
   "module": "github.com/bifoil/bifoil-language-server",
-  "sourceSha256": "e4bc0831f3c4ef8b380c59446b35fc32068624eca9ede45807ea94988153e5a7"
+  "sourceSha256": "a0335f3e2a3afa9e8f130a7b9e17ced4c396b2e57fc084d3c83d3b8e644141d7"
 }
