@@ -23,9 +23,9 @@ ChoiceScript's MIT license does not replace the license for that material.
 ## Go runtime
 
 The native language server includes the Go runtime. The installed build SDK version is pinned in
-[native/toolchain.json](native/toolchain.json); users do not need to install it. Each native target includes
-`GO_LICENSE.txt` and a manifest recording source, compiler, linker, executable and license SHA-256 values. The original
-Go authors retain their copyright and BSD license terms.
+[vendor/bifoil-language-server/toolchain.json](vendor/bifoil-language-server/toolchain.json); users do not need to
+install it. Each native target includes `GO_LICENSE.txt` and a manifest recording source, compiler, linker, executable
+and license SHA-256 values. The original Go authors retain their copyright and BSD license terms.
 
 ## Node.js
 
@@ -52,3 +52,10 @@ respective distributions and repositories. The plugin does not bundle an IDE or 
 `docs/provenance/gradle-linux-x64.xml` records resolved Gradle/JVM dependency versions and SHA-256 values from a Linux
 verification build. It is a dependency inventory, not a cross-platform enforcement lock: IDE metadata and platform
 archives can vary by host. Gradle wrapper and plugin versions are declared in the Gradle project files.
+
+## Bifoil Language Server
+
+The original native Go server and analysis core are developed in the separate Bifoil Language Server repository and
+consumed as the pinned `vendor/bifoil-language-server` submodule. The pin and production-source checksum are recorded in
+[vendor/bifoil-language-server.lock.json](vendor/bifoil-language-server.lock.json). Its MIT license is included in
+distributions as `BIFOIL_LANGUAGE_SERVER_LICENSE.txt`; the Go SDK license and artifact hashes remain separate.

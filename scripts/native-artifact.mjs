@@ -1,60 +1,59 @@
 /** Native artifact provenance and staging, independent of editor APIs and old checkouts. */
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { cp, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm } from "node:fs/promises";
+import { cp, lstat, mkdir, mkdtemp, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
-export const nativeTargets = {
-  "win32-x64": ["windows", "amd64"],
-  "win32-arm64": ["windows", "arm64"],
-  "darwin-x64": ["darwin", "amd64"],
-  "darwin-arm64": ["darwin", "arm64"],
-  "linux-x64": ["linux", "amd64"],
-  "linux-arm64": ["linux", "arm64"],
-};
-export const fileSha256 = async (file) =>
-  createHash("sha256")
-    .update(await readFile(file))
-    .digest("hex");
+export const languageServerRoot = path.join(repositoryRoot, "vendor/bifoil-language-server");
+const provenance = await import("../vendor/bifoil-language-server/scripts/provenance.mjs").catch((cause) => {
+  throw new Error(
+    "Initialize vendor/bifoil-language-server with git submodule update --init --recursive before building.",
+    { cause },
+  );
+});
+export const { fileSha256, nativeSourceDigest, nativeTargets } = provenance;
 
-/** Hash every compiled project input in a deterministic, path-separated stream. */
-export async function nativeSourceDigest() {
-  const files = [
-    "go.mod",
-    "native/toolchain.json",
-    "packages/core/src/commands.json",
-    "scripts/build-language-server.mjs",
-    "scripts/native-artifact.mjs",
-  ];
-  for (const directory of ["native/server", "packages/core/src"])
-    for (const entry of await readdir(path.join(repositoryRoot, directory), { withFileTypes: true }))
-      if (entry.isFile() && entry.name.endsWith(".go") && !entry.name.endsWith("_test.go"))
-        files.push(directory + "/" + entry.name);
-  const hash = createHash("sha256");
-  for (const file of files.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)))
-    hash
-      .update(file)
-      .update("\0")
-      .update(await readFile(path.join(repositoryRoot, file)))
-      .update("\0");
-  return hash.digest("hex");
+/** Reject a different checkout or modified production inputs before building or reusing executable output. */
+export async function verifyLanguageServerSource() {
+  const lock = JSON.parse(await readFile(path.join(repositoryRoot, "vendor/bifoil-language-server.lock.json"), "utf8"));
+  if (
+    lock.format !== 1 ||
+    lock.repository !== "https://github.com/bifoil/bifoil-language-server.git" ||
+    lock.module !== provenance.moduleName ||
+    !/^[a-f0-9]{40}$/.test(lock.commit ?? "") ||
+    !/^[a-f0-9]{64}$/.test(lock.sourceSha256 ?? "") ||
+    lock.sourceSha256 !== (await nativeSourceDigest())
+  )
+    throw new Error(
+      "Language server source differs from vendor/bifoil-language-server.lock.json; initialize the pinned submodule or deliberately update its pin and digest together.",
+    );
+  const gitFile = await lstat(path.join(languageServerRoot, ".git")).catch((error) => {
+    if (error.code !== "ENOENT") throw error;
+    return undefined;
+  });
+  if (gitFile) {
+    const revision = execFileSync("git", ["-C", languageServerRoot, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    if (revision !== lock.commit) throw new Error("Language server submodule revision does not match its lock file.");
+  }
+  return lock;
 }
 
 /** Verify source freshness, host target and exact bytes before a cached executable is reused. */
 export async function verifyNativeArtifact(target) {
+  const lock = await verifyLanguageServerSource();
   if (!Object.hasOwn(nativeTargets, target)) throw new Error("Unsupported native target: " + target);
   const directory = path.join(repositoryRoot, "dist/native", target);
   const manifest = JSON.parse(await readFile(path.join(directory, "manifest.json"), { encoding: "utf8" }));
-  const sdk = JSON.parse(await readFile(path.join(repositoryRoot, "native/toolchain.json"), { encoding: "utf8" }));
+  const sdk = JSON.parse(await readFile(path.join(languageServerRoot, "toolchain.json"), { encoding: "utf8" }));
   const executable = "bifoil-language-server" + (nativeTargets[target][0] === "windows" ? ".exe" : "");
   if (
     manifest.format !== 1 ||
+    manifest.module !== lock.module ||
     manifest.target !== target ||
     manifest.executable !== executable ||
     manifest.toolchain?.version !== sdk.version ||
-    manifest.sourceSha256 !== (await nativeSourceDigest())
+    manifest.sourceSha256 !== lock.sourceSha256
   )
     throw new Error("Native server does not match its current source and toolchain: " + target);
   for (const [file, expected] of [
@@ -75,6 +74,7 @@ export async function verifyNativeArtifact(target) {
 
 /** Build missing/stale output using the pinned installed SDK; never download a toolchain. */
 export async function ensureNativeArtifact(target) {
+  await verifyLanguageServerSource();
   try {
     return await verifyNativeArtifact(target);
   } catch {

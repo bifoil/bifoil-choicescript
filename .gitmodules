@@ -2,3 +2,6 @@
 	path = vendor/choicescript
 	url = https://github.com/dfabulich/choicescript.git
 	shallow = true
+[submodule "vendor/bifoil-language-server"]
+	path = vendor/bifoil-language-server
+	url = https://github.com/bifoil/bifoil-language-server.git

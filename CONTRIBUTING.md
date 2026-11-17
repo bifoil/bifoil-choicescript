@@ -9,7 +9,7 @@ Read the applicable [AGENTS.md](AGENTS.md) when using an agent in this repositor
 ## Build from source
 
 You need Git, Node.js 24, the pnpm version declared in [package.json](package.json), initialized submodules, and the
-installed Go SDK pinned in [native/toolchain.json](native/toolchain.json).
+installed Go SDK pinned in [vendor/bifoil-language-server/toolchain.json](vendor/bifoil-language-server/toolchain.json).
 JetBrains work additionally needs JDK 21 and the checked-in Gradle wrapper. Python is not a build requirement; use
 system-installed `uv` if a development task needs it.
 
@@ -21,11 +21,20 @@ pnpm install --frozen-lockfile
 pnpm check
 ```
 
-For an existing checkout, initialize the engine before installing/building:
+For an existing checkout, initialize both pinned dependencies before installing/building:
 
 ```sh
 git -c core.autocrlf=false submodule update --init --recursive
 ```
+
+Both repositories are private; cloning with submodules requires read access to `bifoil/bifoil-language-server` as well
+as this repository. A normal authenticated GitHub HTTPS or SSH setup works locally. CI uses the repository secret
+`BIFOIL_LANGUAGE_SERVER_READ_KEY`, a read-only deploy key restricted to the server repository; the ordinary workflow
+token cannot read a different private repository. Fork workflows cannot access that secret.
+
+Native fixes belong in the standalone server repository. After its tests pass and the new revision is pushed, update the
+submodule, `vendor/bifoil-language-server.lock.json` (commit and production-source SHA-256), and relevant integration
+tests together. Read the server's `AGENTS.md`; do not maintain a second copy of its Go source in this repository.
 
 Preserve upstream bytes and line endings. The engine is unmodified and pinned; a hash mismatch is not a reason to
 regenerate hashes around an accidental local edit. Explicit install-script permissions live in
@@ -37,15 +46,15 @@ run all native editors, or establish release acceptance. See [development](docs/
 
 ## Choose the right layer
 
-| Change                                     | Start in                                              |
-| ------------------------------------------ | ----------------------------------------------------- |
-| Parsing, quotation, types, symbols         | `packages/core`                                       |
-| Snapshot freshness, workers, LSP           | `packages/server`                                     |
-| Shared job options/events                  | `packages/protocol`, then both adapters               |
-| Discovery, preview, official tests, export | `packages/tooling`                                    |
-| VS Code presentation                       | `editors/vscode`                                      |
-| JetBrains presentation                     | `editors/intellij`                                    |
-| Commands/help/fallback metadata            | `packages/core/src/commands.json` and `pnpm generate` |
+| Change                                     | Start in                                                                                           |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| Parsing, quotation, types, symbols         | `vendor/bifoil-language-server/core` (native); `packages/core` (reference)                         |
+| Snapshot freshness, workers, LSP           | `vendor/bifoil-language-server/cmd/bifoil-language-server` (native); `packages/server` (reference) |
+| Shared job options/events                  | `packages/protocol`, then both adapters                                                            |
+| Discovery, preview, official tests, export | `packages/tooling`                                                                                 |
+| VS Code presentation                       | `editors/vscode`                                                                                   |
+| JetBrains presentation                     | `editors/intellij`                                                                                 |
+| Commands/help/fallback metadata            | `vendor/bifoil-language-server/core/commands.json` and `pnpm generate`                             |
 
 Read [architecture](docs/architecture.md), [language behavior](docs/specification.md), and [testing](docs/testing.md)
 before changing analysis. Consult [protocol](docs/protocol.md) for the contracts between the server, tooling, and

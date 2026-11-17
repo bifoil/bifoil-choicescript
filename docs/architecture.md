@@ -1,10 +1,10 @@
 # Architecture
 
-Both editors use the same native Go language server. TypeScript provides the shared tooling broker and
-editor-independent
-protocol; Kotlin implements the JetBrains adapter. The earlier TypeScript analyzer remains in the repository for
-regressions and comparison. Installed adapters select the bundled native server and do not automatically fall back to
-partial analysis.
+Both editors use the native Go backend from the pinned `vendor/bifoil-language-server` Git submodule. The standalone
+server repository owns its Go analysis core, command metadata, toolchain pin, and build manifest contract. TypeScript
+provides the shared tooling broker and editor-independent protocol; Kotlin implements the JetBrains adapter. The earlier
+TypeScript analyzer remains in the repository for regressions and comparison. Installed adapters select the bundled
+native server and do not automatically fall back to partial analysis.
 
 ```mermaid
 flowchart TD
@@ -24,24 +24,24 @@ These entry points show each component’s source and its role.
 
 | Component                | Source                                                                                                                                               | Responsibility                                                                         |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Native core              | [`model.go`](../packages/core/src/model.go) in `packages/core`                                                                                       | Recovering parsing, flow, types, dialogue, semantic spans and feature queries          |
-| Native server            | [`lsp.go`](../native/server/lsp.go) in `native/server`                                                                                               | LSP framing, project discovery, open buffers, revisions, scheduling and tooling bridge |
+| Native core              | [`model.go`](../vendor/bifoil-language-server/core/model.go) in `vendor/bifoil-language-server/core`                                                 | Recovering parsing, flow, types, dialogue, semantic spans and feature queries          |
+| Native server            | [`lsp.go`](../vendor/bifoil-language-server/cmd/bifoil-language-server/lsp.go) in `vendor/bifoil-language-server/cmd/bifoil-language-server`         | LSP framing, project discovery, open buffers, revisions, scheduling and tooling bridge |
 | Reference implementation | [`core/index.ts`](../packages/core/src/index.ts) and [`server/index.ts`](../packages/server/src/index.ts)                                            | Earlier implementation and differential regression coverage                            |
 | Protocol                 | [`protocol/index.ts`](../packages/protocol/src/index.ts)                                                                                             | Versioned DTOs, validation, coverage and Node runtime policy                           |
 | Tooling                  | [`tooling/index.ts`](../packages/tooling/src/index.ts)                                                                                               | Staging, project creation, preview, official tools, export and process ownership       |
 | Adapters                 | [`extension.ts`](../editors/vscode/src/extension.ts), [`Integration.kt`](../editors/intellij/src/main/kotlin/dev/bifoil/choicescript/Integration.kt) | Editor lifecycle, presentation, actions, trust and theme mapping                       |
-| Build                    | [`build.mjs`](../scripts/build.mjs), [`native/toolchain.json`](../native/toolchain.json)                                                             | Generation, native builds, provenance, runtime provisioning and packaging              |
+| Build                    | [`build.mjs`](../scripts/build.mjs), [`vendor/bifoil-language-server/toolchain.json`](../vendor/bifoil-language-server/toolchain.json)               | Generation, native builds, provenance, runtime provisioning and packaging              |
 
 Editor APIs stay in the adapters. Command metadata remains in
-[`commands.json`](../packages/core/src/commands.json), which supplies generated help and fallback highlighting. The
-unmodified pinned interpreter and its tests govern ChoiceScript runtime behavior.
+[`commands.json`](../vendor/bifoil-language-server/core/commands.json), which supplies generated help and fallback
+highlighting. The unmodified pinned interpreter and its tests govern ChoiceScript runtime behavior.
 
 ## Complete analysis with compact storage
 
 The parser distinguishes physical lines, indentation, commands, expressions and prose. Expression strings recover at
 their own line boundary. Narrative dialogue has separate state that follows branches, jumps, scenes and subroutines.
-Conditional siblings inherit the same incoming state; reachable exits merge. Uncertain types and dialogue remain
-neutral rather than inventing certainty.
+Conditional siblings inherit the same incoming state; reachable exits merge. Uncertain types and dialogue remain neutral
+rather than inventing certainty.
 
 The native core represents long prose runs through exact transfer summaries while preserving source ranges, word counts,
 quotation behavior and semantic spans. Commands and embedded expressions remain explicit. Control-flow analysis iterates
@@ -103,9 +103,9 @@ artifact whose source digest or target is stale. Go is a build dependency; users
 VSIX files contain the selected target's native server and Node runtime. The universal JetBrains ZIP contains the six
 locked target pairs; `--current` prepares only a host development bundle. Extraction verifies archive/native hashes and
 restores executable permissions. JetBrains caches only the host native executable beside Node under a short name,
-avoiding duplicate binaries and Windows executable-path limits. Node archives follow [
-`runtime-lock.json`](../runtime-lock.json); the selected engine
-inventory follows [`runtime-files.json`](../vendor/runtime-files.json).
+avoiding duplicate binaries and Windows executable-path limits. Node archives follow
+[ `runtime-lock.json`](../runtime-lock.json); the selected engine inventory follows
+[`runtime-files.json`](../vendor/runtime-files.json).
 
 Legacy C/WASM and TypeScript sources remain available but are not the installed language-server path. Build/test SDKs,
 IDE installations and private local reports are not plugin contents. See [development](development.md),

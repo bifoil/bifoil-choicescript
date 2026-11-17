@@ -1,0 +1,22 @@
+name: Initialize pinned language server and engine
+description: Check out the private server at the exact gitlink revision, then initialize the public engine.
+inputs:
+  read-key:
+    description: Read-only deploy key for bifoil/bifoil-language-server
+    required: true
+runs:
+  using: composite
+  steps:
+    - id: pin
+      shell: bash
+      run: echo "revision=$(git rev-parse HEAD:vendor/bifoil-language-server)" >> "$GITHUB_OUTPUT"
+    - uses: actions/checkout@v7
+      with:
+        repository: bifoil/bifoil-language-server
+        ref: ${{ steps.pin.outputs.revision }}
+        path: vendor/bifoil-language-server
+        ssh-key: ${{ inputs.read-key }}
+        persist-credentials: false
+    - name: Initialize pinned engine
+      shell: bash
+      run: git -c core.autocrlf=false submodule update --init --recursive vendor/choicescript

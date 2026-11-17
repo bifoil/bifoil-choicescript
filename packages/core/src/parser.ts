@@ -1,4 +1,4 @@
-import commands from "./commands.json" with { type: "json" };
+import commands from "../../../vendor/bifoil-language-server/core/commands.json" with { type: "json" };
 import { diagnostic, type Document, type Expr, type Line, sceneName } from "./types.js";
 import { validVariableName } from "./names.js";
 import { lex, type Lexeme, parseExpression, referenceGroups, valueGroups } from "./expression.js";

@@ -103,6 +103,8 @@ builds.push(
 await writeDependencyNotices(builds);
 await cp("THIRD_PARTY_NOTICES.md", "dist/server/THIRD_PARTY_NOTICES.md");
 await cp("LICENSE", "dist/server/LICENSE");
+await cp("vendor/bifoil-language-server/LICENSE", "dist/server/BIFOIL_LANGUAGE_SERVER_LICENSE.txt");
+await cp("vendor/bifoil-language-server.lock.json", "dist/server/bifoil-language-server.lock.json");
 await stageNativeArtifacts("dist/server", [nativeTarget]);
 await rm("editors/vscode/server", { recursive: true, force: true });
 await cp("dist/server", "editors/vscode/server", { recursive: true });

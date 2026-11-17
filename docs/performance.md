@@ -11,9 +11,9 @@ memory policies do not describe the installed native backend.
 ## What counts
 
 Add the language server, tooling broker, official generator/test/compiler workers and any other owned runtime processes
-at the same instant. Worker threads are already included in their host process. Report the **maximum simultaneous
-sum**, not a sum of unrelated per-process high-water marks. The resource evidence sampler uses a 10 ms interval and
-records server/tool contributions at the combined peak; sampling can miss shorter spikes.
+at the same instant. Worker threads are already included in their host process. Report the **maximum simultaneous sum**,
+not a sum of unrelated per-process high-water marks. The resource evidence sampler uses a 10 ms interval and records
+server/tool contributions at the combined peak; sampling can miss shorter spikes.
 
 The editor's whole extension host, IDE JVM, JCEF/browser, Gradle and test-client processes are separate measurements.
 They still affect host responsiveness and should be reported when significant. Do not label the entire IDE as the plugin
@@ -37,9 +37,9 @@ unchanged compiler's intermediate scene JSON instead of retaining a whole game i
 coverage decorations to visible rows while keeping all counts available.
 
 These mechanisms have passed focused large-game checks, including a 20-million-word individual scene during official
-RandomTest. A Windows x64 run measured 216.9 MiB combined resident memory, with current edits during execution in 563 ms;
-this is evidence for that workload, not every-workload acceptance. Giant single physical lines, many large open buffers,
-sustained edits and native UI delivery require their own measurements.
+RandomTest. A Windows x64 run measured 216.9 MiB combined resident memory, with current edits during execution in 563
+ms; this is evidence for that workload, not every-workload acceptance. Giant single physical lines, many large open
+buffers, sustained edits and native UI delivery require their own measurements.
 
 ## Time the interaction that matters
 
@@ -67,15 +67,15 @@ its parser diagnostics are distinct from plugin crashes, invalid ranges or incom
 ## Reproduce relevant checks
 
 ```sh
-go test ./packages/core/src ./native/server
-go test -race ./packages/core/src ./native/server
-go vet ./packages/core/src ./native/server
+go -C vendor/bifoil-language-server test ./...
+CGO_ENABLED=1 go -C vendor/bifoil-language-server test -race ./...
+go -C vendor/bifoil-language-server vet ./...
 pnpm check
 ```
 
-Use the SDK pinned in [`toolchain.json`](../native/toolchain.json). Build and extract an actual package before installed
-acceptance; [testing](testing.md) describes both editor workflows. Do not run compilers, Gradle or other heavy test
-campaigns concurrently with a benchmark unless they are the workload being measured.
+Use the SDK pinned in [`toolchain.json`](../vendor/bifoil-language-server/toolchain.json). Build and extract an actual
+package before installed acceptance; [testing](testing.md) describes both editor workflows. Do not run compilers, Gradle
+or other heavy test campaigns concurrently with a benchmark unless they are the workload being measured.
 
 The existing opt-in reference benchmark is:
 

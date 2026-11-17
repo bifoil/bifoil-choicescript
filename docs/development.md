@@ -6,45 +6,45 @@ private local reports.
 
 ## Toolchain
 
-| Tool                       | Declared use                                                                         |
-| -------------------------- | ------------------------------------------------------------------------------------ |
-| Node.js                    | Major 24; packaged runtime and CI pin are in `runtime-lock.json` and workflows       |
-| Go                         | Exact installed SDK in `native/toolchain.json`; native language server, CGO disabled |
-| pnpm                       | Exact version in `package.json#packageManager`                                       |
-| TypeScript / tsx / esbuild | Type checking, source-test execution, bundles                                        |
-| JDK 21                     | JetBrains Gradle toolchain                                                           |
-| Gradle wrapper             | Checked-in wrapper under `editors/intellij`                                          |
-| Kotlin                     | Version declared in `editors/intellij/build.gradle.kts`                              |
-| Python / uv                | Optional development scripting only; Python is not required to build                 |
+| Tool                       | Declared use                                                                                                |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Node.js                    | Major 24; packaged runtime and CI pin are in `runtime-lock.json` and workflows                              |
+| Go                         | Exact installed SDK in `vendor/bifoil-language-server/toolchain.json`; native language server, CGO disabled |
+| pnpm                       | Exact version in `package.json#packageManager`                                                              |
+| TypeScript / tsx / esbuild | Type checking, source-test execution, bundles                                                               |
+| JDK 21                     | JetBrains Gradle toolchain                                                                                  |
+| Gradle wrapper             | Checked-in wrapper under `editors/intellij`                                                                 |
+| Kotlin                     | Version declared in `editors/intellij/build.gradle.kts`                                                     |
+| Python / uv                | Optional development scripting only; Python is not required to build                                        |
 
 The package manager and runtime pins should be read from source when upgrading; installing whatever happens to be latest
 can produce an unreproducible environment. Preserve lockfiles and explicit dependency script permissions.
 
 Go builds use `GOTOOLCHAIN=local` and do not download an SDK. Set `BIFOIL_GO` to the installed Go executable when it is
-not on PATH. Native artifacts include source, compiler, linker, binary and license checksums; a stale artifact is rebuilt
-before packaging. Users receive executables and do not need Go or Node installed.
+not on PATH. Native artifacts include source, compiler, linker, binary and license checksums; a stale artifact is
+rebuilt before packaging. Users receive executables and do not need Go or Node installed.
 
 ## Repository map
 
-| Path                                                      | Purpose                                                               |
-| --------------------------------------------------------- | --------------------------------------------------------------------- |
-| `packages/core/src/*.go`                                  | Native parser, flow, dialogue, types, queries and immutable snapshots |
-| `native/server`                                           | Installed LSP server, buffers, revisions, paging and tooling bridge   |
-| Reference `packages/core/src/parser.ts` / `expression.ts` | Indentation and expression parsing                                    |
-| `packages/core/src/analysis.ts`                           | Dialogue/type flow, symbols, semantic classifications                 |
-| `packages/core/src/features.ts`                           | Language feature queries                                              |
-| `packages/core/src/projection.ts`                         | Compact closed-scene representation                                   |
-| `packages/core/src/commands.json`                         | Command descriptions and shared generation input                      |
-| Reference `packages/server/src/index.ts`                  | LSP transport, scheduling, revisions, publication, job requests       |
-| Reference `packages/server/src/worker.ts`                 | Background analysis and index construction                            |
-| `packages/server/src/scene-index.ts` / `snapshots.ts`     | Scene inventory/cache and compact request data                        |
-| `packages/protocol/src`                                   | Wire contracts, validation, coverage state, runtime policy            |
-| `packages/tooling/src/projects.ts`                        | Detection and source enumeration                                      |
-| `packages/tooling/src/runner.ts` / `processes.ts`         | Jobs, staging, child processes, preview, cleanup                      |
-| `editors/vscode/src`                                      | Extension adapter                                                     |
-| `editors/intellij/src/main`                               | Kotlin adapter, resources, plugin descriptor                          |
-| `fixtures`                                                | Small original game fixtures                                          |
-| `vendor/choicescript`                                     | Unmodified pinned engine submodule                                    |
+| Path                                                       | Purpose                                                               |
+| ---------------------------------------------------------- | --------------------------------------------------------------------- |
+| `vendor/bifoil-language-server/core/*.go`                  | Native parser, flow, dialogue, types, queries and immutable snapshots |
+| `vendor/bifoil-language-server/cmd/bifoil-language-server` | Installed LSP server, buffers, revisions, paging and tooling bridge   |
+| Reference `packages/core/src/parser.ts` / `expression.ts`  | Indentation and expression parsing                                    |
+| `packages/core/src/analysis.ts`                            | Dialogue/type flow, symbols, semantic classifications                 |
+| `packages/core/src/features.ts`                            | Language feature queries                                              |
+| `packages/core/src/projection.ts`                          | Compact closed-scene representation                                   |
+| `vendor/bifoil-language-server/core/commands.json`         | Command descriptions and shared generation input                      |
+| Reference `packages/server/src/index.ts`                   | LSP transport, scheduling, revisions, publication, job requests       |
+| Reference `packages/server/src/worker.ts`                  | Background analysis and index construction                            |
+| `packages/server/src/scene-index.ts` / `snapshots.ts`      | Scene inventory/cache and compact request data                        |
+| `packages/protocol/src`                                    | Wire contracts, validation, coverage state, runtime policy            |
+| `packages/tooling/src/projects.ts`                         | Detection and source enumeration                                      |
+| `packages/tooling/src/runner.ts` / `processes.ts`          | Jobs, staging, child processes, preview, cleanup                      |
+| `editors/vscode/src`                                       | Extension adapter                                                     |
+| `editors/intellij/src/main`                                | Kotlin adapter, resources, plugin descriptor                          |
+| `fixtures`                                                 | Small original game fixtures                                          |
+| `vendor/choicescript`                                      | Unmodified pinned engine submodule                                    |
 
 Package tests live beside their packages under `test/`. Native Kotlin tests live under `editors/intellij/src/test`.
 Editor smoke tests live under `editors/vscode/test`. The [architecture guide](architecture.md) explains how these parts
@@ -112,9 +112,10 @@ range changes, include CRLF and supplementary Unicode.
 
 ## Add or change a command
 
-Edit `packages/core/src/commands.json` to update command documentation and generated metadata, then update parsing and
-semantic behavior if the command needs it. Metadata recognition alone does not implement runtime semantics or argument
-validation. Regenerate the fallbacks and add targeted tests of both parsing and the editor-facing result.
+Edit `vendor/bifoil-language-server/core/commands.json` to update command documentation and generated metadata, then
+update parsing and semantic behavior if the command needs it. Metadata recognition alone does not implement runtime
+semantics or argument validation. Regenerate the fallbacks and add targeted tests of both parsing and the editor-facing
+result.
 
 Keep references aligned with the pinned engine. A newer upstream command is not automatically available in the bundled
 runtime. Hosted/purchase/service commands may be recognized without the local preview providing those services.
@@ -174,16 +175,16 @@ Avoid introducing behavior changes or reformatting unrelated Kotlin while adding
 ## SonarQube analysis
 
 [The automatic-analysis scope](../.sonarcloud.properties) and
-[the standard-scanner configuration](../sonar-project.properties) cover the original language core, native server,
-adapters, development scripts and tests. They omit the unmodified upstream engine, generated binaries and build output.
-The wasm environment source remains in scope; its generated TypeScript byte array does not need a duplicate scan.
-Test files are classified separately from production code. The project also has an explicit `vendor/choicescript/**`
-source exclusion in SonarQube Cloud, so the pinned engine keeps its upstream ownership and is not assessed as original
-plugin code.
+[the standard-scanner configuration](../sonar-project.properties) cover the original TypeScript reference core,
+adapters, development scripts and tests. They omit vendored dependencies, including the separately maintained native
+server, as well as generated binaries and build output. The wasm environment source remains in scope; its generated
+TypeScript byte array does not need a duplicate scan. Test files are classified separately from production code. The
+scanner configuration excludes `vendor/**`; the native server is assessed in its own repository rather than counted
+twice as original plugin code. The pinned engine retains its upstream ownership and license.
 
 The project-specific **Bifoil ChoiceScript** quality gate retains Sonar way’s ratings, 80% new-code coverage and full
-security-hotspot review. It fails when either overall or new-code duplication exceeds **1%**, allowing exactly 1%.
-Gate conditions live in SonarQube Cloud; scanner properties do not create or update a remote quality gate.
+security-hotspot review. It fails when either overall or new-code duplication exceeds **1%**, allowing exactly 1%. Gate
+conditions live in SonarQube Cloud; scanner properties do not create or update a remote quality gate.
 
 SonarQube Cloud's automatic analysis checks the committed GitHub revision. A local working-tree scan needs the standard
 SonarScanner, an analysis token provided through `SONAR_TOKEN`, and automatic analysis temporarily disabled in the
@@ -193,39 +194,59 @@ logs. The SonarQube CLI's agentic analyzer is a separate service and requires Vo
 
 For a standard scan, explicitly supply the installed Node executable and a compilation database for
 [the wasm arena](../native/environment/environment.c). Its compiler options must match
-[the native generation script](../scripts/build-native.mjs). Kotlin analysis is more precise when the IDE/dependency JARs
-are supplied with `sonar.java.libraries`. See
+[the native generation script](../scripts/build-native.mjs). Kotlin analysis is more precise when the IDE/dependency
+JARs are supplied with `sonar.java.libraries`. See
 [Sonar's scanner documentation](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/scanners/sonarscanner-cli).
 
-Import real Go coverage with `sonar.go.coverage.reportPaths` and source-mapped JavaScript/TypeScript LCOV with
-`sonar.javascript.lcov.reportPaths`. Native IDE coverage needs a separate JVM report. Missing reports mean coverage is
-unmeasured; they do not prove code was never exercised. Passing tests and a clean issue list do not by themselves establish
-that a coverage gate passes.
+Import source-mapped JavaScript/TypeScript LCOV with `sonar.javascript.lcov.reportPaths`. Go coverage belongs to the
+standalone server repository. Native IDE coverage needs a separate JVM report. Missing reports mean coverage is
+unmeasured; they do not prove code was never exercised. Passing tests and a clean issue list do not by themselves
+establish that a coverage gate passes.
 
-The Gradle library classpaths use [strict dependency locks](../editors/intellij/gradle.lockfile). Refresh them deliberately
-with the wrapper's `dependencies --write-locks` task and review version changes. IDE archives and SDK platform modules
-are tied to the exact selected product/version in
+The Gradle library classpaths use [strict dependency locks](../editors/intellij/gradle.lockfile). Refresh them
+deliberately with the wrapper's `dependencies --write-locks` task and review version changes. IDE archives and SDK
+platform modules are tied to the exact selected product/version in
 [the build configuration](../editors/intellij/build.gradle.kts); those product-specific coordinates are not forced into
-a shared library lock. The supplementary Gradle checksum inventory remains provenance, rather than a portable enforcement
-file.
+a shared library lock. The supplementary Gradle checksum inventory remains provenance, rather than a portable
+enforcement file.
 
 Build-time Git, tar and Windows PowerShell resolve through fixed installation locations. For another installation, set
-`BIFOIL_GIT`, `BIFOIL_TAR` or `BIFOIL_POWERSHELL` to the executable's absolute path. These explicit development
-settings do not affect the bundled editor runtime.
+`BIFOIL_GIT`, `BIFOIL_TAR` or `BIFOIL_POWERSHELL` to the executable's absolute path. These explicit development settings
+do not affect the bundled editor runtime.
 
-For opt-in JetBrains coverage, run the wrapper with `-Pcoverage=true test jacocoTestReport`. The JaCoCo agent instruments
-only this plugin’s package. Normal test runs leave instrumentation disabled. The XML report is generated under
-`editors/intellij/build/reports/jacoco/test/`. Run latency acceptance separately without coverage instrumentation.
+For opt-in JetBrains coverage, run the wrapper with `-Pcoverage=true test jacocoTestReport`. The JaCoCo agent
+instruments only this plugin’s package. Normal test runs leave instrumentation disabled. The XML report is generated
+under `editors/intellij/build/reports/jacoco/test/`. Run latency acceptance separately without coverage instrumentation.
 
 `pnpm test:coverage` writes `dist/coverage/javascript.lcov` from functional tests, then runs the original latency test
 without instrumentation. Generate native coverage with the pinned Go SDK’s
-`go test -coverprofile=dist/coverage/go.out ./packages/core/src ./native/server` after creating `dist/coverage/`.
-The standard scanner imports those reports and the opt-in JaCoCo XML report from their generated locations.
+`go -C vendor/bifoil-language-server test -coverprofile=coverage.out ./...`. Native coverage belongs to the standalone
+server repository; this repository's Sonar analysis excludes vendored dependencies. The ChoiceScript scanner imports the
+JavaScript, C arena, and opt-in JaCoCo reports from their generated locations.
 
 JaCoCo includes the IDE loader’s classes without a source location and reports against IntelliJ’s instrumented output,
-as required by [JetBrains’ coverage guidance](https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-faq.html#jacoco-reports-0-coverage).
+as required by
+[JetBrains’ coverage guidance](https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-faq.html#jacoco-reports-0-coverage).
 Its session ID is project-specific, rather than the host’s name.
 
 The JavaScript coverage normalizer keeps the raw LCOV and records V8 branches without source locations in
 `dist/coverage/mapping-warnings.json`. Only source-located records enter the normalized LCOV; valid line and branch hit
 counts are preserved. Unmappable branches are reported, never assigned invented source lines or coverage.
+
+## Updating the language-server dependency
+
+The native server and Go core are maintained in the separate private repository. `vendor/bifoil-language-server` is a
+Git submodule, not a sibling-checkout shortcut. Its commit and production-source digest are also recorded in
+[the dependency lock](../vendor/bifoil-language-server.lock.json). The build rejects mismatched commits, modified
+production inputs, and cached binaries built for another module or toolchain.
+
+After testing and pushing a reviewed server revision, fetch it in the submodule, check out that exact commit, and update
+the lock's `commit` and `sourceSha256` fields. Print the digest from the checked-out sources with:
+
+```sh
+node --input-type=module -e 'import {nativeSourceDigest} from "./vendor/bifoil-language-server/scripts/provenance.mjs"; console.log(await nativeSourceDigest())'
+```
+
+Run the native tests and `pnpm check`, then stage the submodule gitlink and lock together. The two editor adapters and
+Node broker remain here; protocol changes need coordinated integration tests. The dependency's own README describes
+standalone builds and tests. No installed extension invokes Git or fetches this repository at runtime.

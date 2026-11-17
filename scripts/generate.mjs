@@ -5,7 +5,7 @@
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 
-const commands = JSON.parse(await readFile("packages/core/src/commands.json", { encoding: "utf8" }));
+const commands = JSON.parse(await readFile("vendor/bifoil-language-server/core/commands.json", { encoding: "utf8" }));
 const grammar = {
   name: "ChoiceScript",
   scopeName: "source.choicescript",

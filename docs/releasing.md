@@ -7,7 +7,7 @@ authorize publication or changing visibility.
 ## Prepare the source
 
 Use the declared [development toolchain](development.md). Check the intended source revision and working tree before
-building, initialize the pinned submodule, then run:
+building, initialize both pinned submodules, then run:
 
 ```sh
 git -c core.autocrlf=false submodule update --init --recursive
@@ -17,6 +17,11 @@ pnpm check
 
 Preserve upstream line endings. Do not package around an unexplained engine checksum mismatch. Package scripts consume
 the shared build outputs, so rebuild after source edits.
+
+CI needs `BIFOIL_LANGUAGE_SERVER_READ_KEY`, a read-only deploy key restricted to the private server repository. The
+[checkout action](../.github/actions/checkout-language-server/action.yml) obtains the exact gitlink revision before
+checking out that repository; it never follows the server's default branch. The reusable CI workflow inherits the secret
+from the manual release workflow. Contributors also need read access for local recursive clones.
 
 ## VS Code packages
 
@@ -160,20 +165,20 @@ the source of the manifest.
 
 ## Storage and retention
 
-Installers uploaded by optional packaging runs expire after one day. The release workflow downloads them during the
-same run; assets attached to a completed GitHub Release have their own lifecycle. Only the IDEA-built JetBrains ZIP is
+Installers uploaded by optional packaging runs expire after one day. The release workflow downloads them during the same
+run; assets attached to a completed GitHub Release have their own lifecycle. Only the IDEA-built JetBrains ZIP is
 uploaded, since it is the distribution artifact. WebStorm and PyCharm still receive package verification. Diagnostics
 are uploaded only after a job fails and expire after seven days.
 
-Retention changes apply to new uploads; existing artifacts retain their previous expiry dates. Routine successful
-pushes and pull requests upload no artifacts. Keep installers and runtime binaries out of Git history. Reuse runtime/SDK
+Retention changes apply to new uploads; existing artifacts retain their previous expiry dates. Routine successful pushes
+and pull requests upload no artifacts. Keep installers and runtime binaries out of Git history. Reuse runtime/SDK
 caches. Remove only obsolete, task-owned extraction/report directories after their processes exit. Keep the minimal
 evidence needed to identify and reproduce a failed candidate.
 
 ## Developer artifact paths
 
-The release assembly/verifier and VSIX extractor accept paths beneath this checkout's `release/`, `downloaded/`,
-`dist/` or ignored development-output directories. Copy downloaded packages into one of those areas before verification.
-The synthetic benchmark's report stays under the ignored development-output directory. These scripts reject traversal,
+The release assembly/verifier and VSIX extractor accept paths beneath this checkout's `release/`, `downloaded/`, `dist/`
+or ignored development-output directories. Copy downloaded packages into one of those areas before verification. The
+synthetic benchmark's report stays under the ignored development-output directory. These scripts reject traversal,
 existing symlink ancestors and filenames that have ambiguous meanings across Windows and Unix. They do not restrict the
 game-project or export paths selected through the editor.

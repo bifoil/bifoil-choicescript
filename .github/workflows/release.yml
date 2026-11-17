@@ -23,6 +23,7 @@ jobs:
   build:
     needs: validate
     uses: ./.github/workflows/ci.yml
+    secrets: inherit
     with:
       build_packages: true
   publish:
@@ -34,8 +35,9 @@ jobs:
       - name: Preserve upstream line endings
         run: git config --global core.autocrlf false
       - uses: actions/checkout@v7
+      - uses: ./.github/actions/checkout-language-server
         with:
-          submodules: recursive
+          read-key: ${{ secrets.BIFOIL_LANGUAGE_SERVER_READ_KEY }}
       - uses: actions/setup-node@v7
         with: { node-version: 24.21.0 }
       - uses: actions/download-artifact@v8

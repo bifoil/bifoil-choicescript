@@ -25,21 +25,24 @@ change visibility, or release packages from an ordinary implementation request.
 Read [architecture](docs/architecture.md), [language behavior](docs/specification.md), and [testing](docs/testing.md)
 before changing analysis. Consult [the protocol](docs/protocol.md) for tooling or adapter changes.
 
-| Directory             | Responsibility                                                                               |
-| --------------------- | -------------------------------------------------------------------------------------------- |
-| `packages/core`       | Parser, control flow, dialogue and type analysis, symbols, semantic spans, language features |
-| `native/server`       | Installed Go LSP server, snapshots, invalidation and tooling bridge                          |
-| `packages/server`     | Reference TypeScript server, workers and regression comparisons                              |
-| `packages/protocol`   | Shared versioned requests, events, options and coverage contracts                            |
-| `packages/tooling`    | Detection, project creation, staging, preview, official tests, export and process cleanup    |
-| `editors/vscode`      | VS Code integration and presentation                                                         |
-| `editors/intellij`    | Kotlin adapter using JetBrains' built-in LSP                                                 |
-| `scripts`             | Generation, builds, runtime provisioning, packaging and provenance                           |
-| `fixtures`            | Small original regression inputs                                                             |
-| `vendor/choicescript` | Unmodified pinned upstream submodule                                                         |
+| Directory                                                  | Responsibility                                                                            |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `packages/core`                                            | TypeScript reference parser, analysis and feature queries                                 |
+| `vendor/bifoil-language-server/cmd/bifoil-language-server` | Installed Go LSP server, snapshots, invalidation and tooling bridge                       |
+| `packages/server`                                          | Reference TypeScript server, workers and regression comparisons                           |
+| `packages/protocol`                                        | Shared versioned requests, events, options and coverage contracts                         |
+| `packages/tooling`                                         | Detection, project creation, staging, preview, official tests, export and process cleanup |
+| `editors/vscode`                                           | VS Code integration and presentation                                                      |
+| `editors/intellij`                                         | Kotlin adapter using JetBrains' built-in LSP                                              |
+| `scripts`                                                  | Generation, builds, runtime provisioning, packaging and provenance                        |
+| `fixtures`                                                 | Small original regression inputs                                                          |
+| `vendor/choicescript`                                      | Unmodified pinned upstream submodule                                                      |
 
-Keep semantics editor-independent. Update both adapters when shared contracts change. Command metadata lives in
-`packages/core/src/commands.json`; regenerate derived files with `pnpm generate`.
+The Go server and analysis core are maintained in the separate private `bifoil/bifoil-language-server` repository.
+Consume the pinned `vendor/bifoil-language-server` submodule and its lock file; do not duplicate or modify pinned source
+without updating and testing that dependency deliberately. Keep semantics editor-independent. Update both adapters when
+shared contracts change. Command metadata lives in `vendor/bifoil-language-server/core/commands.json`; regenerate
+derived files with `pnpm generate`.
 
 ## Correctness requirements
 
@@ -74,12 +77,12 @@ Keep semantics editor-independent. Update both adapters when shared contracts ch
 
 ## Development workflow
 
-Use the installed Go SDK pinned in `native/toolchain.json`, Node.js 24, the pnpm version declared in `package.json`,
-the lockfile, JDK 21, and the checked-in Gradle wrapper. Native builds use `GOTOOLCHAIN=local`, CGO disabled, and no
-automatic SDK downloads. Run `go test ./packages/core/src ./native/server` for native language changes; the TypeScript
-regressions alone do not validate the installed backend. If
-Python is needed, use system-installed **uv**. Preserve explicit dependency build permissions in `pnpm-workspace.yaml`;
-do not blanket-enable install scripts.
+Use the installed Go SDK pinned in `vendor/bifoil-language-server/toolchain.json`, Node.js 24, the pnpm version declared
+in `package.json`, the lockfile, JDK 21, and the checked-in Gradle wrapper. Native builds use `GOTOOLCHAIN=local`, CGO
+disabled, and no automatic SDK downloads. Run `go -C vendor/bifoil-language-server test ./...` for native language
+changes; the TypeScript regressions alone do not validate the installed backend. If Python is needed, use
+system-installed **uv**. Preserve explicit dependency build permissions in `pnpm-workspace.yaml`; do not blanket-enable
+install scripts.
 
 The engine is pinned to `60a6c3ee7393c9ee7e42650b8e1642ae38e3cb6a`. Do not edit vendored source. Preserve upstream line
 endings. Deliberate updates must change the submodule pin, checksums, provenance, notices and relevant tests together.
