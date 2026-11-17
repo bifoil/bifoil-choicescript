@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { cp, lstat, mkdir, mkdtemp, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { hostTool } from "./host-tools.mjs";
 
 export const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 export const languageServerRoot = path.join(repositoryRoot, "vendor/bifoil-language-server");
@@ -33,7 +34,8 @@ export async function verifyLanguageServerSource() {
     return undefined;
   });
   if (gitFile) {
-    const revision = execFileSync("git", ["-C", languageServerRoot, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    const git = await hostTool("git");
+    const revision = execFileSync(git, ["-C", languageServerRoot, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
     if (revision !== lock.commit) throw new Error("Language server submodule revision does not match its lock file.");
   }
   return lock;

@@ -36,3 +36,27 @@ test("coverage command failures reject missing inputs without writing partial re
     await rm(folder, { recursive: true, force: true });
   }
 });
+
+test("LCOV merge CLI preserves the earlier result when a new profile is inconsistent", async () => {
+  const folder = await mkdtemp(path.join(repositoryRoot, "dist/coverage/lcov-contract-"));
+  try {
+    const left = path.join(folder, "left.lcov"),
+      right = path.join(folder, "right.lcov"),
+      output = path.join(folder, "merged.lcov");
+    const profile = "SF:scripts/coverage-report.mjs\nDA:1,1\nBRDA:1,0,0,1\nend_of_record\n";
+    await writeFile(left, profile);
+    await writeFile(right, profile.replaceAll(",1", ",2"));
+    for (const args of [[], [output]])
+      await assert.rejects(invoke("scripts/coverage-report.mjs", args), /input LCOV profiles/);
+    await invoke("scripts/coverage-report.mjs", [output, left, right]);
+    const saved = await readFile(output, "utf8");
+    assert.match(saved, /DA:1,3/);
+    await writeFile(right, profile.replace("DA:1,1", "DA:2,1"));
+    await assert.rejects(invoke("scripts/coverage-report.mjs", [output, left, right]), /different source counters/);
+    assert.equal(await readFile(output, "utf8"), saved);
+    await assert.rejects(invoke("scripts/coverage-report.mjs", [output, path.join(folder, "missing.lcov")]), /ENOENT/);
+    assert.equal(await readFile(output, "utf8"), saved);
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});

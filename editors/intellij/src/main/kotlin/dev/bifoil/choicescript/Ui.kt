@@ -323,7 +323,10 @@ fun <T> request(
 
 			check(client != null) { "ChoiceScript language server did not start. Check packaged runtime resources." }
 
-			val result = client.sendRequestSync { callback(it as ChoiceServer) }
+			val outcome = checkNotNull(client.sendRequestSync { requestOutcome(callback(it as ChoiceServer)) }) {
+				"ChoiceScript request timed out or its language server stopped."
+			}
+			val result = outcome.getOrThrow()
 			ApplicationManager.getApplication().invokeLater { if (!project.isDisposed) done(result) }
 		} catch (error: Exception) {
 			onError()

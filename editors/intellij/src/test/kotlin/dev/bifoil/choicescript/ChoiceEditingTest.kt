@@ -70,6 +70,15 @@ class ChoiceEditingTest : BasePlatformTestCase() {
 		assertEquals("[i][b]Hello[/b][/i]", myFixture.editor.document.text)
 	}
 
+	fun testFormattingWithoutASelectionInsertsEmptyTagsAtTheCaret() {
+		for ((action, tags) in listOf(BoldAction() to "[b][/b]", ItalicAction() to "[i][/i]")) {
+			myFixture.configureByText(ChoiceFileType, "Before <caret> after")
+			assertFalse(myFixture.editor.selectionModel.hasSelection())
+			myFixture.testAction(action)
+			assertEquals("Before $tags after", myFixture.editor.document.text)
+		}
+	}
+
 	fun testIndentationAndRegisteredTemplates() {
 		myFixture.configureByText(ChoiceFileType, "*if true<caret>")
 		myFixture.type('\n')

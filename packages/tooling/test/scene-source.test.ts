@@ -176,3 +176,68 @@ test("hot pages and repeated rows preserve snapshot identity and CR split modes"
     f.close();
   }
 });
+
+test("virtual scene arrays preserve sparse descriptor and exotic-key behavior", () => {
+  const f = fixture();
+  try {
+    const file = path.join(f.scenes, "original-boundaries.txt");
+    writeFileSync(file, "first\nsecond\nthird");
+    const actual = f.store.text(file).lines();
+    const expected = ["first", "second", "third"];
+    const marker = Symbol("original metadata");
+    const compare = () => {
+      assert.deepEqual(Reflect.ownKeys(actual), Reflect.ownKeys(expected));
+      for (const key of ["0", "1", "2", "-1", "01", "4294967295", "length", marker]) {
+        assert.deepEqual(Reflect.getOwnPropertyDescriptor(actual, key), Reflect.getOwnPropertyDescriptor(expected, key));
+        assert.equal(Reflect.has(actual, key), Reflect.has(expected, key));
+      }
+    };
+    for (const array of [actual, expected]) {
+      Reflect.set(array, marker, "metadata");
+      Reflect.set(array, "01", "not an index");
+      Reflect.set(array, "4294967295", "not an array index");
+      Reflect.defineProperty(array, "0", { writable: false });
+      Reflect.deleteProperty(array, "2");
+      Reflect.deleteProperty(array, marker);
+      array.length = 1;
+      array.length = 3;
+      Reflect.defineProperty(array, "length", { value: 2 });
+    }
+    compare();
+    assert.equal(Reflect.set(actual, "0", "cannot replace"), false);
+    assert.equal(actual[0], "first");
+    Object.preventExtensions(actual);
+    Object.preventExtensions(expected);
+    compare();
+    assert.equal(Reflect.defineProperty(actual, "5", { value: "outside" }), false);
+  } finally {
+    f.close();
+  }
+});
+
+test("scene metadata and split adapters reject unsupported operations and retain lazy match input", () => {
+  const f = fixture();
+  try {
+    const file = path.join(f.scenes, "original-metadata.txt");
+    writeFileSync(file, "*title Original Ω\n*author Chinay\nOriginal last line.");
+    const text = f.store.text(file);
+    for (const separator of ["", ",", /./]) assert.throws(() => text.split(separator), /Unsupported source split/);
+    for (const expression of [/title/, /^\*title (.*)/gm])
+      assert.throws(() => text.metadataMatch(expression, RegExp.prototype.exec), /Unsupported direct source/);
+    const match = text.metadataMatch(/^\*title (.*)/m, RegExp.prototype.exec)!;
+    assert.equal(match[1], "Original Ω");
+    assert.equal(match.input, "*title Original Ω\n*author Chinay\nOriginal last line.");
+    match.input = "explicit replacement";
+    assert.equal(match.input, "explicit replacement");
+    assert.equal(text.metadataMatch(/^\*author /m, RegExp.prototype.exec)!.index, "*title Original Ω\n".length);
+    const missing = path.join(f.scenes, "missing-metadata.txt");
+    writeFileSync(missing, "Original prose only.");
+    assert.equal(f.store.text(missing).metadataMatch(/^\*title (.*)/m, RegExp.prototype.exec), null);
+    assert.deepEqual([...text.lines(true)], ["*title Original Ω", "*author Chinay", "Original last line."]);
+    f.store.dispose();
+    assert.throws(() => f.store.text(file), /storage is closed/);
+    assert.throws(() => text.lines()[0], /storage is closed/);
+  } finally {
+    f.close();
+  }
+});

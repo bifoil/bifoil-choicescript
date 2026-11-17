@@ -1,0 +1,204 @@
+name: Sonar quality policy
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  quality:
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      GOTOOLCHAIN: local
+      GOPROXY: "off"
+      CGO_ENABLED: "0"
+      GOWORK: "off"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/checkout-language-server
+        with:
+          read-key: ${{ secrets.BIFOIL_LANGUAGE_SERVER_READ_KEY }}
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
+        with:
+          go-version: 1.26.3
+          cache: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-disabled: true
+      - name: Install dependencies with the declared build permissions
+        run: pnpm install --frozen-lockfile
+      - name: Build and check source types
+        run: |
+          pnpm build
+          pnpm typecheck
+      - name: Collect source-mapped JavaScript condition coverage
+        id: javascript
+        run: pnpm test:coverage
+      - name: Use a matched LLVM installation for the original C coverage shim
+        run: |
+          if ! test -x /usr/lib/llvm-18/bin/llvm-cov; then
+            sudo apt-get update
+            sudo apt-get install --yes --no-install-recommends clang-18 llvm-18 lld-18
+          fi
+      - name: Collect original C source coverage and describe the shipped wasm32 ABI
+        id: native
+        run: |
+          node node_modules/c8/bin/c8.js --all=false --include=scripts/test-coverage-c.mjs --include=scripts/artifact-paths.mjs --temp-directory=.cache/coverage/linux-c-v8 --reports-dir=dist/coverage/javascript-linux-c node scripts/test-coverage-c.mjs
+          node scripts/coverage-report.mjs dist/coverage/javascript.lcov dist/coverage/javascript.lcov dist/coverage/javascript-linux-c/lcov.info
+          node scripts/sonar-compile-commands.mjs
+        env:
+          BIFOIL_LLVM_BIN: /usr/lib/llvm-18/bin
+      - name: Prepare only the current host's resources for native IDE tests
+        run: pnpm package:intellij --current
+      - name: Collect native Kotlin condition coverage
+        id: kotlin
+        run: bash editors/intellij/gradlew -p editors/intellij -Pcoverage=true test jacocoTestReport
+      - name: Require test evidence for each production source file
+        run: |
+          python3 - <<'PY'
+          """Require measured test execution in every analyzed production source file."""
+          import fnmatch
+          import hashlib
+          import json
+          import re
+          import subprocess
+          from pathlib import Path
+          import xml.etree.ElementTree as XML
+
+          root = Path.cwd().resolve()
+          properties = {}
+          for row in (root / "sonar-project.properties").read_text().splitlines():
+              if row.strip() and not row.lstrip().startswith("#"):
+                  key, value = row.split("=", 1)
+                  properties[key.strip()] = value.strip()
+
+          def patterns(key):
+              return [item.strip() for item in properties.get(key, "").split(",") if item.strip()]
+
+          def matches(path, values):
+              return any(fnmatch.fnmatchcase(path, value) for value in values)
+
+          extensions = {".rs", ".py", ".js", ".mjs", ".cjs", ".ts", ".kt", ".go", ".c", ".h"}
+          sources = set()
+          files = subprocess.check_output(["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"], text=True)
+          for name in set(files.split("\0")) - {""}:
+              file = root / name
+              if file.is_file() and file.suffix in extensions:
+                  test = matches(name, patterns("sonar.test.inclusions") + patterns("sonar.coverage.exclusions"))
+                  test = test or any(file.is_relative_to(root / base) for base in patterns("sonar.tests") if not patterns("sonar.test.inclusions"))
+                  if not test and not matches(name, patterns("sonar.exclusions")):
+                      sources.add(name)
+          covered = set()
+          reported = set()
+
+          def record(name, hits):
+              path = Path(name)
+              if path.is_absolute():
+                  if not path.is_relative_to(root):
+                      return
+                  name = path.relative_to(root).as_posix()
+              name = name.replace("\\", "/")
+              reported.add(name)
+              if hits:
+                  covered.add(name)
+
+          for key in ("sonar.javascript.lcov.reportPaths", "sonar.rust.lcov.reportPaths"):
+              for name in patterns(key):
+                  text = (root / name).read_text()
+                  for block in text.split("end_of_record"):
+                      file = re.search(r"^SF:([^\r\n]+)", block, re.M)
+                      if file:
+                          record(file[1], any(int(value) > 0 for value in re.findall(r"^DA:\d+,(\d+)", block, re.M)))
+          for name in patterns("sonar.python.coverage.reportPaths"):
+              document = XML.parse(root / name).getroot()
+              bases = [element.text or "" for element in document.findall("./sources/source")]
+              for item in document.findall(".//class"):
+                  filename = item.attrib["filename"]
+                  candidates = [Path(filename), *(Path(base) / filename for base in bases)]
+                  selected = next((path for path in candidates if (root / path).is_file()), None)
+                  if selected is None:
+                      raise SystemExit("Unresolvable coverage source: " + filename)
+                  record(str(selected), any(int(line.attrib["hits"]) > 0 for line in item.findall("./lines/line")))
+          for name in patterns("sonar.go.coverage.reportPaths"):
+              module = re.search(r"^module\s+(\S+)", (root / "go.mod").read_text(), re.M)[1]
+              rows = (root / name).read_text().splitlines()
+              if not rows or rows[0] not in {"mode: set", "mode: count", "mode: atomic"}:
+                  raise SystemExit("Invalid Go coverage header")
+              for row in rows[1:]:
+                  location, statements, hits = row.split()
+                  file = location.rsplit(":", 1)[0]
+                  if int(statements) < 0 or int(hits) < 0:
+                      raise SystemExit("Invalid Go coverage counters")
+                  record(file.removeprefix(module + "/"), int(hits) > 0)
+          for name in patterns("sonar.coverageReportPaths"):
+              for item in XML.parse(root / name).getroot().findall("file"):
+                  record(item.attrib["path"], any(line.attrib["covered"] == "true" for line in item.findall("lineToCover")))
+          for name in patterns("sonar.coverage.jacoco.xmlReportPaths"):
+              for package in XML.parse(root / name).getroot().findall("package"):
+                  for item in package.findall("sourcefile"):
+                      suffix = package.attrib["name"] + "/" + item.attrib["name"]
+                      for candidate in sources:
+                          if candidate.endswith(suffix):
+                              record(candidate, any(int(line.attrib["ci"]) > 0 for line in item.findall("line")))
+          if not sources:
+              raise SystemExit("No production source files selected; refusing an empty test check")
+          mapping = root / "source-test-map.json"
+          compile_tested = set()
+          if mapping.is_file():
+              for name, evidence in json.loads(mapping.read_text())["compile_only"].items():
+                  path = root / name
+                  text = path.read_text()
+                  test = root / evidence["test"]
+                  if name not in sources or path.suffix != ".rs":
+                      raise SystemExit("Invalid declaration-only source: " + name)
+                  if hashlib.sha256(path.read_bytes()).hexdigest() != evidence["sha256"]:
+                      raise SystemExit("Declaration-only source changed; review its test mapping: " + name)
+                  if re.search(r"^\s*(?:(?:pub(?:\([^)]*\))?|async|unsafe)\s+)*(?:fn|impl|const|static)\b", text, re.M):
+                      raise SystemExit("Executable Rust source cannot use compilation-only evidence: " + name)
+                  expression = r"#\[test\]\s*fn\s+" + re.escape(evidence["case"]) + r"\("
+                  if not test.is_file() or not re.search(expression, test.read_text()):
+                      raise SystemExit("Missing compilation test: " + name)
+                  compile_tested.add(name)
+                  print("COMPILE-TESTED " + name + " via " + evidence["test"] + "::" + evidence["case"])
+          missing = sorted(sources - covered - compile_tested)
+          for name in missing:
+              print(("UNTESTED " if name in reported else "UNMEASURED ") + name)
+          print(f"Test evidence verified for {len(sources - set(missing))}/{len(sources)} production source files")
+          if missing:
+              raise SystemExit(1)
+          PY
+      - name: Authenticate this project through GitHub OIDC
+        if: >-
+          always() && steps.javascript.outcome == 'success' && steps.native.outcome == 'success' &&
+          steps.kotlin.outcome == 'success'
+        id: sonar-auth
+        uses: SonarSource/sonarqube-auth-action@a0aa643acde4162396015b4f12536c1b9c4aab82 # v1
+        with:
+          export-env: false
+          project-key: bifoil_bifoil-choicescript
+      - name: Submit all measured coverage and wait for the strict gate
+        if: >-
+          always() && steps.javascript.outcome == 'success' && steps.native.outcome == 'success' &&
+          steps.kotlin.outcome == 'success'
+        uses: SonarSource/sonarqube-scan-action@59202af334b4ba7b5db01b701b8e79f8b3bef0f4 # v8.5.0
+        with:
+          args: -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=300
+        env:
+          SONAR_TOKEN: ${{ steps.sonar-auth.outputs.sonar-token }}

@@ -32,9 +32,15 @@ class ChoiceUiTest : BasePlatformTestCase() {
 		val file = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(source)!!
 		PsiTestUtil.addContentRoot(module, file.parent.parent)
 		val manager = LspClientManager.getInstance(project)
+		// The shared light fixture can retain a client initialized for an earlier
+		// content-root inventory. This test owns a fresh session for its new game.
+		manager.stopClients(ChoiceIntegration::class.java)
+		PlatformTestUtil.waitWithEventsDispatching("Previous native client did not stop", {
+			manager.getClients(ChoiceIntegration::class.java).none { it.state == LspServerState.Running }
+		}, 10)
 		val dialogs = mutableListOf<String>()
 		val previousDialog = TestDialogManager.setTestDialog { text -> dialogs.add(text); Messages.OK }
-		val answers = ArrayDeque(listOf("2", "123"))
+		val answers = ArrayDeque<String?>(listOf("2", "123"))
 		val previousInput = TestDialogManager.setTestInputDialog { answers.removeFirstOrNull() }
 		// Match normal GUI scheduling; headless test mode otherwise waits before the job can start.
 		val previousProgressMode = System.setProperty("intellij.progress.task.ignoreHeadless", "true")
@@ -74,10 +80,37 @@ class ChoiceUiTest : BasePlatformTestCase() {
 			}, 20)
 			val discovered = AtomicReference<List<GameProject>>()
 			request(project, { it.projects() }) { discovered.set(it) }
-			PlatformTestUtil.waitWithEventsDispatching("Custom request did not return to EDT", {
-				discovered.get()?.size == 1
-			}, 10)
+			try {
+				PlatformTestUtil.waitWithEventsDispatching("Custom request did not return to EDT", {
+					discovered.get()?.size == 1
+				}, 10)
+			} catch (error: AssertionError) {
+				throw AssertionError("Custom request: games=${discovered.get()}, dialogs=$dialogs", error)
+			}
 			val game = discovered.get().single()
+
+			val failedCallbacks = java.util.concurrent.atomic.AtomicInteger()
+			for (failure in listOf(IllegalStateException("Original callback failure"), IllegalStateException())) {
+				val previousDialogs = dialogs.size
+				request<String>(project, { CompletableFuture.failedFuture(failure) }, onError = {
+					failedCallbacks.incrementAndGet()
+				}) { fail("A failed request delivered a successful result") }
+				PlatformTestUtil.waitWithEventsDispatching("Request failure did not reach the error dialog", {
+					dialogs.size > previousDialogs
+				}, 10)
+			}
+			assertEquals(2, failedCallbacks.get())
+			assertTrue(dialogs.any { "Original callback failure" in it })
+			val missingResult = CompletableFuture<Boolean>()
+			request<String?>(project, { CompletableFuture.completedFuture<String?>(null) }) { missingResult.complete(it == null) }
+			PlatformTestUtil.waitWithEventsDispatching("Nullable request result was lost", { missingResult.isDone }, 10)
+			assertTrue(missingResult.get())
+			val pendingReply = CompletableFuture<String>()
+			request(project, { pendingReply }) { fail("A timed-out request delivered a successful result") }
+			PlatformTestUtil.waitWithEventsDispatching("Request timeout did not reach the error dialog", {
+				dialogs.any { "request timed out or its language server stopped" in it }
+			}, 20)
+			assertTrue("Timeout did not cancel the original wire request", pendingReply.isCancelled)
 
 			val settings = project.service<ChoiceSettings>()
 			settings.loadState(ChoiceState(false))
@@ -99,6 +132,15 @@ class ChoiceUiTest : BasePlatformTestCase() {
 			}, 20)
 			assertTrue(answers.isEmpty())
 
+			// Cancelling either prompt, or supplying an invalid answer, must stop
+			// before a new native RandomTest job is dispatched.
+			for (cancelled in listOf(listOf(null), listOf("0"), listOf("2", null), listOf("2", "invalid"))) {
+				answers.addAll(cancelled)
+				perform(RandomTestAction())
+				PlatformTestUtil.waitWithEventsDispatching("Cancelled inputs were not consumed", { answers.isEmpty() }, 10)
+			}
+
+
 			perform(RunAction())
 			awaitOutput("http://127.0.0.1:")
 			perform(StopAction())
@@ -113,8 +155,15 @@ class ChoiceUiTest : BasePlatformTestCase() {
 			ui.event(JobEvent("original", game.id, "stale"))
 			ui.event(JobEvent("original", game.id, "completed", exitCode = 130))
 			ui.event(JobEvent("invalid", game.id, "output", uri = "not a file URI"))
+			ui.event(JobEvent("optional", game.id, "output", uri = source.toUri().toString()))
+			ui.event(JobEvent("optional", game.id, "coverage"))
+			ui.event(JobEvent("optional", game.id, "preview"))
+			ui.event(JobEvent("optional", game.id, "preview", url = "http://127.0.0.1:1/original"))
 			awaitOutput("startup.txt:2")
+			awaitOutput("startup.txt:1")
 			awaitOutput("Coverage:")
+			awaitOutput("Coverage: null")
+			awaitOutput("Preview: http://127.0.0.1:1/original")
 			awaitOutput("Exit: 130")
 			assertFalse("Untracked completion retained forever", "original" in ui.completed)
 
@@ -163,5 +212,29 @@ class ChoiceUiTest : BasePlatformTestCase() {
 			ActionUtil.performAction(action, event)
 		assertTrue(QuoteWarningsAction().isSelected(event))
 		QuoteWarningsAction().setSelected(event, false)
+	}
+
+	fun testUntrustedExecutionActionsStopBeforeStartingAClient() {
+		val previouslyTrusted = TrustedProjects.isProjectTrusted(project)
+		val dialogs = mutableListOf<String>()
+		val previousDialog = TestDialogManager.setTestDialog { text -> dialogs.add(text); Messages.OK }
+		val manager = LspClientManager.getInstance(project)
+		val clientsBefore = manager.getClients(ChoiceIntegration::class.java).size
+		val context = DataContext { id -> if (id == CommonDataKeys.PROJECT.name) project else null }
+		val event = AnActionEvent.createEvent(
+			context, Presentation(), ActionPlaces.UNKNOWN, ActionUiKind.NONE, null
+		)
+		try {
+			TrustedProjects.setProjectTrusted(project, false)
+			for (action in listOf(NewProjectAction(), RunAction(), QuickTestAction(), RandomTestAction(), ExportAction())) {
+				action.actionPerformed(event)
+			}
+			assertEquals(5, dialogs.size)
+			assertTrue(dialogs.all { "Trust this project before running game code." in it })
+			assertEquals(clientsBefore, manager.getClients(ChoiceIntegration::class.java).size)
+		} finally {
+			TrustedProjects.setProjectTrusted(project, previouslyTrusted)
+			TestDialogManager.setTestDialog(previousDialog)
+		}
 	}
 }

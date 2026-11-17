@@ -9,6 +9,20 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
 class ChoiceNotificationTest : TestCase() {
+	fun testRequestOutcomesPreserveValuesErrorsAndWireCancellation() {
+		assertEquals("Original", requestOutcome(CompletableFuture.completedFuture("Original")).get().getOrThrow())
+		assertNull(requestOutcome(CompletableFuture.completedFuture<String?>(null)).get().getOrThrow())
+		val failure = IllegalStateException("Original request failure")
+		assertSame(failure, requestOutcome(CompletableFuture.failedFuture<String>(failure)).get().exceptionOrNull())
+		val pending = CompletableFuture<String>()
+		val outcome = requestOutcome(pending)
+		assertTrue(outcome.cancel(true))
+		assertTrue("Platform cancellation did not reach the wire future", pending.isCancelled)
+		val cancelled = CompletableFuture<String>()
+		cancelled.cancel(true)
+		assertTrue(GameToolCancellation.isCancellation(requestOutcome(cancelled).get().exceptionOrNull()!!))
+	}
+
 	class Receiver : ChoiceClientNotifications {
 		val received = CompletableFuture<ProjectsChangedParams>()
 

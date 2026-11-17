@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import Module, { createRequire } from "node:module";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildSync } from "esbuild";
@@ -187,7 +189,8 @@ async function adapter(options = {}) {
     state = 2;
     handlers = new Map();
     changed = new Signal();
-    constructor() {
+    constructor(...args) {
+      state.launch = args[2];
       state.client = this;
     }
     onNotification(name, action) {
@@ -240,8 +243,15 @@ async function adapter(options = {}) {
           }
         : require(name);
   loaded._compile(code, compiled);
-  const context = { subscriptions: [], asAbsolutePath: (file) => path.join(root, "editors/vscode", file) };
-  state.api = await loaded.exports.activate(context);
+  const extensionRoot = options.extensionRoot ?? path.join(root, "editors/vscode");
+  const context = { subscriptions: [], asAbsolutePath: (file) => path.join(extensionRoot, file) };
+  try {
+    state.api = await loaded.exports.activate(context);
+  } catch (error) {
+    for (const item of context.subscriptions) item.dispose();
+    await loaded.exports.deactivate();
+    throw error;
+  }
   state.vscode = vscode;
   state.run = (name, args) => commands.get("bifoil.choicescript." + name)(args);
   state.emit = (name, value) => state.client.handlers.get(name)(value);
@@ -439,4 +449,59 @@ test("project selection, markup actions, word counts and about remain editor ope
   assert.equal(a.requests.at(-1).params.projectId, "dialogue");
   await a.run("quicktest");
   assert(a.messages.some((m) => String(m).includes("Open a folder")));
+});
+
+test("adapter launch validates the host executable and uses the editor runtime only when needed", async (t) => {
+  const extensionRoot = await mkdtemp(path.join(os.tmpdir(), "bifoil launch contract Ω "));
+  t.after(() => rm(extensionRoot, { recursive: true, force: true }));
+  await assert.rejects(adapter({ extensionRoot }), /native language server is missing/);
+  const executable = process.platform === "win32" ? "bifoil-language-server.exe" : "bifoil-language-server";
+  const native = path.join(extensionRoot, "server/native", `${process.platform}-${process.arch}`, executable);
+  mkdirSync(path.dirname(native), { recursive: true });
+  writeFileSync(native, "Original launch-path fixture; the substituted client never executes it.");
+  const fallback = await adapter({ extensionRoot });
+  try {
+    assert.equal(fallback.launch.command, native);
+    assert.equal(fallback.launch.args.at(-1), process.execPath);
+    assert.equal(fallback.launch.options.env.ELECTRON_RUN_AS_NODE, "1");
+  } finally {
+    await fallback.close();
+  }
+  const runtime = path.join(extensionRoot, "runtime", process.platform === "win32" ? "node.exe" : "node");
+  mkdirSync(path.dirname(runtime), { recursive: true });
+  writeFileSync(runtime, "Original runtime-path fixture.");
+  const bundled = await adapter({ extensionRoot });
+  try {
+    assert.equal(bundled.launch.args.at(-1), runtime);
+    assert.equal(bundled.launch.options.env.ELECTRON_RUN_AS_NODE, process.env.ELECTRON_RUN_AS_NODE);
+  } finally {
+    await bundled.close();
+  }
+});
+
+test("adapter cancellation and optional events preserve input validation and default source lines", async (t) => {
+  const a = await adapter();
+  t.after(a.close);
+  const before = a.requests.length;
+  a.folders.push([uri(path.join(root, "dist"))]);
+  a.inputs.push("");
+  await a.run("createProject");
+  assert.equal(a.lastInput.validateInput("Original game"), undefined);
+  a.inputs.push("2", undefined);
+  await a.run("randomtest");
+  assert(a.lastInput.validateInput("not a seed"));
+  assert.equal(a.lastInput.validateInput("0"), undefined);
+  assert.equal(a.requests.length, before);
+  a.client.changed.fire({ newState: 2 });
+  assert(!a.messages.some((message) => String(message).includes("Language server stopped")));
+  a.emit("choicescript/jobEvent", {
+    kind: "diagnostic",
+    jobId: "original",
+    projectId: "dialogue",
+    uri: pathToFileURL(path.join(root, "fixtures/dialogue/scenes/startup.txt")).href,
+    message: "Original default source line",
+  });
+  assert(a.messages.some((message) => String(message).includes(":1: Original default source line")));
+  a.emit("choicescript/jobEvent", { kind: "stale", jobId: "unknown", projectId: "dialogue" });
+  assert.equal(a.panels.length, 0);
 });
