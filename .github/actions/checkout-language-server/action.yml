@@ -1,15 +1,27 @@
 name: Initialize pinned language server and engine
-description: Check out the private server at the exact gitlink revision, then initialize the public engine.
+description: Check out the exact gitlink or explicit native qualification candidate, then initialize the public engine.
 inputs:
   read-key:
     description: Read-only deploy key for bifoil/bifoil-language-server
     required: true
+  candidate-revision:
+    description: Optional exact private native revision for explicit candidate qualification; normal builds use the gitlink.
+    required: false
 runs:
   using: composite
   steps:
     - id: pin
       shell: bash
-      run: echo "revision=$(git rev-parse HEAD:vendor/bifoil-language-server)" >> "$GITHUB_OUTPUT"
+      env:
+        CANDIDATE_REVISION: ${{ inputs.candidate-revision }}
+      run: |
+        revision="$CANDIDATE_REVISION"
+        if [[ -n "$revision" ]]; then
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]] || exit 64
+        else
+          revision="$(git rev-parse HEAD:vendor/bifoil-language-server)"
+        fi
+        echo "revision=$revision" >> "$GITHUB_OUTPUT"
     - name: Prepare private SSH temporary storage on Windows
       if: runner.os == 'Windows'
       id: ssh-temp

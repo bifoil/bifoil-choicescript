@@ -1,0 +1,106 @@
+name: Qualify native dependency candidate
+on:
+  push:
+    branches: [codex/sonar-quality-2026-11-17]
+    paths:
+      - .github/workflows/native-candidate.yml
+      - .github/sonar-native-recipient.pem
+      - scripts/seal-native-evidence.mjs
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-candidate:
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, windows-2025, windows-11-arm, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    env:
+      NATIVE_CANDIDATE: b5ea128b0932fae29f8e2ceef17e3918b4d46d3e
+      NATIVE_HOST: ${{ matrix.os }}
+      GOTOOLCHAIN: local
+      GOPROXY: off
+      CGO_ENABLED: "0"
+      GOWORK: off
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/checkout-language-server
+        with:
+          read-key: ${{ secrets.BIFOIL_LANGUAGE_SERVER_READ_KEY }}
+          candidate-revision: ${{ env.NATIVE_CANDIDATE }}
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
+        with:
+          go-version: 1.26.3
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.21.0
+      - name: Install the pinned condition observer
+        working-directory: vendor/bifoil-language-server
+        env:
+          GOPROXY: https://proxy.golang.org
+          GOSUMDB: sum.golang.org
+        run: |
+          mkdir -p .bifoil/development/sonar/tools
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            export GOBIN="$(cygpath -w "$(pwd)/.bifoil/development/sonar/tools")"
+          else
+            export GOBIN="$(pwd)/.bifoil/development/sonar/tools"
+          fi
+          go install github.com/rillig/gobco@v1.3.4
+      - name: Measure the candidate without publishing private test output
+        id: native
+        working-directory: vendor/bifoil-language-server
+        run: |
+          directory=.bifoil/development/sonar
+          mkdir -p "$directory"
+          set +e
+          python scripts/collect_go_conditions.py --collect "$NATIVE_HOST" > "$directory/conditions.log" 2>&1
+          conditions_result=$?
+          go test -covermode=atomic -coverprofile="$directory/go-$NATIVE_HOST.out" ./... > "$directory/statements.log" 2>&1
+          statements_result=$?
+          go vet ./... > "$directory/vet.log" 2>&1
+          vet_result=$?
+          fallback_result=0
+          if [[ "$NATIVE_HOST" == "ubuntu-24.04" ]]; then
+            go test -covermode=atomic -coverprofile="$directory/go-fallback.out" \
+              cmd/bifoil-language-server/memory_other.go \
+              cmd/bifoil-language-server/memory_other_contract_test.go > "$directory/fallback.log" 2>&1
+            fallback_result=$?
+          fi
+          node - "$conditions_result" "$statements_result" "$vet_result" "$fallback_result" <<'NODE'
+          const {writeFileSync} = require('node:fs');
+          const {execFileSync} = require('node:child_process');
+          const [conditions, statements, vet, fallback] = process.argv.slice(2).map(Number);
+          writeFileSync('.bifoil/development/sonar/metadata.json', JSON.stringify({
+            revision:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),
+            host:process.env.NATIVE_HOST, os:process.env.RUNNER_OS, arch:process.env.RUNNER_ARCH,
+            go:execFileSync('go',['env','GOVERSION'],{encoding:'utf8'}).trim(), node:process.version,
+            results:{conditions,statements,vet,fallback},
+          }));
+          NODE
+          metadata_result=$?
+          exit $((conditions_result || statements_result || vet_result || fallback_result || metadata_result))
+      - name: Seal private profiles and logs for the local recipient
+        if: always() && steps.native.outcome != 'skipped'
+        run: |
+          mkdir -p .bifoil/development/sonar
+          node scripts/seal-native-evidence.mjs \
+            vendor/bifoil-language-server/.bifoil/development/sonar \
+            .github/sonar-native-recipient.pem \
+            ".bifoil/development/sonar/native-$NATIVE_HOST.sealed"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always() && steps.native.outcome != 'skipped'
+        with:
+          name: sealed-native-${{ matrix.os }}
+          path: .bifoil/development/sonar/native-*.sealed
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
