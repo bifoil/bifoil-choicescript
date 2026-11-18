@@ -41,10 +41,17 @@ export async function verifyLanguageServerSource() {
   return lock;
 }
 
+/** Return a canonical trusted target name, never a caller-supplied path segment. */
+function checkedNativeTarget(requested) {
+  const target = Object.keys(nativeTargets).find((candidate) => candidate === requested);
+  if (!target) throw new Error("Unsupported native target: " + requested);
+  return target;
+}
+
 /** Verify source freshness, host target and exact bytes before a cached executable is reused. */
-export async function verifyNativeArtifact(target) {
+export async function verifyNativeArtifact(requested) {
   const lock = await verifyLanguageServerSource();
-  if (!Object.hasOwn(nativeTargets, target)) throw new Error("Unsupported native target: " + target);
+  const target = checkedNativeTarget(requested);
   const directory = path.join(repositoryRoot, "dist/native", target);
   const manifest = JSON.parse(await readFile(path.join(directory, "manifest.json"), { encoding: "utf8" }));
   const sdk = JSON.parse(await readFile(path.join(languageServerRoot, "toolchain.json"), { encoding: "utf8" }));
@@ -77,8 +84,9 @@ export async function verifyNativeArtifact(target) {
 }
 
 /** Build missing/stale output using the pinned installed SDK; never download a toolchain. */
-export async function ensureNativeArtifact(target) {
+export async function ensureNativeArtifact(requested) {
   await verifyLanguageServerSource();
+  const target = checkedNativeTarget(requested);
   try {
     return await verifyNativeArtifact(target);
   } catch {
@@ -101,7 +109,7 @@ async function completeOperations(operations) {
 /** Replace only this generated bundle's native directory after every requested target verifies. */
 export async function stageNativeArtifacts(bundle, targets) {
   const artifacts = await completeOperations(
-    targets.map(async (target) => ({ target, ...(await ensureNativeArtifact(target)) })),
+    targets.map(checkedNativeTarget).map(async (target) => ({ target, ...(await ensureNativeArtifact(target)) })),
   );
   await mkdir(bundle, { recursive: true });
   const staging = await mkdtemp(path.join(bundle, ".native-stage-"));

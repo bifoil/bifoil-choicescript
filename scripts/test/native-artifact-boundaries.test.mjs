@@ -3,13 +3,19 @@ import { test } from "node:test";
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { verifyLanguageServerSource, verifyNativeArtifact, stageNativeArtifacts } from "../native-artifact.mjs";
+import {
+  verifyLanguageServerSource,
+  verifyNativeArtifact,
+  ensureNativeArtifact,
+  stageNativeArtifacts,
+} from "../native-artifact.mjs";
 
 test("native artifact reuse rejects unknown targets after checking the real pinned source", async () => {
   const lock = await verifyLanguageServerSource();
   assert.equal(lock.format, 1);
   for (const target of ["__proto__", "constructor", "../outside", "--eval", "linux-x64/../../outside", ""]) {
     await assert.rejects(verifyNativeArtifact(target), /Unsupported native target:/);
+    await assert.rejects(ensureNativeArtifact(target), /Unsupported native target:/);
   }
 });
 
