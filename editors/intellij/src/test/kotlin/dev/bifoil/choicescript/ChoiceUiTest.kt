@@ -33,6 +33,7 @@ import javax.swing.JPanel
 class ChoiceUiTest : BasePlatformTestCase() {
 	fun testNativeToolActionsPreserveProgressOutputAndSettings() {
 		val directory = Files.createTempDirectory("bifoil ui Ω ")
+		val exportDirectory = Files.createTempDirectory("bifoil ui export Ω ")
 		val source = directory.resolve("scenes/startup.txt")
 		Files.createDirectories(source.parent)
 		Files.writeString(source, "*create score 1\nOriginal narrative words.\n*ending\n")
@@ -200,7 +201,7 @@ class ChoiceUiTest : BasePlatformTestCase() {
 				}
 			})
 			PlatformTestUtil.waitWithEventsDispatching("Export cancellation did not return", { cancelledExport.isDone }, 10)
-			val exported = directory.resolve("original.html")
+				val exported = exportDirectory.resolve("original.html")
 				val beforeExport = text().length
 			perform(object : ToolAction("exportHtml") {
 				override fun chooseExportDestination(project: Project) = exported.toString()
@@ -267,6 +268,7 @@ class ChoiceUiTest : BasePlatformTestCase() {
 			FileEditorManager.getInstance(project).closeFile(file)
 			Disposer.dispose(console)
 			FileUtil.delete(directory.toFile())
+			FileUtil.delete(exportDirectory.toFile())
 		}
 	}
 
