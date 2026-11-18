@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -13,7 +13,7 @@ const run = promisify(execFile);
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const hook = pathToFileURL(path.join(repositoryRoot, "scripts/test/support/packaging-boundary.mjs")).href;
 async function isolated(body) {
-  const root = await mkdtemp(path.join(os.tmpdir(), "bifoil packaging contract Ω "));
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "bifoil packaging contract Ω ")));
   const invoke = (script, args = [], environment = {}) =>
     run(process.execPath, ["--import", hook, path.join(repositoryRoot, "scripts", script), ...args], {
       cwd: root,
