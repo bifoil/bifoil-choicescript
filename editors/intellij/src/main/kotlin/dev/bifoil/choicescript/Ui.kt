@@ -46,6 +46,8 @@ import javax.swing.Icon
 import javax.swing.JButton
 import javax.swing.JPanel
 
+private const val TOOL_WINDOW_TITLE = "Bifoil ChoiceScript"
+
 /**
  * Persisted per-project presentation preference; disabling warnings does not alter expression syntax or quote styling.
  */
@@ -124,7 +126,7 @@ class ChoiceUi(private val project: Project) : Disposable {
 		val content = previews.remove(id) ?: return
 
 		previewProjects.remove(id)
-		ToolWindowManager.getInstance(project).getToolWindow("Bifoil ChoiceScript")?.contentManager?.removeContent(
+		ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_TITLE)?.contentManager?.removeContent(
 			content, true
 		)
 	}
@@ -141,6 +143,16 @@ class ChoiceUi(private val project: Project) : Disposable {
 			"[${event.kind}] ${event.message}\n", ConsoleViewContentType.NORMAL_OUTPUT
 		)
 
+		printLocation(event)
+		when (event.kind) {
+			"preview" -> printPreviewLink(event)
+			"stale" -> previews[event.jobId]?.displayName = BifoilBundle.message("preview.source.changed.title")
+			"coverage" -> printCoverage(event)
+			"completed" -> completeJob(event)
+		}
+	}
+
+	private fun printLocation(event: JobEvent) {
 		if (event.uri != null) {
 			val file = runCatching {
 				LocalFileSystem.getInstance().refreshAndFindFileByNioFile(Path.of(URI(event.uri)))
@@ -149,26 +161,22 @@ class ChoiceUi(private val project: Project) : Disposable {
 				"${file.name}:${(event.line ?: 0) + 1}\n", OpenFileHyperlinkInfo(project, file, event.line ?: 0)
 			)
 		}
+	}
 
-		if (event.kind == "preview" && event.url != null) console.printHyperlink("Preview: ${event.url}\n") {
-			BrowserUtil.browse(
-				event.url
-			)
-		}
+	private fun printPreviewLink(event: JobEvent) {
+		val url = event.url ?: return
+		console.printHyperlink("Preview: $url\n") { BrowserUtil.browse(url) }
+	}
 
-		if (event.kind == "stale") previews[event.jobId]?.displayName =
-			BifoilBundle.message("preview.source.changed.title")
-		if (event.kind == "coverage") console.print(
-			"Coverage: ${event.coverage?.mapValues { (_, counts) -> "${counts.count { it > 0 }}/${counts.size} lines" }}\n",
-			ConsoleViewContentType.NORMAL_OUTPUT
-		)
+	private fun printCoverage(event: JobEvent) {
+		val coverage = event.coverage?.mapValues { (_, counts) -> "${counts.count { it > 0 }}/${counts.size} lines" }
+		console.print("Coverage: $coverage\n", ConsoleViewContentType.NORMAL_OUTPUT)
+	}
 
-		if (event.kind == "completed") {
-			if (event.jobId in trackedJobs) completed.add(event.jobId)
-			closePreview(event.jobId)
-		}
-
-		if (event.kind == "completed") console.print(
+	private fun completeJob(event: JobEvent) {
+		if (event.jobId in trackedJobs) completed.add(event.jobId)
+		closePreview(event.jobId)
+		console.print(
 			"Exit: ${event.exitCode}\n",
 			if (event.exitCode == 0) ConsoleViewContentType.NORMAL_OUTPUT else ConsoleViewContentType.ERROR_OUTPUT
 		)
@@ -223,7 +231,7 @@ class ChoiceUi(private val project: Project) : Disposable {
 	fun preview(result: JobResult) {
 		val url = result.url ?: return
 
-		val window = ToolWindowManager.getInstance(project).getToolWindow("Bifoil ChoiceScript") ?: return
+		val window = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_TITLE) ?: return
 
 		if (!JBCefApp.isSupported()) {
 			BrowserUtil.browse(url)
@@ -288,7 +296,7 @@ class ChoiceToolWindow : ToolWindowFactory {
 			actions.getAction("BifoilChoiceScript.Export")
 		)
 
-		val toolbar = actions.createActionToolbar("Bifoil ChoiceScript", group, true)
+		val toolbar = actions.createActionToolbar(TOOL_WINDOW_TITLE, group, true)
 		toolbar.targetComponent = panel
 		panel.add(toolbar.component, BorderLayout.NORTH)
 		panel.add(console.component, BorderLayout.CENTER)
@@ -332,7 +340,7 @@ fun <T> request(
 			onError()
 			ApplicationManager.getApplication().invokeLater {
 				if (!project.isDisposed) Messages.showErrorDialog(
-					project, error.message ?: error.toString(), "Bifoil ChoiceScript"
+					project, error.message ?: error.toString(), TOOL_WINDOW_TITLE
 				)
 			}
 		}
@@ -349,7 +357,7 @@ open class ToolAction(private val operation: String) : AnAction() {
 		val project = event.project ?: return
 
 		if (operation != "stop" && !TrustedProjects.isProjectTrusted(project)) {
-			Messages.showInfoMessage(project, "Trust this project before running game code.", "Bifoil ChoiceScript")
+			Messages.showInfoMessage(project, "Trust this project before running game code.", TOOL_WINDOW_TITLE)
 			return
 		}
 
@@ -360,7 +368,7 @@ open class ToolAction(private val operation: String) : AnAction() {
 				FileChooser.chooseFile(FileChooserDescriptorFactory.createSingleFolderDescriptor(), project, null)
 					?: return
 			val name = Messages.showInputDialog(
-				project, "New project folder name", "Bifoil ChoiceScript", null, "my-choice-game", null
+				project, "New project folder name", TOOL_WINDOW_TITLE, null, "my-choice-game", null
 			) ?: return
 
 			if (!name.matches(Regex("[\\w -]+"))) return
@@ -378,28 +386,12 @@ open class ToolAction(private val operation: String) : AnAction() {
 				}
 
 				Messages.showInfoMessage(
-					project, "Open a folder containing scenes/startup.txt.", "Bifoil ChoiceScript"
+					project, "Open a folder containing scenes/startup.txt.", TOOL_WINDOW_TITLE
 				)
 				return@request
 			}
 
-			val active = FileEditorManager.getInstance(project).selectedFiles.firstOrNull()
-			val selected = games.firstOrNull { active != null && active.toNioPath().startsWith(Path.of(it.sceneDir)) }
-				?: if (games.size == 1) games.first() else {
-					val dialog = object : ChooseElementsDialog<GameProject>(
-						project, games, "Bifoil ChoiceScript", "Select a game"
-					) {
-						override fun getItemText(item: GameProject) = item.name + " — " + item.root
-
-						override fun getItemIcon(item: GameProject): Icon? = null
-
-						init {
-							myChooser.setSingleSelectionMode()
-						}
-					}
-
-					dialog.showAndGetResult().singleOrNull()
-				} ?: return@request
+			val selected = selectGame(project, games) ?: return@request
 			args["projectId"] = selected.id
 
 			if (operation == "randomtest") {
@@ -437,6 +429,26 @@ open class ToolAction(private val operation: String) : AnAction() {
 		}
 	}
 
+	private fun selectGame(project: Project, games: List<GameProject>): GameProject? {
+		val active = FileEditorManager.getInstance(project).selectedFiles.firstOrNull()
+		return games.firstOrNull { active != null && active.toNioPath().startsWith(Path.of(it.sceneDir)) }
+			?: if (games.size == 1) games.first() else {
+				val dialog = object : ChooseElementsDialog<GameProject>(
+					project, games, TOOL_WINDOW_TITLE, "Select a game"
+				) {
+					override fun getItemText(item: GameProject) = item.name + " — " + item.root
+
+					override fun getItemIcon(item: GameProject): Icon? = null
+
+					init {
+						myChooser.setSingleSelectionMode()
+					}
+				}
+
+				dialog.showAndGetResult().singleOrNull()
+			}
+	}
+
 	/**
 	 * Allocate and track a test/export UUID before the wire start. Starting preview first
 	 * stops the selected game's prior operation. Result callbacks run on the EDT through request.
@@ -444,7 +456,7 @@ open class ToolAction(private val operation: String) : AnAction() {
 	private fun execute(project: Project, options: Map<String, Any>) {
 		val tracked = operation in listOf("quicktest", "randomtest", "exportHtml")
 		val args = if (tracked) options + ("jobId" to UUID.randomUUID().toString()) else options
-		ToolWindowManager.getInstance(project).getToolWindow("Bifoil ChoiceScript")?.show()
+		ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_TITLE)?.show()
 		request(project, { server ->
 			if (tracked) ChoiceUi.get(project).track(JobResult(args["jobId"] as String, args["projectId"] as String))
 			if (operation == "run") server.job(args + ("operation" to "stop"))
@@ -455,7 +467,7 @@ open class ToolAction(private val operation: String) : AnAction() {
 				if (operation == "createProject") Messages.showInfoMessage(
 					project,
 					"Created ${args["destination"]}. Open that folder to edit your game.",
-					"Bifoil ChoiceScript"
+					TOOL_WINDOW_TITLE
 				)
 			}
 		}
@@ -476,7 +488,7 @@ class WordCountAction : AnAction() {
 
 		request(project, { it.wordCount(mapOf("uri" to file.toNioPath().toUri().toString())) }) {
 			Messages.showInfoMessage(
-				project, "Narrative word count: $it", "Bifoil ChoiceScript"
+				project, "Narrative word count: $it", TOOL_WINDOW_TITLE
 			)
 		}
 	}
