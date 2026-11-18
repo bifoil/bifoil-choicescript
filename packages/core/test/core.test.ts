@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
-import { analyzeProject, definition, encodeTokens, parseDocument, rename } from "@bifoil/choicescript-core";
+import { analyzeProject, definition, diagnostic, encodeTokens, parseDocument, rename } from "@bifoil/choicescript-core";
+import { mapStringDiagnostic } from "../src/string-diagnostics.js";
 
 const uri = "file:///game/scenes/startup.txt";
 
@@ -21,6 +22,18 @@ const fixture =
 
 const at = (a: ReturnType<typeof analyze>, line: number, start: number) =>
   a.tokens.get(uri)!.find((t) => t.line === line && t.start <= start && t.start + t.length > start)?.type;
+
+test("decoded string diagnostic columns preserve escape offsets and bounded recovery positions", () => {
+  const mapped = diagnostic(3, 0, 1, "expression-string", "Original string diagnostic", 2);
+  mapStringDiagnostic(mapped, [9, 11, 12]);
+  assert.deepEqual(mapped.range, { start: { line: 3, character: 9 }, end: { line: 3, character: 11 } });
+  assert.equal(mapped.code, "expression-string");
+  assert.equal(mapped.message, "Original string diagnostic");
+  assert.equal(mapped.severity, 2);
+  const recovery = diagnostic(3, 10, 5, "expression-string", "Original recovery diagnostic");
+  mapStringDiagnostic(recovery, [9, 11, 12]);
+  assert.deepEqual(recovery.range, { start: { line: 3, character: 12 }, end: { line: 3, character: 12 } });
+});
 
 test("modulo shorthand preserves direct and indirect assignment targets", () => {
   const doc = parseDocument(uri, '*create score 8\n*set score % 3\n*setref "score" % 3');

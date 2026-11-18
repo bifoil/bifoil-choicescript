@@ -2,6 +2,7 @@ import commands from "../../../vendor/bifoil-language-server/core/commands.json"
 import { diagnostic, type Document, type Expr, type Line, sceneName } from "./types.js";
 import { validVariableName } from "./names.js";
 import { lex, type Lexeme, parseExpression, referenceGroups, valueGroups } from "./expression.js";
+import { mapStringDiagnostic } from "./string-diagnostics.js";
 
 /**
  * Shared command help and fallback-generation input; recognition here does not imply full semantic validation.
@@ -51,8 +52,7 @@ function addStringTokens(doc: Document, node: Line, token: Lexeme): void {
   }
 
   for (const diagnostic of nested.diagnostics) {
-    diagnostic.range.start.character = offsets[diagnostic.range.start.character] ?? offsets.at(-1)!;
-    diagnostic.range.end.character = offsets[diagnostic.range.end.character] ?? offsets.at(-1)!;
+    mapStringDiagnostic(diagnostic, offsets);
     doc.diagnostics.push(diagnostic);
   }
 }
