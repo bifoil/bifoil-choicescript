@@ -76,7 +76,7 @@ class ChoiceSettings : PersistentStateComponent<ChoiceState> {
  * from clearing a replacement session's UI.
  */
 @Service(PROJECT)
-open class ChoiceUi(private val project: Project) : Disposable {
+class ChoiceUi(private val project: Project) : Disposable {
 	companion object {
 		fun get(project: Project) = project.service<ChoiceUi>()
 	}
@@ -93,6 +93,7 @@ open class ChoiceUi(private val project: Project) : Disposable {
 	private val previews = mutableMapOf<String, Content>()
 	private val previewProjects = mutableMapOf<String, String>()
 	private val sessions = AtomicLong()
+	internal var previewHost = ChoicePreviewHost(project)
 
 	@Volatile
 	private var sessionActive = false
@@ -127,7 +128,7 @@ open class ChoiceUi(private val project: Project) : Disposable {
 		val content = previews.remove(id) ?: return
 
 		previewProjects.remove(id)
-		toolWindow()?.contentManager?.removeContent(
+		previewHost.toolWindow()?.contentManager?.removeContent(
 			content, true
 		)
 	}
@@ -232,11 +233,11 @@ open class ChoiceUi(private val project: Project) : Disposable {
 	fun preview(result: JobResult) {
 		val url = result.url ?: return
 
-		val window = toolWindow() ?: return
+		val window = previewHost.toolWindow() ?: return
 
-		val page = previewPage(url)
+		val page = previewHost.previewPage(url)
 		if (page == null) {
-			openInBrowser(url)
+			previewHost.openInBrowser(url)
 			return
 		}
 
@@ -246,7 +247,7 @@ open class ChoiceUi(private val project: Project) : Disposable {
 		panel.add(page.first, BorderLayout.CENTER)
 
 		val browserButton = JButton("Open in Browser")
-		browserButton.addActionListener { openInBrowser(url) }
+		browserButton.addActionListener { previewHost.openInBrowser(url) }
 		panel.add(browserButton, BorderLayout.NORTH)
 
 		val content = ContentFactory.getInstance().createContent(panel, "Game", true)
@@ -276,21 +277,23 @@ open class ChoiceUi(private val project: Project) : Disposable {
 		window.show()
 	}
 
-	/** Host presentation boundaries keep content ownership independent of JCEF availability. */
-	protected open fun toolWindow(): ToolWindow? =
+	override fun dispose() {
+		Disposer.dispose(console)
+	}
+}
+
+/** Host presentation boundaries keep content ownership independent of JCEF availability. */
+internal open class ChoicePreviewHost(private val project: Project) {
+	open fun toolWindow(): ToolWindow? =
 		ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_TITLE)
 
-	protected open fun previewPage(url: String): Pair<JComponent, Disposable>? {
+	open fun previewPage(url: String): Pair<JComponent, Disposable>? {
 		if (!JBCefApp.isSupported()) return null
 		val browser = JBCefBrowser(url)
 		return browser.component to browser
 	}
 
-	protected open fun openInBrowser(url: String) = BrowserUtil.browse(url)
-
-	override fun dispose() {
-		Disposer.dispose(console)
-	}
+	open fun openInBrowser(url: String) = BrowserUtil.browse(url)
 }
 
 /**

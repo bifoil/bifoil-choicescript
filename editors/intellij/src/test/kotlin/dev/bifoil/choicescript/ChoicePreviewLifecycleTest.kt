@@ -34,7 +34,8 @@ class ChoicePreviewLifecycleTest : BasePlatformTestCase() {
 		var embedded = false
 		val opened = mutableListOf<String>()
 		val disposed = mutableListOf<String>()
-		val ui = object : ChoiceUi(project) {
+		val ui = ChoiceUi(project)
+		ui.previewHost = object : ChoicePreviewHost(project) {
 			override fun toolWindow(): ToolWindow? = if (available) window else null
 			override fun previewPage(url: String): Pair<JComponent, Disposable>? {
 				if (!embedded) return null
