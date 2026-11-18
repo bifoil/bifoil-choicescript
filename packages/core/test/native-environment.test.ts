@@ -75,17 +75,30 @@ test("compiled joins agree with the reference domain across missing bindings and
 });
 
 test("mixed environment storage preserves joins, prefix operations and arena reset", () => {
-  const arena = new NativeEnvironmentArena(), foreign = new NativeEnvironmentArena();
-  const values: [string, ReturnType<typeof literal>][] = [["scope_a", literal(1)], ["scope_b", literal("two")], ["other", literal(false)]];
-  const native = arena.environment(values), reference = new Environment(values);
-  assert(native.equals(reference)); assert(reference.equals(native));
-  assert(!native.shares(reference)); assert(!reference.shares(native));
+  const arena = new NativeEnvironmentArena(),
+    foreign = new NativeEnvironmentArena();
+  const values: [string, ReturnType<typeof literal>][] = [
+    ["scope_a", literal(1)],
+    ["scope_b", literal("two")],
+    ["other", literal(false)],
+  ];
+  const native = arena.environment(values),
+    reference = new Environment(values);
+  assert(native.equals(reference));
+  assert(reference.equals(native));
+  assert(!native.shares(reference));
+  assert(!reference.shares(native));
   assert(!native.shares(foreign.environment(values)));
   assert(native.shares(native.clone()));
   assert.equal(native.empty().size, 0);
-  const different = arena.environment([["other", literal(true)], ["additional", literal(3)]]);
-  assert(!reference.equals(different)); assert(!different.equals(reference));
-  const nativeJoin = native.join(different), referenceJoin = reference.join(different);
+  const different = arena.environment([
+    ["other", literal(true)],
+    ["additional", literal(3)],
+  ]);
+  assert(!reference.equals(different));
+  assert(!different.equals(reference));
+  const nativeJoin = native.join(different),
+    referenceJoin = reference.join(different);
   assert.deepEqual(new Map(nativeJoin), new Map(referenceJoin));
   assert.deepEqual(new Map(native.entriesWithPrefix("scope_")), new Map(values.slice(0, 2)));
   native.deletePrefix("scope_");
@@ -98,4 +111,25 @@ test("mixed environment storage preserves joins, prefix operations and arena res
   arena.reset();
   const fresh = arena.environment([["fresh", literal("reset")]]);
   assert.deepEqual([...fresh], [["fresh", literal("reset")]]);
+});
+
+test("equal-sized reference and native environments compare values and names", () => {
+  const arena = new NativeEnvironmentArena();
+  const reference = new Environment([
+    ["score", literal(1)],
+    ["name", literal("Alex")],
+  ]);
+  const native = arena.environment([...reference]);
+  assert(reference.equals(native));
+  native.set("score", literal(2));
+  assert.equal(native.size, reference.size);
+  assert(!reference.equals(native));
+  assert(!native.equals(reference));
+  native.set("score", literal(1));
+  native.delete("name");
+  native.set("other", literal("Alex"));
+  assert.equal(native.size, reference.size);
+  assert(!reference.equals(native));
+  assert(!native.equals(reference));
+  assert.equal(reference.get("name")?.constant, "Alex");
 });

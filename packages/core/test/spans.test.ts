@@ -3,6 +3,16 @@ import assert from "node:assert/strict";
 import { overlaySegments } from "../src/spans.js";
 import type { Span } from "@bifoil/choicescript-core";
 
+test("a lone overlay is copied and empty overlays contribute no semantic span", () => {
+  const token: Span = { line: 4, start: 2, length: 3, type: "variable" };
+  const result = overlaySegments([], [token]);
+  assert.deepEqual(result, [token]);
+  assert.notEqual(result[0], token);
+  result[0].length = 1;
+  assert.equal(token.length, 3);
+  for (const length of [0, -1]) assert.deepEqual(overlaySegments([], [{ ...token, length }]), []);
+});
+
 test("semantic overlays preserve nested token precedence and uncovered prose", () => {
   const span = (start: number, length: number, type: string): Span => ({ line: 0, start, length, type });
 

@@ -491,10 +491,9 @@ function randomSceneLine(doc: Document, node: Line, body: string): void {
   let start = trimmed.length;
   while (start > 0 && !/\s/.test(trimmed[start - 1])) start--;
 
-  if (start < trimmed.length) {
-    node.target = trimmed.slice(start);
-    node.tokens.push({ line, start: indent + start, length: node.target.length, type: "label" });
-  }
+  // Metadata is entered only for a nonblank body, so its final word is present.
+  node.target = trimmed.slice(start);
+  node.tokens.push({ line, start: indent + start, length: node.target.length, type: "label" });
 
   const conditional = /\*if\s+\(/.exec(body);
   const close = body.lastIndexOf(")", start - 1);
@@ -510,15 +509,14 @@ function metadataLine(doc: Document, node: Line, body: string): void {
   if (node.parent?.command === "goto_random_scene") {
     randomSceneLine(doc, node, body);
   } else if (node.parent?.command === "scene_list") {
-    const m = /^(?:\$\S+\s+)?(\S+)/.exec(body);
-
-    if (m)
-      node.tokens.push({
-        line,
-        start: indent + body.indexOf(m[1]),
-        length: m[1].length,
-        type: "label",
-      });
+    // The caller strips leading whitespace and admits only nonblank bodies.
+    const m = /^(?:\$\S+\s+)?(\S+)/.exec(body)!;
+    node.tokens.push({
+      line,
+      start: indent + body.indexOf(m[1]),
+      length: m[1].length,
+      type: "label",
+    });
   } else {
     const m = /^(percent|opposed_pair|text)\s+(\w+)/.exec(body);
 
@@ -622,13 +620,12 @@ function enterBlock(
 
 function checkMissingBlocks(doc: Document): void {
   for (const node of doc.lines) {
+    const name = node.command ?? "";
     if (
-      blocks.has(node.command ?? "") &&
+      blocks.has(name) &&
       node.inlineText === undefined &&
       !node.children.some(
-        (c) =>
-          c.kind !== "blank" &&
-          (c.kind !== "comment" || ["if", "elseif", "elsif", "else"].includes(node.command ?? "")),
+        (c) => c.kind !== "blank" && (c.kind !== "comment" || ["if", "elseif", "elsif", "else"].includes(name)),
       )
     )
       doc.diagnostics.push(

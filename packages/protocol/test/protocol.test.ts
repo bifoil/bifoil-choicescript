@@ -68,3 +68,27 @@ test("RandomTest seed range remains exact across the requested iterations", asyn
   assert(validSeedRange(Number.MAX_SAFE_INTEGER - 1, 2));
   assert(validSeedRange(Number.MIN_SAFE_INTEGER, 10_000_000));
 });
+
+test("project removal drops only removed coverage and absent invalidation cannot poison a later job", () => {
+  const store = new CoverageStore();
+  store.invalidate("retained");
+  for (const projectId of ["retained", "removed"]) {
+    const event = { protocolVersion: 1 as const, projectId, jobId: projectId };
+    store.update({ ...event, kind: "started" });
+    store.update({ ...event, kind: "coverage", coverage: { startup: [2, 0] } });
+  }
+  store.retain(["retained"]);
+  assert.deepEqual(store.counts("retained", "STARTUP"), [2, 0]);
+  assert.deepEqual(store.counts("removed", "startup"), []);
+  assert(
+    !store.update({
+      protocolVersion: 1,
+      projectId: "removed",
+      jobId: "removed",
+      kind: "coverage",
+      coverage: { startup: [99] },
+    }),
+  );
+  store.invalidate("removed");
+  assert.deepEqual(store.counts("retained", "startup"), [2, 0]);
+});
