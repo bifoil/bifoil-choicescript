@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, openSync, writeSync, closeSync } from "node:fs";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -188,7 +190,10 @@ test("virtual scene arrays preserve sparse descriptor and exotic-key behavior", 
     const compare = () => {
       assert.deepEqual(Reflect.ownKeys(actual), Reflect.ownKeys(expected));
       for (const key of ["0", "1", "2", "-1", "01", "4294967295", "length", marker]) {
-        assert.deepEqual(Reflect.getOwnPropertyDescriptor(actual, key), Reflect.getOwnPropertyDescriptor(expected, key));
+        assert.deepEqual(
+          Reflect.getOwnPropertyDescriptor(actual, key),
+          Reflect.getOwnPropertyDescriptor(expected, key),
+        );
         assert.equal(Reflect.has(actual, key), Reflect.has(expected, key));
       }
     };
@@ -237,6 +242,204 @@ test("scene metadata and split adapters reject unsupported operations and retain
     f.store.dispose();
     assert.throws(() => f.store.text(file), /storage is closed/);
     assert.throws(() => text.lines()[0], /storage is closed/);
+  } finally {
+    f.close();
+  }
+});
+
+test("source capture reuses unchanged identities and refuses staged directories", () => {
+  const f = fixture();
+  try {
+    const file = path.join(f.scenes, "reused.txt");
+    writeFileSync(file, "Original snapshot.\n");
+    const first = f.store.text(file);
+    const owned = () => readdirSync(f.root).filter((name) => name.startsWith(".bifoil-source-"));
+    const cache = path.join(f.root, owned()[0]);
+    const files = readdirSync(cache);
+    const second = f.store.text(file);
+    assert.equal(String(second), String(first));
+    assert.deepEqual([...second.lines()], ["Original snapshot.", ""]);
+    assert.deepEqual(readdirSync(cache), files);
+    const directory = path.join(f.scenes, "directory.txt");
+    mkdirSync(directory);
+    assert.throws(() => f.store.text(directory), /regular staged file/);
+    assert.ok(fs.statSync(directory).isDirectory());
+  } finally {
+    f.close();
+  }
+});
+
+test("truncated owned snapshots fail without reading the mutable staged source", () => {
+  const f = fixture();
+  try {
+    const file = path.join(f.scenes, "immutable.txt");
+    writeFileSync(file, "Original immutable row.\n");
+    const text = f.store.text(file);
+    const cache = path.join(f.root, readdirSync(f.root).find((name) => name.startsWith(".bifoil-source-"))!);
+    const source = readdirSync(cache).find((name) => name.endsWith(".source"))!;
+    fs.truncateSync(path.join(cache, source), 0);
+    writeFileSync(file, "Changed staged row must not be substituted.\n");
+    assert.throws(() => text.lines()[0], /Incomplete immutable tool source storage/);
+    assert.equal(fs.readFileSync(file, "utf8"), "Changed staged row must not be substituted.\n");
+  } finally {
+    f.close();
+  }
+});
+
+test("capture rejects incomplete writes and removes its partial owned outputs", (t) => {
+  const f = fixture();
+  const write = fs.writeSync;
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+    f.close();
+  });
+  const file = path.join(f.scenes, "write-failure.txt");
+  writeFileSync(file, "Original snapshot.\n");
+  t.mock.method(fs, "writeSync", () => 0);
+  syncBuiltinESMExports();
+  assert.throws(() => f.store.text(file), /Could not preserve a complete tool source snapshot/);
+  t.mock.restoreAll();
+  syncBuiltinESMExports();
+  const cache = path.join(f.root, readdirSync(f.root).find((name) => name.startsWith(".bifoil-source-"))!);
+  assert.deepEqual(readdirSync(cache), []);
+  assert.equal(fs.writeSync, write);
+  assert.deepEqual([...f.store.text(file).lines()], ["Original snapshot.", ""]);
+});
+
+test("capture rejects each changed file identity and retains the caller's source", (t) => {
+  const f = fixture();
+  const stat = fs.fstatSync;
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+    f.close();
+  });
+  const file = path.join(f.scenes, "identity-failure.txt");
+  writeFileSync(file, "Original snapshot.\n");
+  for (const field of ["dev", "ino", "size", "mtimeNs", "ctimeNs"] as const) {
+    t.mock.method(fs, "fstatSync", (fd: number) => {
+      const observed = stat(fd, { bigint: true });
+      return { ...observed, [field]: observed[field] + 1n };
+    });
+    syncBuiltinESMExports();
+    assert.throws(() => f.store.text(file), /Staged scene changed while capturing/);
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+    const cache = path.join(f.root, readdirSync(f.root).find((name) => name.startsWith(".bifoil-source-"))!);
+    assert.deepEqual(readdirSync(cache), []);
+    assert.equal(fs.readFileSync(file, "utf8"), "Original snapshot.\n");
+  }
+  assert.deepEqual([...f.store.text(file).lines()], ["Original snapshot.", ""]);
+});
+
+test("safe-offset and short-read refusals leave no accepted capture", (t) => {
+  const f = fixture();
+  const stat = fs.lstatSync;
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+    f.close();
+  });
+  const file = path.join(f.scenes, "short-read.txt");
+  writeFileSync(file, "Original snapshot.\n");
+  t.mock.method(fs, "lstatSync", () => {
+    const observed = stat(file, { bigint: true });
+    observed.size = BigInt(Number.MAX_SAFE_INTEGER) + 1n;
+    return observed;
+  });
+  syncBuiltinESMExports();
+  assert.throws(() => f.store.text(file), /safe file-offset precision/);
+  t.mock.restoreAll();
+  t.mock.method(fs, "readSync", () => 0);
+  syncBuiltinESMExports();
+  assert.throws(() => f.store.text(file), /Staged scene changed while capturing/);
+  t.mock.restoreAll();
+  syncBuiltinESMExports();
+  const cache = path.join(f.root, readdirSync(f.root).find((name) => name.startsWith(".bifoil-source-"))!);
+  assert.deepEqual(readdirSync(cache), []);
+  assert.deepEqual([...f.store.text(file).lines()], ["Original snapshot.", ""]);
+});
+
+test("failed exclusive output opens close the captured input and preserve the failure", (t) => {
+  const f = fixture();
+  const open = fs.openSync;
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+    f.close();
+  });
+  const file = path.join(f.scenes, "open-failure.txt");
+  writeFileSync(file, "Original snapshot.\n");
+  for (const suffix of [".source", ".offsets"]) {
+    const failure = new Error(`Owned ${suffix} output could not be opened`);
+    let input: number | undefined;
+    t.mock.method(fs, "openSync", (...args: Parameters<typeof fs.openSync>) => {
+      if (String(args[0]).endsWith(suffix)) throw failure;
+      const fd = open(...args);
+      if (args[0] === file) input = fd;
+      return fd;
+    });
+    syncBuiltinESMExports();
+    assert.throws(
+      () => f.store.text(file),
+      (error) => error === failure,
+    );
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+    assert.notEqual(input, undefined);
+    assert.throws(() => fs.fstatSync(input!), { code: "EBADF" });
+    const cache = path.join(f.root, readdirSync(f.root).find((name) => name.startsWith(".bifoil-source-"))!);
+    assert.deepEqual(readdirSync(cache), []);
+  }
+  assert.deepEqual([...f.store.text(file).lines()], ["Original snapshot.", ""]);
+});
+
+test("source caches evict old descriptors and decline retaining a giant decoded line", () => {
+  const f = fixture();
+  try {
+    const views = [];
+    for (let index = 0; index < 20; index++) {
+      const file = path.join(f.scenes, `scene${index}.txt`);
+      writeFileSync(file, `Original row ${index}.\n`);
+      views.push(f.store.text(file).lines());
+    }
+    for (let index = 0; index < views.length; index++) assert.equal(views[index][0], `Original row ${index}.`);
+    for (let index = views.length - 1; index >= 0; index--) assert.equal(views[index][0], `Original row ${index}.`);
+    const file = path.join(f.scenes, "giant-line.txt");
+    const line = "Ω".repeat(1024 * 1024 + 1);
+    writeFileSync(file, line);
+    const lines = f.store.text(file).lines();
+    assert.equal(lines[0], line);
+    assert.equal(lines[0], line);
+    assert.deepEqual(
+      readdirSync(f.scenes).sort(),
+      [...Array.from({ length: 20 }, (_, i) => `scene${i}.txt`), "giant-line.txt"].sort(),
+    );
+  } finally {
+    f.close();
+  }
+});
+
+test("shrinking lazy line arrays preserves deleted rows below the new length", () => {
+  const f = fixture();
+  try {
+    const file = path.join(f.scenes, "retained-hole.txt");
+    writeFileSync(file, "first\nsecond\nthird");
+    const actual = f.store.text(file).lines();
+    const expected = ["first", "second", "third"];
+    for (const lines of [actual, expected]) {
+      delete lines[0];
+      lines.length = 2;
+      lines.length = 3;
+    }
+    Object.preventExtensions(actual);
+    Object.preventExtensions(expected);
+    assert.deepEqual([...actual], [...expected]);
+    assert.deepEqual(Reflect.ownKeys(actual), Reflect.ownKeys(expected));
+    assert.equal(0 in actual, false);
+    assert.equal(actual[1], "second");
+    assert.equal(2 in actual, false);
   } finally {
     f.close();
   }
