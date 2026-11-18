@@ -228,7 +228,7 @@ export function diagnostic(
  * Decode the final URI segment as a case-preserving scene name, without a .txt suffix.
  */
 export function sceneName(uri: string): string {
-  return decodeURIComponent(uri.split("/").pop() ?? "").replace(/\.txt$/i, "");
+  return decodeURIComponent(uri.split("/").pop()!).replace(/\.txt$/i, "");
 }
 
 /**
@@ -250,7 +250,7 @@ export function joinValue(a: Value, b: Value): Value {
   // instead of allocating and sorting the same tiny type set for every binding.
   if ((a.constant === undefined || sameConstant) && b.types.every((type) => a.types.includes(type))) return a;
   if ((b.constant === undefined || sameConstant) && a.types.every((type) => b.types.includes(type))) return b;
-  const types = [...new Set([...a.types, ...b.types])].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const types = [...new Set([...a.types, ...b.types])].sort();
   return {
     types,
     ...(a.constant !== undefined && sameConstant ? { constant: a.constant } : {}),
