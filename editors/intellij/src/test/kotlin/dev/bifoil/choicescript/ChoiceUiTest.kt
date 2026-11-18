@@ -201,21 +201,21 @@ class ChoiceUiTest : BasePlatformTestCase() {
 				}
 			})
 			PlatformTestUtil.waitWithEventsDispatching("Export cancellation did not return", { cancelledExport.isDone }, 10)
-				val exported = exportDirectory.resolve("original.html")
-				val beforeExport = text().length
+			val exported = exportDirectory.resolve("original.html")
+			val beforeExport = text().length
 			perform(object : ToolAction("exportHtml") {
 				override fun chooseExportDestination(project: Project) = exported.toString()
 			})
-				try {
-					PlatformTestUtil.waitWithEventsDispatching("Native HTML export did not finish", {
-						"Exit:" in text().drop(beforeExport)
-					}, 20)
-				} catch (error: AssertionError) {
-					throw AssertionError("Export: console=${text().drop(beforeExport)}; dialogs=$dialogs", error)
-				}
-				assertTrue("Export failed: ${text().drop(beforeExport)}", "Exit: 0" in text().drop(beforeExport))
-				assertTrue(Files.isRegularFile(exported))
-				assertTrue(Files.readString(exported).contains("Original narrative words."))
+			try {
+				PlatformTestUtil.waitWithEventsDispatching("Native HTML export did not finish", {
+					"Exit:" in text().drop(beforeExport)
+				}, 20)
+			} catch (error: AssertionError) {
+				throw AssertionError("Export: console=${text().drop(beforeExport)}; dialogs=$dialogs", error)
+			}
+			assertTrue("Export failed: ${text().drop(beforeExport)}", "Exit: 0" in text().drop(beforeExport))
+			assertTrue(Files.isRegularFile(exported))
+			assertTrue(Files.readString(exported).contains("Original narrative words."))
 
 			perform(RunAction())
 			awaitOutput("http://127.0.0.1:")

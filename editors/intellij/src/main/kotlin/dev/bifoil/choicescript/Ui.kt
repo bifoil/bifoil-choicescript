@@ -44,6 +44,7 @@ import java.util.concurrent.ConcurrentHashMap.newKeySet
 import java.util.concurrent.atomic.AtomicLong
 import javax.swing.Icon
 import javax.swing.JButton
+import javax.swing.JComponent
 import javax.swing.JPanel
 
 private const val TOOL_WINDOW_TITLE = "Bifoil ChoiceScript"
@@ -75,7 +76,7 @@ class ChoiceSettings : PersistentStateComponent<ChoiceState> {
  * from clearing a replacement session's UI.
  */
 @Service(PROJECT)
-class ChoiceUi(private val project: Project) : Disposable {
+open class ChoiceUi(private val project: Project) : Disposable {
 	companion object {
 		fun get(project: Project) = project.service<ChoiceUi>()
 	}
@@ -126,7 +127,7 @@ class ChoiceUi(private val project: Project) : Disposable {
 		val content = previews.remove(id) ?: return
 
 		previewProjects.remove(id)
-		ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_TITLE)?.contentManager?.removeContent(
+		toolWindow()?.contentManager?.removeContent(
 			content, true
 		)
 	}
@@ -231,26 +232,26 @@ class ChoiceUi(private val project: Project) : Disposable {
 	fun preview(result: JobResult) {
 		val url = result.url ?: return
 
-		val window = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_TITLE) ?: return
+		val window = toolWindow() ?: return
 
-		if (!JBCefApp.isSupported()) {
-			BrowserUtil.browse(url)
+		val page = previewPage(url)
+		if (page == null) {
+			openInBrowser(url)
 			return
 		}
 
 		for (id in previewProjects.filterValues { it == result.projectId }.keys.toList()) closePreview(id)
 
-		val browser = JBCefBrowser(url)
 		val panel = JPanel(BorderLayout())
-		panel.add(browser.component, BorderLayout.CENTER)
+		panel.add(page.first, BorderLayout.CENTER)
 
 		val browserButton = JButton("Open in Browser")
-		browserButton.addActionListener { BrowserUtil.browse(url) }
+		browserButton.addActionListener { openInBrowser(url) }
 		panel.add(browserButton, BorderLayout.NORTH)
 
 		val content = ContentFactory.getInstance().createContent(panel, "Game", true)
 		content.setDisposer {
-			Disposer.dispose(browser)
+			Disposer.dispose(page.second)
 			previews.remove(result.jobId)
 			previewProjects.remove(result.jobId)
 
@@ -274,6 +275,18 @@ class ChoiceUi(private val project: Project) : Disposable {
 		@Suppress("UsePropertyAccessSyntax") window.contentManager.setSelectedContent(content)
 		window.show()
 	}
+
+	/** Host presentation boundaries keep content ownership independent of JCEF availability. */
+	protected open fun toolWindow(): ToolWindow? =
+		ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_TITLE)
+
+	protected open fun previewPage(url: String): Pair<JComponent, Disposable>? {
+		if (!JBCefApp.isSupported()) return null
+		val browser = JBCefBrowser(url)
+		return browser.component to browser
+	}
+
+	protected open fun openInBrowser(url: String) = BrowserUtil.browse(url)
 
 	override fun dispose() {
 		Disposer.dispose(console)
