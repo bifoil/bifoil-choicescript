@@ -7,20 +7,27 @@ import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.components.service
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.DumbService
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.TestDialogManager
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.wm.ToolWindow
 import com.intellij.platform.lsp.api.LspClientManager
 import com.intellij.platform.lsp.api.LspServerState
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.PsiTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.ui.UIUtil
+import com.intellij.ui.content.ContentFactory
+import java.awt.BorderLayout
+import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.atomic.AtomicReference
+import javax.swing.JPanel
 
 /** Real IDE actions, native custom requests, progress and console notifications share one owned session. */
 class ChoiceUiTest : BasePlatformTestCase() {
@@ -47,6 +54,25 @@ class ChoiceUiTest : BasePlatformTestCase() {
 		val ui = ChoiceUi.get(project)
 		val console = ui.console as ConsoleViewImpl
 		assertNotNull(console.component)
+		val contents = ContentFactory.getInstance().createContentManager(false, project)
+		Disposer.register(testRootDisposable, contents)
+		val window = Proxy.newProxyInstance(
+			ToolWindow::class.java.classLoader, arrayOf(ToolWindow::class.java)
+		) { proxy, method, args ->
+			when (method.name) {
+				"getContentManager" -> contents
+				"toString" -> "Original test tool window"
+				"hashCode" -> System.identityHashCode(proxy)
+				"equals" -> proxy === args?.firstOrNull()
+				else -> error("Unexpected tool-window call: ${method.name}")
+			}
+		} as ToolWindow
+		ChoiceToolWindow().createToolWindowContent(project, window)
+		assertEquals(1, contents.contentCount)
+		val output = checkNotNull(contents.getContent(0))
+		assertEquals("Output", output.displayName)
+		val outputPanel = output.component as JPanel
+		assertSame(console.component, (outputPanel.layout as BorderLayout).getLayoutComponent(BorderLayout.CENTER))
 
 		fun text(): String {
 			console.flushDeferredText()
@@ -140,6 +166,44 @@ class ChoiceUiTest : BasePlatformTestCase() {
 				PlatformTestUtil.waitWithEventsDispatching("Cancelled inputs were not consumed", { answers.isEmpty() }, 10)
 			}
 
+			val parent = file.parent.parent
+			perform(object : ToolAction("createProject") {
+				override fun chooseProjectParent(project: Project): VirtualFile? = null
+			})
+			for (name in listOf(null, "../invalid")) {
+				answers.add(name)
+				perform(object : ToolAction("createProject") {
+					override fun chooseProjectParent(project: Project) = parent
+				})
+				assertTrue(answers.isEmpty())
+			}
+			val created = directory.resolve("created-game")
+			answers.add("created-game")
+			perform(object : ToolAction("createProject") {
+				override fun chooseProjectParent(project: Project) = parent
+			})
+			PlatformTestUtil.waitWithEventsDispatching("Native project creation did not finish", {
+				Files.isRegularFile(created.resolve("scenes/startup.txt")) &&
+					dialogs.any { "Created " in it && "created-game" in it }
+			}, 20)
+			assertTrue(Files.readString(created.resolve("scenes/startup.txt")).isNotBlank())
+			assertEquals("*create score 1\nOriginal narrative words.\n*ending\n", Files.readString(source))
+
+			val cancelledExport = CompletableFuture<Boolean>()
+			perform(object : ToolAction("exportHtml") {
+				override fun chooseExportDestination(project: Project): String? {
+					cancelledExport.complete(true)
+					return null
+				}
+			})
+			PlatformTestUtil.waitWithEventsDispatching("Export cancellation did not return", { cancelledExport.isDone }, 10)
+			val exported = directory.resolve("original.html")
+			perform(object : ToolAction("exportHtml") {
+				override fun chooseExportDestination(project: Project) = exported.toString()
+			})
+			PlatformTestUtil.waitWithEventsDispatching("Native HTML export did not finish", {
+				Files.isRegularFile(exported) && Files.readString(exported).contains("Original narrative words.")
+			}, 20)
 
 			perform(RunAction())
 			awaitOutput("http://127.0.0.1:")

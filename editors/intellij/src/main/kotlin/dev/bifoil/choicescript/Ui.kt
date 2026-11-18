@@ -364,9 +364,7 @@ open class ToolAction(private val operation: String) : AnAction() {
 		val args = mutableMapOf<String, Any>("protocolVersion" to 1, "operation" to operation, "trusted" to true)
 
 		if (operation == "createProject") {
-			val parent =
-				FileChooser.chooseFile(FileChooserDescriptorFactory.createSingleFolderDescriptor(), project, null)
-					?: return
+			val parent = chooseProjectParent(project) ?: return
 			val name = Messages.showInputDialog(
 				project, "New project folder name", TOOL_WINDOW_TITLE, null, "my-choice-game", null
 			) ?: return
@@ -418,16 +416,21 @@ open class ToolAction(private val operation: String) : AnAction() {
 			}
 
 			if (operation == "exportHtml") {
-				val file = FileChooserFactory.getInstance().createSaveFileDialog(
-					FileSaverDescriptor("Export HTML", "Choose a new output file", "html"), project
-				).save(null as VirtualFile?, "game.html") ?: return@request
-
-				args["destination"] = file.file.absolutePath
+				args["destination"] = chooseExportDestination(project) ?: return@request
 			}
 
 			execute(project, args)
 		}
 	}
+
+	/** File selection is separate from dispatch so callers can supply an owned destination. */
+	protected open fun chooseProjectParent(project: Project): VirtualFile? =
+		FileChooser.chooseFile(FileChooserDescriptorFactory.createSingleFolderDescriptor(), project, null)
+
+	protected open fun chooseExportDestination(project: Project): String? =
+		FileChooserFactory.getInstance().createSaveFileDialog(
+			FileSaverDescriptor("Export HTML", "Choose a new output file", "html"), project
+		).save(null as VirtualFile?, "game.html")?.file?.absolutePath
 
 	private fun selectGame(project: Project, games: List<GameProject>): GameProject? {
 		val active = FileEditorManager.getInstance(project).selectedFiles.firstOrNull()
