@@ -5,10 +5,10 @@ import path from "node:path";
 
 export async function hostTool(name, { platform = process.platform, environment = process.env } = {}) {
   const windows = platform === "win32";
-  const system = path.join(environment.SystemRoot ?? "C:\\Windows", "System32");
+  const system = path.join(environment.SystemRoot ?? String.raw`C:\Windows`, "System32");
   const installations = windows
     ? {
-        git: [path.join(environment.ProgramFiles ?? "C:\\Program Files", "Git/cmd/git.exe")],
+        git: [path.join(environment.ProgramFiles ?? String.raw`C:\Program Files`, "Git/cmd/git.exe")],
         tar: [path.join(system, "tar.exe")],
         powershell: [path.join(system, "WindowsPowerShell/v1.0/powershell.exe")],
       }

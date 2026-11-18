@@ -10,9 +10,9 @@ const grammar = {
   name: "ChoiceScript",
   scopeName: "source.choicescript",
   patterns: [
-    { name: "comment.line.choicescript", match: "(?i)^\\s*\\*comment\\b.*$" },
+    { name: "comment.line.choicescript", match: String.raw`(?i)^\s*\*comment\b.*$` },
     {
-      begin: "(?i)^\\s*(\\*(?:" + Object.keys(commands).join("|") + "))\\b",
+      begin: String.raw`(?i)^\s*(\*(?:` + Object.keys(commands).join("|") + String.raw`))\b`,
       end: "$",
       beginCaptures: { 1: { name: "keyword.control.choicescript" } },
       patterns: [
@@ -20,15 +20,15 @@ const grammar = {
           name: "string.quoted.double.choicescript",
           begin: '"',
           end: '"|$',
-          patterns: [{ name: "constant.character.escape", match: "\\\\." }],
+          patterns: [{ name: "constant.character.escape", match: String.raw`\\.` }],
         },
-        { name: "constant.language.boolean", match: "\\b(?:true|false)\\b" },
-        { name: "constant.numeric", match: "\\b[0-9]+(?:\\.[0-9]+)?\\b" },
+        { name: "constant.language.boolean", match: String.raw`\b(?:true|false)\b` },
+        { name: "constant.numeric", match: String.raw`\b[0-9]+(?:\.[0-9]+)?\b` },
       ],
     },
-    { name: "punctuation.definition.choice", match: "^\\s*#" },
-    { name: "punctuation.section.interpolation", match: "[$@]!{0,2}\\{|\\}" },
-    { name: "punctuation.definition.tag", match: "\\[/?[bi]\\]" },
+    { name: "punctuation.definition.choice", match: String.raw`^\s*#` },
+    { name: "punctuation.section.interpolation", match: String.raw`[$@]!{0,2}\{|\}` },
+    { name: "punctuation.definition.tag", match: String.raw`\[/?[bi]\]` },
   ],
 };
 await mkdir("editors/vscode/syntaxes", { recursive: true });

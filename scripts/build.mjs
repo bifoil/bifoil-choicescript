@@ -15,7 +15,6 @@ await import("./check-native.mjs");
 await import("./generate.mjs");
 
 const { writeDependencyNotices } = await import("./notices.mjs");
-const builds = [];
 const nativeTarget = `${process.platform}-${process.arch}`;
 await ensureNativeArtifact(nativeTarget);
 // Rebuild owned bundle directories, so removed dependencies and engine files cannot survive.
@@ -50,28 +49,15 @@ const common = {
   logLevel: "info",
   metafile: true,
 };
-builds.push(
-  await build({
-    ...common,
-    entryPoints: ["packages/server/src/index.ts"],
-    outfile: "dist/server/server.cjs",
-  }),
+const builds = await Promise.all(
+  [
+    ["packages/server/src/index.ts", "server.cjs"],
+    ["packages/server/src/worker.ts", "analysis-worker.cjs"],
+    ["packages/tooling/src/broker.ts", "tool-broker.cjs"],
+    ["packages/tooling/src/tool-source-preload.ts", "tool-source-preload.cjs"],
+    ["packages/tooling/src/export-source-preload.ts", "export-source-preload.cjs"],
+  ].map(([entry, output]) => build({ ...common, entryPoints: [entry], outfile: path.join("dist/server", output) })),
 );
-builds.push(
-  await build({
-    ...common,
-    entryPoints: ["packages/server/src/worker.ts"],
-    outfile: "dist/server/analysis-worker.cjs",
-  }),
-);
-
-for (const [entry, output] of [
-  ["packages/tooling/src/broker.ts", "tool-broker.cjs"],
-  ["packages/tooling/src/tool-source-preload.ts", "tool-source-preload.cjs"],
-  ["packages/tooling/src/export-source-preload.ts", "export-source-preload.cjs"],
-]) {
-  builds.push(await build({ ...common, entryPoints: [entry], outfile: path.join("dist/server", output) }));
-}
 
 const runtime = JSON.parse(await readFile("vendor/runtime-files.json", { encoding: "utf8" }));
 const engineLock = JSON.parse(await readFile("vendor/choicescript.lock.json", { encoding: "utf8" }));
@@ -82,14 +68,19 @@ if (runtime.engineCommit !== engineLock.commit) throw new Error("Runtime invento
 for (const file of runtime.files) {
   if (!Object.hasOwn(checksums, file) || file.split("/").some((part) => part === ".." || part === "."))
     throw new Error("Unknown runtime inventory file: " + file);
-
-  const destination = path.join("dist/server/vendor/choicescript", file);
-  await mkdir(path.dirname(destination), { recursive: true });
-  await cp(path.join("vendor/choicescript", file), destination);
 }
-
-for (const file of ["choicescript.lock.json", "checksums.json", "runtime-files.json"])
-  await cp(path.join("vendor", file), path.join("dist/server/vendor", file));
+await Promise.all(
+  runtime.files.map(async (file) => {
+    const destination = path.join("dist/server/vendor/choicescript", file);
+    await mkdir(path.dirname(destination), { recursive: true });
+    await cp(path.join("vendor/choicescript", file), destination);
+  }),
+);
+await Promise.all(
+  ["choicescript.lock.json", "checksums.json", "runtime-files.json"].map((file) =>
+    cp(path.join("vendor", file), path.join("dist/server/vendor", file)),
+  ),
+);
 
 builds.push(
   await build({

@@ -30,31 +30,28 @@ const version = JSON.parse(await readFile("package.json", { encoding: "utf8" }))
 if (!process.env.GITHUB_SHA || !/^[a-f0-9]{40}$/.test(process.env.GITHUB_SHA))
   throw new Error("GITHUB_SHA must identify the verified source commit");
 
-for (const [source, destination] of [
-  ["LICENSE", "BIFOIL_CHOICESCRIPT-LICENSE.txt"],
-  ["THIRD_PARTY_NOTICES.md", "THIRD_PARTY_NOTICES.md"],
-  ["vendor/choicescript/LICENSE.txt", "CHOICESCRIPT-LICENSE.txt"],
-  ["vendor/choicescript.lock.json", "choicescript.lock.json"],
-  ["vendor/bifoil-language-server/LICENSE", "BIFOIL_LANGUAGE_SERVER_LICENSE.txt"],
-  ["vendor/bifoil-language-server.lock.json", "bifoil-language-server.lock.json"],
-  ["vendor/checksums.json", "engine-checksums.json"],
-  ["runtime-lock.json", "runtime-lock.json"],
-  ["pnpm-lock.yaml", "pnpm-lock.yaml"],
-  ["docs/provenance/gradle-linux-x64.xml", "gradle-linux-x64.xml"],
-  ["docs/release-notes.md", "RELEASE-NOTES.md"],
-])
-  await copyFile(source, await releaseFile(directory, destination));
+await Promise.all(
+  [
+    ["LICENSE", "BIFOIL_CHOICESCRIPT-LICENSE.txt"],
+    ["THIRD_PARTY_NOTICES.md", "THIRD_PARTY_NOTICES.md"],
+    ["vendor/choicescript/LICENSE.txt", "CHOICESCRIPT-LICENSE.txt"],
+    ["vendor/choicescript.lock.json", "choicescript.lock.json"],
+    ["vendor/bifoil-language-server/LICENSE", "BIFOIL_LANGUAGE_SERVER_LICENSE.txt"],
+    ["vendor/bifoil-language-server.lock.json", "bifoil-language-server.lock.json"],
+    ["vendor/checksums.json", "engine-checksums.json"],
+    ["runtime-lock.json", "runtime-lock.json"],
+    ["pnpm-lock.yaml", "pnpm-lock.yaml"],
+    ["docs/provenance/gradle-linux-x64.xml", "gradle-linux-x64.xml"],
+    ["docs/release-notes.md", "RELEASE-NOTES.md"],
+  ].map(async ([source, destination]) => copyFile(source, await releaseFile(directory, destination))),
+);
 
-const artifacts = [];
-
-for (const file of [...targets.map((target) => `bifoil-choicescript-${target}.vsix`), ...native]) {
-  const bytes = await readFile(await releaseFile(directory, file));
-  artifacts.push({
-    file,
-    bytes: bytes.length,
-    sha256: createHash("sha256").update(bytes).digest("hex"),
-  });
-}
+const artifacts = await Promise.all(
+  [...targets.map((target) => `bifoil-choicescript-${target}.vsix`), ...native].map(async (file) => {
+    const bytes = await readFile(await releaseFile(directory, file));
+    return { file, bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
+  }),
+);
 
 await writeFile(
   await releaseFile(directory, "release-manifest.json"),
@@ -77,16 +74,17 @@ await writeFile(
   ) + "\n",
 );
 
-const checksums = [];
-
-for (const file of (await readdir(directory))
+const checksumFiles = (await readdir(directory))
   .filter((name) => name !== "SHA256SUMS.txt")
-  .sort((a, b) => a.localeCompare(b, "en"))) {
-  const digest = createHash("sha256")
-    .update(await readFile(path.join(directory, file)))
-    .digest("hex");
-  checksums.push(`${digest}  ${file}`);
-}
+  .sort((a, b) => a.localeCompare(b, "en"));
+const checksums = await Promise.all(
+  checksumFiles.map(async (file) => {
+    const digest = createHash("sha256")
+      .update(await readFile(path.join(directory, file)))
+      .digest("hex");
+    return `${digest}  ${file}`;
+  }),
+);
 
 await writeFile(await releaseFile(directory, "SHA256SUMS.txt"), checksums.join("\n") + "\n");
 console.log("Prepared seven packages, dependency provenance, notices and SHA-256 checksums.");

@@ -58,19 +58,21 @@ export async function verifyNativeArtifact(target) {
     manifest.sourceSha256 !== lock.sourceSha256
   )
     throw new Error("Native server does not match its current source and toolchain: " + target);
-  for (const [file, expected] of [
-    [executable, manifest.sha256],
-    ["GO_LICENSE.txt", manifest.licenseSha256],
-  ]) {
-    const info = await lstat(path.join(directory, file));
-    if (
-      !info.isFile() ||
-      info.isSymbolicLink() ||
-      !/^[a-f0-9]{64}$/.test(expected ?? "") ||
-      (await fileSha256(path.join(directory, file))) !== expected
-    )
-      throw new Error("Native artifact checksum mismatch: " + target + "/" + file);
-  }
+  await Promise.all(
+    [
+      [executable, manifest.sha256],
+      ["GO_LICENSE.txt", manifest.licenseSha256],
+    ].map(async ([file, expected]) => {
+      const info = await lstat(path.join(directory, file));
+      if (
+        !info.isFile() ||
+        info.isSymbolicLink() ||
+        !/^[a-f0-9]{64}$/.test(expected ?? "") ||
+        (await fileSha256(path.join(directory, file))) !== expected
+      )
+        throw new Error("Native artifact checksum mismatch: " + target + "/" + file);
+    }),
+  );
   return { directory, manifest };
 }
 
@@ -88,19 +90,33 @@ export async function ensureNativeArtifact(target) {
   }
 }
 
+/** Drain owned staging writes before cleanup, including after the first failed copy. */
+async function completeOperations(operations) {
+  const results = await Promise.allSettled(operations);
+  const failed = results.find((result) => result.status === "rejected");
+  if (failed) throw failed.reason;
+  return results.map((result) => result.value);
+}
+
 /** Replace only this generated bundle's native directory after every requested target verifies. */
 export async function stageNativeArtifacts(bundle, targets) {
-  const artifacts = [];
-  for (const target of targets) artifacts.push({ target, ...(await ensureNativeArtifact(target)) });
+  const artifacts = await completeOperations(
+    targets.map(async (target) => ({ target, ...(await ensureNativeArtifact(target)) })),
+  );
   await mkdir(bundle, { recursive: true });
   const staging = await mkdtemp(path.join(bundle, ".native-stage-"));
   try {
-    for (const { target, directory, manifest } of artifacts) {
-      const destination = path.join(staging, target);
-      await mkdir(destination);
-      for (const file of [manifest.executable, "manifest.json", "GO_LICENSE.txt"])
-        await cp(path.join(directory, file), path.join(destination, file));
-    }
+    await completeOperations(
+      artifacts.map(async ({ target, directory, manifest }) => {
+        const destination = path.join(staging, target);
+        await mkdir(destination);
+        await completeOperations(
+          [manifest.executable, "manifest.json", "GO_LICENSE.txt"].map((file) =>
+            cp(path.join(directory, file), path.join(destination, file)),
+          ),
+        );
+      }),
+    );
     await rm(path.join(bundle, "native"), { recursive: true, force: true });
     await rename(staging, path.join(bundle, "native"));
   } finally {
