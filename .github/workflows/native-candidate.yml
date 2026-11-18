@@ -1,4 +1,5 @@
 name: Qualify native dependency candidate
+# Windows checkouts apply explicit ACLs to the key file itself before Git runs.
 on:
   push:
     branches: [codex/sonar-quality-2026-11-17]

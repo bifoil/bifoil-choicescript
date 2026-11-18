@@ -43,14 +43,59 @@ runs:
         Set-Acl -LiteralPath $directory -AclObject $acl
         "directory=$directory" >> $env:GITHUB_OUTPUT
     - uses: actions/checkout@v7
-      env:
-        RUNNER_TEMP: ${{ steps.ssh-temp.outputs.directory || runner.temp }}
+      if: runner.os != 'Windows'
       with:
         repository: bifoil/bifoil-language-server
         ref: ${{ steps.pin.outputs.revision }}
         path: vendor/bifoil-language-server
         ssh-key: ${{ inputs.read-key }}
         persist-credentials: false
+    - name: Check out private source with explicit Windows key permissions
+      if: runner.os == 'Windows'
+      shell: pwsh
+      env:
+        PRIVATE_NATIVE_READ_KEY: ${{ inputs.read-key }}
+        PRIVATE_NATIVE_REVISION: ${{ steps.pin.outputs.revision }}
+        PRIVATE_NATIVE_SSH_DIRECTORY: ${{ steps.ssh-temp.outputs.directory }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $directory = $env:PRIVATE_NATIVE_SSH_DIRECTORY
+        $key = Join-Path $directory 'id_native'
+        $knownHosts = Join-Path $directory 'known_hosts'
+        $previousCommand = $env:GIT_SSH_COMMAND
+        function Invoke-NativeGit([string[]] $GitArguments) {
+          & git @GitArguments
+          if ($LASTEXITCODE -ne 0) { throw 'Native dependency Git operation failed.' }
+        }
+        try {
+          if ([string]::IsNullOrWhiteSpace($env:PRIVATE_NATIVE_READ_KEY)) {
+            throw 'The native dependency read key is required.'
+          }
+          [System.IO.File]::WriteAllText($key,
+            $env:PRIVATE_NATIVE_READ_KEY.Trim().Replace("`r`n", "`n") + "`n",
+            [System.Text.UTF8Encoding]::new($false))
+          $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+          $acl = [System.Security.AccessControl.FileSecurity]::new()
+          $acl.SetOwner($identity)
+          $acl.SetAccessRuleProtection($true, $false)
+          $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new(
+            $identity, [System.Security.AccessControl.FileSystemRights]::FullControl,
+            [System.Security.AccessControl.AccessControlType]::Allow))
+          Set-Acl -LiteralPath $key -AclObject $acl
+          Copy-Item -LiteralPath '.github/github-ssh-known-hosts' -Destination $knownHosts
+          $ssh = (Get-Command ssh.exe).Source.Replace('\', '/')
+          $keyPath = $key.Replace('\', '/')
+          $hostsPath = $knownHosts.Replace('\', '/')
+          $env:GIT_SSH_COMMAND = '"{0}" -i "{1}" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile={2}"' -f $ssh, $keyPath, $hostsPath
+          $destination = 'vendor/bifoil-language-server'
+          Invoke-NativeGit -GitArguments @('init', $destination)
+          Invoke-NativeGit -GitArguments @('-C', $destination, 'remote', 'add', 'origin', 'git@github.com:bifoil/bifoil-language-server.git')
+          Invoke-NativeGit -GitArguments @('-C', $destination, 'fetch', '--depth=1', 'origin', $env:PRIVATE_NATIVE_REVISION)
+          Invoke-NativeGit -GitArguments @('-C', $destination, 'checkout', '--detach', 'FETCH_HEAD')
+        } finally {
+          $env:GIT_SSH_COMMAND = $previousCommand
+          Remove-Item -LiteralPath $directory -Recurse -Force
+        }
     - name: Initialize pinned engine
       shell: bash
       run: git -c core.autocrlf=false submodule update --init --recursive vendor/choicescript
