@@ -63,6 +63,7 @@ test("benchmark retains the 256 MiB limit and rejects malformed sampler output",
       ["spawn-error", { peakMiB: 128, samples: [{}] }, false],
       ["not-started", { peakMiB: 128, samples: [{}] }, false],
       ["nonzero-exit", { peakMiB: 128, samples: [{}] }, false],
+      ["signal-exit", { peakMiB: 128, samples: [{}] }, false],
       ["invalid-json", "{", false],
     ]) {
       const directory = path.join(root, name);
@@ -70,11 +71,12 @@ test("benchmark retains the 256 MiB limit and rejects malformed sampler output",
       const resultFile = path.join(root, name + ".json");
       await writeFile(resultFile + ".memory.json", name === "invalid-json" ? sample : JSON.stringify(sample));
       const report = { completed: true, memory: null };
+      const ordinaryExitCode = name === "nonzero-exit" ? 7 : 0;
       await finishBenchmark({
         monitor: {
           pid: name === "not-started" ? undefined : 1,
-          exitCode: name === "nonzero-exit" ? 7 : 0,
-          signalCode: null,
+          exitCode: name === "signal-exit" ? null : ordinaryExitCode,
+          signalCode: name === "signal-exit" ? "SIGTERM" : null,
         },
         monitorError: name === "spawn-error" ? new Error("Original sampler start failure") : undefined,
         report,
@@ -89,7 +91,107 @@ test("benchmark retains the 256 MiB limit and rejects malformed sampler output",
       if (name === "spawn-error") assert.match(saved.failure, /Original sampler start failure/);
       if (name === "not-started") assert.match(saved.failure, /sampler did not start/);
       if (name === "nonzero-exit") assert.match(saved.failure, /sampler exited 7/);
+      if (name === "signal-exit") assert.match(saved.failure, /sampler exited null/);
     }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a running sampler error is retained and all exit listeners are removed during cleanup", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bifoil asynchronous sampler failure "));
+  try {
+    const directory = path.join(root, "scenes"),
+      resultFile = path.join(root, "report.json");
+    await mkdir(directory);
+    await writeFile(path.join(directory, "startup.txt"), "Original disposable source.");
+    const monitor = Object.assign(new EventEmitter(), {
+      pid: 123,
+      exitCode: null,
+      signalCode: null,
+      kill(signal) {
+        this.signalCode = signal;
+        queueMicrotask(() => this.emit("exit", null, signal));
+        return true;
+      },
+    });
+    const report = { completed: true, failure: "Original workload failure", memory: null };
+    const cleanup = finishBenchmark({ monitor, report, resultFile, directory });
+    queueMicrotask(() => monitor.emit("error", new Error("Original asynchronous sampler failure")));
+    await cleanup;
+    const saved = JSON.parse(await readFile(resultFile, "utf8"));
+    assert.equal(saved.completed, false);
+    assert.match(saved.failure, /Original workload failure.*Original asynchronous sampler failure/);
+    assert.equal(saved.memory.available, false);
+    assert.equal(monitor.signalCode, "SIGKILL");
+    assert.equal(monitor.listenerCount("exit"), 0);
+    assert.equal(monitor.listenerCount("error"), 0);
+    await assert.rejects(readFile(path.join(directory, "startup.txt")), { code: "ENOENT" });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a running sampler's normal exit settles successfully without forced termination", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bifoil successful sampler shutdown "));
+  try {
+    const directory = path.join(root, "scenes"),
+      resultFile = path.join(root, "report.json");
+    await mkdir(directory);
+    const memory = { peakMiB: 128, samples: [{ rss: 128 * 1048576 }] };
+    await writeFile(resultFile + ".memory.json", JSON.stringify(memory));
+    const monitor = Object.assign(new EventEmitter(), {
+      pid: 123,
+      exitCode: null,
+      signalCode: null,
+      kill() {
+        assert.fail("an exited sampler must not be killed");
+      },
+    });
+    const report = { completed: true, memory: null };
+    const cleanup = finishBenchmark({ monitor, report, resultFile, directory });
+    queueMicrotask(() => {
+      monitor.exitCode = 0;
+      monitor.emit("exit", 0, null);
+    });
+    await cleanup;
+    const saved = JSON.parse(await readFile(resultFile, "utf8"));
+    assert.equal(saved.completed, true);
+    assert.equal(saved.failure, undefined);
+    assert.deepEqual(saved.memory, memory);
+    assert.equal(monitor.listenerCount("exit"), 0);
+    assert.equal(monitor.listenerCount("error"), 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cleanup without a started sampler preserves the failed measurement and removes owned source", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bifoil absent sampler cleanup "));
+  try {
+    const directory = path.join(root, "scenes"),
+      resultFile = path.join(root, "report.json");
+    await mkdir(directory);
+    await writeFile(path.join(directory, "startup.txt"), "Original disposable source.");
+    const report = {
+      completed: false,
+      failure: "Original sampler was unavailable",
+      memory: { available: false, peakMiB: null, samples: [] },
+    };
+    let closed = false;
+    await finishBenchmark({
+      server: {
+        close: async () => {
+          closed = true;
+        },
+      },
+      report,
+      resultFile,
+      directory,
+    });
+    assert(closed);
+    assert.deepEqual(JSON.parse(await readFile(resultFile, "utf8")), report);
+    await assert.rejects(readFile(path.join(directory, "startup.txt")), { code: "ENOENT" });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

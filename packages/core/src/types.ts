@@ -239,6 +239,8 @@ export const literal = (constant: string | number | boolean): Value => ({
   constant,
 });
 
+const typeOrder: Record<ValueType, number> = { boolean: 0, number: 1, string: 2, unknown: 3 };
+
 /**
  * Join possible types from two reachable paths. A constant survives only if both inputs
  * have the same known primitive; missing/unknown values must be supplied explicitly by callers.
@@ -250,7 +252,7 @@ export function joinValue(a: Value, b: Value): Value {
   // instead of allocating and sorting the same tiny type set for every binding.
   if ((a.constant === undefined || sameConstant) && b.types.every((type) => a.types.includes(type))) return a;
   if ((b.constant === undefined || sameConstant) && a.types.every((type) => b.types.includes(type))) return b;
-  const types = [...new Set([...a.types, ...b.types])].sort();
+  const types = [...new Set([...a.types, ...b.types])].sort((left, right) => typeOrder[left] - typeOrder[right]);
   return {
     types,
     ...(a.constant !== undefined && sameConstant ? { constant: a.constant } : {}),

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -37,6 +37,21 @@ test("artifact arguments cannot select source directories or escape through link
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("artifact inputs reject empty and control-character paths and release assets must be regular files", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bifoil release asset lifecycle "));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  for (const value of [null, "", "\0hidden", "new/file\rname", "new/file\nname"])
+    await assert.rejects(confinedPath(root, value), /Invalid artifact path/);
+  const asset = path.join(root, "future.vsix");
+  assert.equal(await releaseFile(root, "future.vsix"), asset);
+  await writeFile(asset, "Original release-asset fixture.");
+  assert.equal(await releaseFile(root, "future.vsix"), asset);
+  await rm(asset);
+  await mkdir(asset);
+  await assert.rejects(releaseFile(root, "future.vsix"), /must be regular files/);
+  assert((await lstat(asset)).isDirectory(), "rejected caller-owned directories must remain intact");
 });
 
 test("runtime targets reject prototype keys, path traversal and command options before provisioning", async () => {
