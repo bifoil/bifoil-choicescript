@@ -35,11 +35,14 @@ export function openEvidence(sealed, recipient) {
 }
 
 export async function sealDirectory(directory, recipient, destination) {
-  const files = {};
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (entry.isFile() && /\.(?:json|out|log)$/.test(entry.name))
-      files[entry.name] = (await readFile(path.join(directory, entry.name))).toString("base64");
-  }
+  const entries = (await readdir(directory, { withFileTypes: true })).filter(
+    (entry) => entry.isFile() && /\.(?:json|out|log)$/.test(entry.name),
+  );
+  const files = Object.fromEntries(
+    await Promise.all(
+      entries.map(async (entry) => [entry.name, (await readFile(path.join(directory, entry.name))).toString("base64")]),
+    ),
+  );
   if (!Object.keys(files).length) throw new Error("No native evidence files were produced");
   await writeFile(destination, sealEvidence(files, recipient));
 }

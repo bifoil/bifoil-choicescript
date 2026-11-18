@@ -43,19 +43,19 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24.21.0
-      - name: Install the pinned condition observer
-        working-directory: vendor/bifoil-language-server
+      - name: Build the condition observer from locked dependencies
         env:
           GOPROXY: https://proxy.golang.org
           GOSUMDB: sum.golang.org
         run: |
-          mkdir -p .bifoil/development/sonar/tools
+          directory="$(pwd)/vendor/bifoil-language-server/.bifoil/development/sonar/tools"
+          mkdir -p "$directory"
           if [[ "$RUNNER_OS" == "Windows" ]]; then
-            export GOBIN="$(cygpath -w "$(pwd)/.bifoil/development/sonar/tools")"
+            observer="$(cygpath -w "$directory/gobco.exe")"
           else
-            export GOBIN="$(pwd)/.bifoil/development/sonar/tools"
+            observer="$directory/gobco"
           fi
-          go install github.com/rillig/gobco@v1.3.4
+          go -C .github/sonar-tools build -mod=readonly -o "$observer" github.com/rillig/gobco
       - name: Measure the candidate without publishing private test output
         id: native
         working-directory: vendor/bifoil-language-server
