@@ -6,6 +6,64 @@ import os from "node:os";
 import { pathToFileURL } from "node:url";
 import { classification, startServer, waitFor } from "./helpers.js";
 import { discoverProjects, projectSources } from "@bifoil/choicescript-tooling";
+import { SceneIndex, SummaryCache } from "../src/scene-index.js";
+
+test("scene inventory invalidation retires removed projections, failures and URI aliases", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bifoil index ownership "));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = path.join(root, "startup.txt");
+  await writeFile(file, "*ending\n");
+  const [project] = await discoverProjects([root]);
+  const index = new SceneIndex(project);
+  t.after(() => index.dispose());
+  const uri = pathToFileURL(file).href;
+  const retired = pathToFileURL(path.join(root, "removed.txt")).href;
+  index.cached.set(uri, "current projection");
+  index.cached.set(retired, "retired projection");
+  index.failed.set(uri, "current failure");
+  index.failed.set(retired, "retired failure");
+  index.stamps.set(uri, 1);
+  index.stamps.set(retired, 2);
+  const sources = await index.inventory();
+  assert.equal(await index.inventory(), sources);
+  assert.equal(index.cached.has(retired), false);
+  assert.equal(index.failed.has(retired), false);
+  assert.equal(index.stamps.has(retired), false);
+  assert.equal(index.cached.has(uri), true);
+  index.invalidate(uri.replace("startup", "%73tartup"));
+  assert.equal(index.cached.has(uri), false);
+  assert.equal(index.failed.has(uri), false);
+  assert.equal(index.stamps.has(uri), false);
+  const before = index.generation;
+  const pending = index.inventory();
+  index.invalidate();
+  assert.equal(index.generation, before + 1);
+  assert.deepEqual(await pending, await index.inventory());
+  const directory = await index.cacheDirectory();
+  assert.equal(await index.cacheDirectory(), directory);
+  await writeFile(path.join(directory, "owned.cache"), "original fixture");
+  await index.dispose();
+  await assert.rejects(readFile(path.join(directory, "owned.cache")), /ENOENT/);
+});
+
+test("summary cache evicts by byte budget and recency without retaining oversized replacements", () => {
+  const cache = new SummaryCache(4);
+  const first = new Uint8Array([1, 2]),
+    second = new Uint8Array([3, 4]),
+    third = new Uint8Array([5, 6]);
+  cache.set("first", first);
+  cache.set("second", second);
+  assert.equal(cache.get("first"), first);
+  cache.set("third", third);
+  assert.equal(cache.get("second"), undefined);
+  assert.equal(cache.get("first"), first);
+  cache.set("first", new Uint8Array(5));
+  assert.equal(cache.get("first"), undefined);
+  assert.equal(cache.get("third"), third);
+  cache.delete("missing");
+  cache.delete("third");
+  assert.equal(cache.get("third"), undefined);
+});
 
 test("source inventories retain buffer aliases and unsaved scenes without loading disk text", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "bifoil inventory Ω "));

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -62,6 +62,28 @@ test("host tool overrides require an existing absolute executable", async () => 
   } finally {
     if (previous === undefined) delete process.env.BIFOIL_GIT;
     else process.env.BIFOIL_GIT = previous;
+  }
+});
+
+test("host utility resolution checks file type and executable permissions in explicit installation layouts", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bifoil host layout "));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const executable = path.join(root, "programs/Git/cmd/git.exe");
+  await mkdir(path.dirname(executable), { recursive: true });
+  await writeFile(executable, "original executable fixture", { mode: 0o755 });
+  const environment = { ProgramFiles: path.join(root, "programs"), SystemRoot: path.join(root, "system") };
+  assert.equal(await hostTool("git", { platform: "win32", environment }), executable);
+  const powershell = path.join(environment.SystemRoot, "System32/WindowsPowerShell/v1.0/powershell.exe");
+  await mkdir(path.dirname(powershell), { recursive: true });
+  await writeFile(powershell, "original executable fixture", { mode: 0o755 });
+  assert.equal(await hostTool("powershell", { platform: "win32", environment }), powershell);
+  await assert.rejects(hostTool("tar", { platform: "win32", environment }), /Install tar/);
+  await assert.rejects(hostTool("unknown", { platform: "win32", environment: {} }), /Unsupported/);
+  await assert.rejects(hostTool("git", { environment: { BIFOIL_GIT: root } }), /Install git/);
+  if (process.platform !== "win32") {
+    await assert.rejects(hostTool("git", { environment: { BIFOIL_GIT: path.join(executable, "child") } }), /ENOTDIR/);
+    await chmod(executable, 0o600);
+    await assert.rejects(hostTool("git", { environment: { BIFOIL_GIT: executable } }), /Install git/);
   }
 });
 
