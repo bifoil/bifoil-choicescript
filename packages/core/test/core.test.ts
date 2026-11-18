@@ -22,6 +22,40 @@ const fixture =
 const at = (a: ReturnType<typeof analyze>, line: number, start: number) =>
   a.tokens.get(uri)!.find((t) => t.line === line && t.start <= start && t.start + t.length > start)?.type;
 
+test("modulo shorthand preserves direct and indirect assignment targets", () => {
+  const doc = parseDocument(uri, '*create score 8\n*set score % 3\n*setref "score" % 3');
+  assert.deepEqual(doc.diagnostics, []);
+  for (const index of [1, 2]) {
+    const expression = doc.lines[index].expr;
+    assert.equal(expression?.kind, "binary");
+    if (expression?.kind !== "binary") assert.fail("assignment lost its binary shorthand");
+    assert.equal(expression.op, "modulo");
+    assert.deepEqual(expression.right, { kind: "literal", value: 3 });
+    if (index === 1) {
+      assert.equal(expression.left.kind, "variable");
+      if (expression.left.kind === "variable") assert.equal(expression.left.name, "score");
+    } else {
+      assert.deepEqual(expression.left, { kind: "indirect", expr: { kind: "literal", value: "score" } });
+    }
+  }
+});
+
+test("an unquoted stray escape reports its physical column and preserves the following inline option", () => {
+  const line = "  *if true \\ # Recovered option";
+  const doc = parseDocument(uri, `*choice\n${line}\n    *finish\nOutside`);
+  assert.equal(doc.lines[1].inlineText, line.indexOf("#") + 1);
+  assert.equal(line.slice(doc.lines[1].inlineText).trim(), "Recovered option");
+  assert.deepEqual(doc.lines[1].expr, { kind: "literal", value: true });
+  const invalid = doc.diagnostics.find((item) => item.code === "expression-character");
+  assert.deepEqual(invalid?.range, {
+    start: { line: 1, character: line.indexOf("\\") },
+    end: { line: 1, character: line.indexOf("\\") + 1 },
+  });
+  assert(doc.diagnostics.every((item) => item.range.start.line === 1));
+  assert.equal(doc.lines[2].command, "finish");
+  assert.equal(doc.lines[3].kind, "prose");
+});
+
 test("independent branches close the same narrative quote; command strings stay separate", () => {
   const a = analyze(fixture);
 
