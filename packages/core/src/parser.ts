@@ -215,15 +215,16 @@ function assignmentValue(doc: Document, node: Line, rest: Lexeme[]): void {
     rest[0] &&
     /^(?:[+\-*/&^#%]|%[+-]|and|or|modulo)$/.test(rest[0].text) &&
     node.targetExpr
-  )
+  ) {
     node.expr = {
       kind: "binary",
       op: rest[0].text === "%" ? "modulo" : rest[0].text,
       left: c === "setref" ? { kind: "indirect", expr: node.targetExpr } : node.targetExpr,
       right: parseExpression(rest.slice(1), doc.diagnostics),
     };
-  else if (!c.endsWith("_array") && !["rand", "input_text", "input_number", "delete", "delete_array"].includes(c))
+  } else if (!c.endsWith("_array") && !["rand", "input_text", "input_number", "delete", "delete_array"].includes(c)) {
     node.expr = rest.length ? parseExpression(rest, doc.diagnostics) : { kind: "unknown" };
+  }
 
   validateCreateLiteral(doc, node, rest);
   validateAssignmentValue(doc, node, rest);
