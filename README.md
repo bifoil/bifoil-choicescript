@@ -95,3 +95,11 @@ does not imply incorporation, nonprofit status, or upstream affiliation.
 Original code is [MIT licensed](LICENSE). The bundled ChoiceScript engine, official template, Node.js, and dependencies
 retain their own licenses and notices. See [third-party notices](THIRD_PARTY_NOTICES.md); this project's MIT license
 does not replace the ChoiceScript license.
+
+## Sonar quality checks
+
+The Sonar workflow requires at least **80% coverage in every production source file**, using covered executable lines
+and condition outcomes from the configured reports. The comparison uses exact counts; project averages and rounded
+percentages cannot hide a failing file. Missing coverage or test evidence fails the check. Files without executable
+Sonar coverage locations retain their separately verified compilation or command-test evidence and report `N/A`.
+This per-file floor is additional to the 100% overall/new condition requirement and the existing issue-count limits.
