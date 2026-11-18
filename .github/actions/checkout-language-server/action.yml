@@ -71,8 +71,10 @@ runs:
           if ([string]::IsNullOrWhiteSpace($env:PRIVATE_NATIVE_READ_KEY)) {
             throw 'The native dependency read key is required.'
           }
+          $lineFeed = [string][char]10
+          $carriageReturnLineFeed = [string][char]13 + $lineFeed
           [System.IO.File]::WriteAllText($key,
-            $env:PRIVATE_NATIVE_READ_KEY.Trim().Replace("`r`n", "`n") + "`n",
+            $env:PRIVATE_NATIVE_READ_KEY.Trim().Replace($carriageReturnLineFeed, $lineFeed) + $lineFeed,
             [System.Text.UTF8Encoding]::new($false))
           $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
           $acl = [System.Security.AccessControl.FileSecurity]::new()
