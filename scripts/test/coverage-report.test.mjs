@@ -1,6 +1,20 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import { test } from "node:test";
+import { repositoryRoot } from "../artifact-paths.mjs";
 import { mergeCoverage, normalizeCoverage } from "../coverage-report.mjs";
+
+test("absolute source paths merge with relocated relative reports without changing measured counters", () => {
+  const relative = "scripts/coverage-report.mjs";
+  const report = (source, hits) => `SF:${source}\nDA:1,${hits}\nBRDA:1,0,0,${hits}\nend_of_record\n`;
+  const merged = mergeCoverage([report(path.join(repositoryRoot, relative), 2), report(relative, 3)]);
+  assert.match(merged, /^SF:scripts\/coverage-report\.mjs\n/);
+  assert.match(merged, /DA:1,5\nBRDA:1,0,0,5\n/);
+  assert.match(merged, /BRF:1\nBRH:1\n/);
+  assert.deepEqual(normalizeCoverage(report(path.resolve(repositoryRoot, "../outside.mjs"), 1)).excludedFiles, [
+    "../outside.mjs",
+  ]);
+});
 
 test("coverage normalization preserves known hits and records unmapped branches without inventing locations", () => {
   const input =
