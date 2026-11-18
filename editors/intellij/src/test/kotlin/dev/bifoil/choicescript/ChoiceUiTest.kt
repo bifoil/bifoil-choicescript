@@ -36,6 +36,9 @@ class ChoiceUiTest : BasePlatformTestCase() {
 		val source = directory.resolve("scenes/startup.txt")
 		Files.createDirectories(source.parent)
 		Files.writeString(source, "*create score 1\nOriginal narrative words.\n*ending\n")
+		for (name in listOf("choicescript_stats", "choicescript_upgrade")) {
+			Files.writeString(source.parent.resolve("$name.txt"), "*finish\n")
+		}
 		val file = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(source)!!
 		PsiTestUtil.addContentRoot(module, file.parent.parent)
 		val manager = LspClientManager.getInstance(project)
@@ -198,12 +201,20 @@ class ChoiceUiTest : BasePlatformTestCase() {
 			})
 			PlatformTestUtil.waitWithEventsDispatching("Export cancellation did not return", { cancelledExport.isDone }, 10)
 			val exported = directory.resolve("original.html")
+				val beforeExport = text().length
 			perform(object : ToolAction("exportHtml") {
 				override fun chooseExportDestination(project: Project) = exported.toString()
 			})
-			PlatformTestUtil.waitWithEventsDispatching("Native HTML export did not finish", {
-				Files.isRegularFile(exported) && Files.readString(exported).contains("Original narrative words.")
-			}, 20)
+				try {
+					PlatformTestUtil.waitWithEventsDispatching("Native HTML export did not finish", {
+						"Exit:" in text().drop(beforeExport)
+					}, 20)
+				} catch (error: AssertionError) {
+					throw AssertionError("Export: console=${text().drop(beforeExport)}; dialogs=$dialogs", error)
+				}
+				assertTrue("Export failed: ${text().drop(beforeExport)}", "Exit: 0" in text().drop(beforeExport))
+				assertTrue(Files.isRegularFile(exported))
+				assertTrue(Files.readString(exported).contains("Original narrative words."))
 
 			perform(RunAction())
 			awaitOutput("http://127.0.0.1:")
