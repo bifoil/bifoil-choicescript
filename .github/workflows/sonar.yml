@@ -59,6 +59,14 @@ jobs:
       - name: Collect source-mapped JavaScript condition coverage
         id: javascript
         run: pnpm test:coverage
+      - name: Retain measured JavaScript coverage for branch diagnostics
+        if: always() && steps.javascript.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: javascript-condition-coverage
+          path: dist/coverage/javascript.lcov
+          if-no-files-found: error
+          retention-days: 1
       - name: Use a matched LLVM installation for the original C coverage shim
         run: |
           if ! test -x /usr/lib/llvm-18/bin/llvm-cov; then

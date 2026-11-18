@@ -69,6 +69,39 @@ test("an unquoted stray escape reports its physical column and preserves the fol
   assert.equal(doc.lines[3].kind, "prose");
 });
 
+test("escaped quotes keep inner hashes inside the condition string and preserve the outer option", () => {
+  const line = String.raw`  *if value = "a \"# inner" # Outer`;
+  const doc = parseDocument(uri, `*choice\n${line}\n    *finish`);
+  assert.deepEqual(doc.diagnostics, []);
+  assert.equal(doc.lines[1].inlineText, line.lastIndexOf("#") + 1);
+  assert.equal(line.slice(doc.lines[1].inlineText).trim(), "Outer");
+  const condition = doc.lines[1].expr;
+  if (condition?.kind !== "binary") assert.fail("condition lost its comparison");
+  assert.deepEqual(condition.right, { kind: "literal", value: 'a "# inner' });
+  assert.equal(doc.lines[2].command, "finish");
+});
+
+test("unknown chart metadata does not invent a variable token or consume the following narrative", () => {
+  const doc = parseDocument(uri, "*stat_chart\n  unknown entry\nAfter");
+  assert.deepEqual(doc.diagnostics, []);
+  assert.equal(doc.lines[1].kind, "metadata");
+  assert.deepEqual(doc.lines[1].tokens, []);
+  assert.equal(doc.lines[1].expr, undefined);
+  assert.equal(doc.lines[2].kind, "prose");
+  assert.equal(doc.lines[2].raw, "After");
+});
+
+test("indented comments beneath narrative preserve dialogue and do not create a command block", () => {
+  const text = '"Hello\n  *comment Nested comment\nworld."\nOutside';
+  const doc = parseDocument(uri, text);
+  assert.equal(doc.lines[0].command, undefined);
+  assert.equal(doc.lines[0].children[0].kind, "comment");
+  const result = analyze(text);
+  assert.equal(at(result, 2, 0), "dialogue");
+  assert.equal(at(result, 3, 0), "narrative");
+  assert.deepEqual(result.diagnostics.get(uri), []);
+});
+
 test("independent branches close the same narrative quote; command strings stay separate", () => {
   const a = analyze(fixture);
 
