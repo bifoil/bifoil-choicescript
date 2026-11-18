@@ -39,7 +39,10 @@ jobs:
         with:
           enable-cache: false
       - name: Test the per-file coverage policy
-        run: uv run --no-project --python python3 python -m unittest discover -s scripts/test -p 'test_*.py'
+        run: |
+          # These tests use only the standard library and the installed system interpreter.
+          policy_python="$(uv python find --system python3)"
+          "$policy_python" -m unittest discover -s scripts/test -p 'test_*.py'
       - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6
         with:
           distribution: temurin
@@ -247,6 +250,11 @@ jobs:
                   for item in package.findall("sourcefile"):
                       suffix = package.attrib["name"] + "/" + item.attrib["name"]
                       candidates = [candidate for candidate in sources if candidate.endswith(suffix)]
+                      if not candidates:
+                          # Kotlin can emit inline-library source entries that have no repository source.
+                          # Missing production coverage is still rejected by the complete source inventory below.
+                          print("IGNORED JaCoCo source outside analyzed inventory: " + suffix)
+                          continue
                       if len(candidates) != 1:
                           raise SystemExit("Ambiguous or missing JaCoCo source: " + suffix)
                       lines = item.findall("line")

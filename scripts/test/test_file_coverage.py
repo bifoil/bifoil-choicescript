@@ -250,6 +250,28 @@ class PerFileCoverage(unittest.TestCase):
         self.report("sonar.coverage.jacoco.xmlReportPaths", report)
         self.assertIn("Ambiguous", self.check(1))
 
+    def test_jacoco_inline_library_entries_do_not_require_nonexistent_repository_sources(self):
+        self.source("src/example/Original.kt")
+        self.report(
+            "sonar.coverage.jacoco.xmlReportPaths",
+            '<report><package name="example"><sourcefile name="Comparisons.kt">'
+            '<line nr="1" mi="0" ci="1" mb="0" cb="0"/></sourcefile>'
+            '<sourcefile name="Original.kt"><line nr="1" mi="0" ci="1" mb="0" cb="0"/>'
+            '</sourcefile></package></report>',
+        )
+        output = self.check()
+        self.assertIn("IGNORED JaCoCo source outside analyzed inventory: example/Comparisons.kt", output)
+        self.assertIn("COVERED src/example/Original.kt", output)
+
+    def test_jacoco_unknown_entries_cannot_replace_missing_production_coverage(self):
+        self.source("src/example/Original.kt")
+        self.report(
+            "sonar.coverage.jacoco.xmlReportPaths",
+            '<report><package name="example"><sourcefile name="Comparisons.kt">'
+            '<line nr="1" mi="0" ci="1" mb="0" cb="0"/></sourcefile></package></report>',
+        )
+        self.assertIn("UNMEASURED src/example/Original.kt", self.check(1))
+
     def test_test_sources_are_excluded_and_empty_production_inventories_cannot_pass(self):
         name = self.source()
         self.source("test/original.test.mjs")
