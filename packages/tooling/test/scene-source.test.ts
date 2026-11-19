@@ -454,7 +454,7 @@ test("source checksum callbacks receive normalized immutable text and the caller
     const text = f.store.text(file);
     const checksum = (value: string, prior = 0) => {
       let result = prior;
-      for (let index = 0; index < value.length; index++) result = (result * 31 + value.charCodeAt(index)) >>> 0;
+      for (const character of value) result = (result * 31 + character.codePointAt(0)!) >>> 0;
       return result;
     };
     const normalized = originalLines(Buffer.from(raw)).join("\n");

@@ -6,7 +6,17 @@
  * SceneText implements the exact source operations used by the pinned tools. It
  * is deliberately an internal adapter, not a general replacement for JS strings.
  */
-import { closeSync, fstatSync, lstatSync, mkdtempSync, openSync, readSync, rmSync, writeSync } from "node:fs";
+import {
+  type BigIntStats,
+  closeSync,
+  fstatSync,
+  lstatSync,
+  mkdtempSync,
+  openSync,
+  readSync,
+  rmSync,
+  writeSync,
+} from "node:fs";
 import { createHash } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
 import path from "node:path";
@@ -78,6 +88,24 @@ function writeAll(fd: number, bytes: Uint8Array): void {
     if (!written) throw new Error("Could not preserve a complete tool source snapshot.");
     offset += written;
   }
+}
+
+function verifyCapture(before: BigIntStats, after: BigIntStats, bytes: number): void {
+  if (
+    before.dev !== after.dev ||
+    before.ino !== after.ino ||
+    before.size !== after.size ||
+    before.mtimeNs !== after.mtimeNs ||
+    before.ctimeNs !== after.ctimeNs ||
+    BigInt(bytes) !== before.size
+  )
+    throw new Error("Staged scene changed while capturing the official tool's source.");
+}
+
+// headless.slurpFile normalizes once; Scene.loadLines splits that normalized
+// text again. Repeated CRs before LF preserve this upstream distinction.
+function splitLineEnding(text: string, line: number, lines: number, splitCR: boolean): string {
+  return splitCR && line + 1 < lines && text.endsWith("\r") ? text.slice(0, -1) : text;
 }
 
 /** Only this freshly created directory is eligible for recursive disposal. */
@@ -154,12 +182,12 @@ export class SceneSources {
       const normalized = (text: string, final: boolean) => {
         if (first && text.length) {
           first = false;
-          if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+          if (text.codePointAt(0) === 0xfeff) text = text.slice(1);
         }
         if (trailingCR) text = "\r" + text;
         trailingCR = !final && text.endsWith("\r");
         if (trailingCR) text = text.slice(0, -1);
-        text = text.replace(/\r\n/g, "\n");
+        text = text.replaceAll("\r\n", "\n");
         hash.update(text, "utf8");
         characters += text.length;
       };
@@ -184,16 +212,7 @@ export class SceneSources {
       addOffset(bytes);
       writeAll(index, entries.subarray(0, used));
 
-      const after = fstatSync(input, { bigint: true });
-      if (
-        before.dev !== after.dev ||
-        before.ino !== after.ino ||
-        before.size !== after.size ||
-        before.mtimeNs !== after.mtimeNs ||
-        before.ctimeNs !== after.ctimeNs ||
-        BigInt(bytes) !== before.size
-      )
-        throw new Error("Staged scene changed while capturing the official tool's source.");
+      verifyCapture(before, fstatSync(input, { bigint: true }), bytes);
 
       const snapshot: Snapshot = {
         id,
@@ -268,48 +287,50 @@ export class SceneSources {
     return Number(page.readBigUInt64LE(position % pageBytes));
   }
 
+  private lineEnd(snapshot: Snapshot, line: number, start: number): number {
+    let end = this.offset(snapshot, line + 1);
+    if (line + 1 < snapshot.lines) {
+      end--;
+      if (end > start) {
+        const page = this.page(snapshot.source, `${snapshot.id}d`, end - 1, snapshot.bytes);
+        if (page[(end - 1) % pageBytes] === 13) end--;
+      }
+    }
+    return end;
+  }
+
+  private readSpan(snapshot: Snapshot, start: number, end: number): string {
+    if (end === start) return "";
+    const first = this.page(snapshot.source, `${snapshot.id}d`, start, snapshot.bytes);
+    const offset = start % pageBytes;
+    if (end - start <= first.length - offset) return first.toString("utf8", offset, offset + end - start);
+    const bytes = Buffer.allocUnsafe(end - start);
+    for (let at = start; at < end; ) {
+      const page = this.page(snapshot.source, `${snapshot.id}d`, at, snapshot.bytes);
+      const within = at % pageBytes,
+        length = Math.min(page.length - within, end - at);
+      page.copy(bytes, at - start, within, within + length);
+      at += length;
+    }
+    return bytes.toString("utf8");
+  }
+
   line(snapshot: Snapshot, line: number, splitCR = false): string {
     if (this.closed) throw new Error("Tool source storage is closed.");
     const prior = this.lastLine;
     if (prior?.snapshot === snapshot.id && prior.line === line)
-      return splitCR && line + 1 < snapshot.lines && prior.text.endsWith("\r") ? prior.text.slice(0, -1) : prior.text;
+      return splitLineEnding(prior.text, line, snapshot.lines, splitCR);
     const key = `${snapshot.id}:${line}`;
     let text = this.decoded.get(key);
     if (text === undefined) {
       const start = this.offset(snapshot, line);
-      let end = this.offset(snapshot, line + 1);
-      if (line + 1 < snapshot.lines) {
-        end--;
-        if (end > start) {
-          const page = this.page(snapshot.source, `${snapshot.id}d`, end - 1, snapshot.bytes);
-          if (page[(end - 1) % pageBytes] === 13) end--;
-        }
-      }
-      if (end === start) text = "";
-      else {
-        const first = this.page(snapshot.source, `${snapshot.id}d`, start, snapshot.bytes);
-        const offset = start % pageBytes;
-        if (end - start <= first.length - offset) text = first.toString("utf8", offset, offset + end - start);
-        else {
-          const bytes = Buffer.allocUnsafe(end - start);
-          for (let at = start; at < end; ) {
-            const page = this.page(snapshot.source, `${snapshot.id}d`, at, snapshot.bytes);
-            const within = at % pageBytes,
-              length = Math.min(page.length - within, end - at);
-            page.copy(bytes, at - start, within, within + length);
-            at += length;
-          }
-          text = bytes.toString("utf8");
-        }
-      }
-      if (line === 0 && text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+      text = this.readSpan(snapshot, start, this.lineEnd(snapshot, line, start));
+      if (line === 0 && text.codePointAt(0) === 0xfeff) text = text.slice(1);
       this.decoded.add(key, text, text.length * 2 + 96);
     }
     // A single giant physical line must not bypass the decoded-cache budget.
     this.lastLine = text.length <= pageBytes / 2 ? { snapshot: snapshot.id, line, text } : undefined;
-    // headless.slurpFile normalizes once; Scene.loadLines splits that normalized
-    // text again. Repeated CRs before LF must preserve this upstream distinction.
-    return splitCR && line + 1 < snapshot.lines && text.endsWith("\r") ? text.slice(0, -1) : text;
+    return splitLineEnding(text, line, snapshot.lines, splitCR);
   }
 
   dispose(): void {
@@ -359,15 +380,15 @@ export class SceneText {
 
   split(separator: string | RegExp, limit?: number): string[] {
     const pattern = separator instanceof RegExp ? separator.source : undefined;
-    if (separator !== "\n" && pattern !== "\\n" && pattern !== "\\r?\\n")
+    if (separator !== "\n" && pattern !== String.raw`\n` && pattern !== String.raw`\r?\n`)
       throw new Error("Unsupported source split in the pinned tool adapter.");
     const count = Math.min(this.snapshot.lines, limit === undefined ? this.snapshot.lines : limit >>> 0);
-    return sourceLines(this.store, this.snapshot, count, pattern === "\\r?\\n");
+    return sourceLines(this.store, this.snapshot, count, pattern === String.raw`\r?\n`);
   }
 
   /** The two whole-source metadata regexes used by pinned autotest.js. */
   metadataMatch(pattern: RegExp, execute: typeof RegExp.prototype.exec): RegExpExecArray | null {
-    if (pattern.flags !== "m" || !["^\\*title (.*)", "^\\*author "].includes(pattern.source))
+    if (pattern.flags !== "m" || ![String.raw`^\*title (.*)`, String.raw`^\*author `].includes(pattern.source))
       throw new Error("Unsupported direct source regular expression in the pinned tool adapter.");
     let offset = 0;
     for (let line = 0; line < this.snapshot.lines; line++) {
@@ -393,8 +414,8 @@ export class SceneText {
     return null;
   }
 
-  crc32(calculate: (text: string, crc?: number) => number, initial?: number): number {
-    let crc = initial ?? 0;
+  crc32(calculate: (text: string, crc?: number) => number, initial = 0): number {
+    let crc = initial;
     for (let line = 0; line < this.snapshot.lines; line++) {
       crc = calculate(this.store.line(this.snapshot, line), crc);
       if (line + 1 < this.snapshot.lines) crc = calculate("\n", crc);
@@ -408,7 +429,7 @@ function sourceLines(store: SceneSources, snapshot: Snapshot, count: number, spl
   // An accessor moves V8's target to sparse dictionary elements before length is
   // assigned. A hole-filled array would itself cost O(physical lines) in memory.
   Object.defineProperty(target, "0", { get: () => "", configurable: true });
-  delete target[0];
+  Reflect.deleteProperty(target, "0");
   target.length = count;
   let visible = count;
   const deleted = new Set<number>();
