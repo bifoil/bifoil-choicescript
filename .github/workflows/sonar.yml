@@ -7,7 +7,87 @@ permissions:
   contents: read
   id-token: write
 jobs:
+  windows-projects:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Capture exact public project inputs and compile the portable regressions
+        run: |
+          node --input-type=module <<'NODE'
+          import { mkdir, readFile, writeFile } from 'node:fs/promises';
+          import { createHash } from 'node:crypto';
+          import { buildCoverageTests } from './scripts/coverage-build.mjs';
+          const names = [
+            'packages/tooling/src/projects.ts',
+            'packages/tooling/test/project-boundaries.test.ts',
+            'packages/tooling/test/project-identity.test.ts',
+          ];
+          const sources = Object.fromEntries(await Promise.all(names.map(async name => [name, createHash('sha256').update(await readFile(name)).digest('hex')])));
+          await mkdir('dist/coverage', { recursive: true });
+          await writeFile('dist/coverage/windows-project-inputs.json', JSON.stringify(sources));
+          await buildCoverageTests(names.slice(1));
+          NODE
+      - name: Collect actual Windows project conditions
+        run: >-
+          node node_modules/c8/bin/c8.js
+          --reporter=lcovonly
+          --temp-directory=dist/coverage/windows-project-v8
+          --reports-dir=dist/coverage/windows-project-report
+          node --enable-source-maps --test --test-isolation=none
+          .cache/coverage/tests/packages/tooling/test/project-boundaries.test.mjs
+          .cache/coverage/tests/packages/tooling/test/project-identity.test.mjs
+      - name: Retain only source-verified public project observations
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFile, writeFile } from 'node:fs/promises';
+          import { createHash } from 'node:crypto';
+          import { createRequire } from 'node:module';
+          import { mergeCoverage, normalizeCoverage } from './scripts/coverage-report.mjs';
+          const require = createRequire(import.meta.url);
+          const observer = require('c8/package.json').version;
+          const transformer = require('esbuild/package.json').version;
+          if (process.platform !== 'win32' || process.arch !== 'x64' || process.version !== 'v24.21.0' || observer !== '12.0.0' || transformer !== '0.28.1') throw new Error('Unexpected native project coverage host or observer');
+          const sources = JSON.parse(await readFile('dist/coverage/windows-project-inputs.json', 'utf8'));
+          for (const [name, expected] of Object.entries(sources)) {
+            const actual = createHash('sha256').update(await readFile(name)).digest('hex');
+            if (actual !== expected) throw new Error('Source changed during Windows project tests: ' + name);
+          }
+          const normalized = normalizeCoverage(await readFile('dist/coverage/windows-project-report/lcov.info', 'utf8'));
+          const record = normalized.lcov.split('end_of_record').find(value => /^SF:packages\/tooling\/src\/projects\.ts$/m.test(value));
+          if (!record || !/^BRDA:/m.test(record)) throw new Error('Missing measured project conditions');
+          const lcov = mergeCoverage([record + 'end_of_record\n']);
+          await writeFile('dist/coverage/windows-projects.lcov', lcov);
+          await writeFile('dist/coverage/windows-projects.json', JSON.stringify({
+            format: 'bifoil.project-host-coverage.v1', revision: process.env.GITHUB_SHA,
+            runId: process.env.GITHUB_RUN_ID, platform: process.platform, arch: process.arch,
+            node: process.version, observer, transformer, sources,
+            lcovSha256: createHash('sha256').update(lcov).digest('hex'),
+          }));
+          NODE
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: windows-project-coverage
+          path: |
+            dist/coverage/windows-projects.lcov
+            dist/coverage/windows-projects.json
+          if-no-files-found: error
+          retention-days: 1
   quality:
+    needs: windows-projects
     if: >-
       github.actor != 'dependabot[bot]' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
@@ -59,6 +139,30 @@ jobs:
       - name: Collect source-mapped JavaScript condition coverage
         id: javascript
         run: pnpm test:coverage
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: windows-project-coverage
+          path: dist/coverage/windows-projects
+      - name: Merge exact-source Windows observations with the complete Linux report
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFile, writeFile } from 'node:fs/promises';
+          import { createHash } from 'node:crypto';
+          import { mergeCoverage } from './scripts/coverage-report.mjs';
+          const directory = 'dist/coverage/windows-projects/';
+          const metadata = JSON.parse(await readFile(directory + 'windows-projects.json', 'utf8'));
+          if (metadata.format !== 'bifoil.project-host-coverage.v1' || metadata.revision !== process.env.GITHUB_SHA || metadata.runId !== process.env.GITHUB_RUN_ID || metadata.platform !== 'win32' || metadata.arch !== 'x64' || metadata.node !== 'v24.21.0' || metadata.observer !== '12.0.0' || metadata.transformer !== '0.28.1') throw new Error('Windows project evidence has the wrong source revision, run or native observer');
+          const expectedNames = ['packages/tooling/src/projects.ts', 'packages/tooling/test/project-boundaries.test.ts', 'packages/tooling/test/project-identity.test.ts'].sort();
+          if (JSON.stringify(Object.keys(metadata.sources).sort()) !== JSON.stringify(expectedNames)) throw new Error('Incomplete Windows project source witness');
+          for (const [name, expected] of Object.entries(metadata.sources)) {
+            if (createHash('sha256').update(await readFile(name)).digest('hex') !== expected) throw new Error('Windows project evidence describes different source: ' + name);
+          }
+          const windows = await readFile(directory + 'windows-projects.lcov', 'utf8');
+          if (createHash('sha256').update(windows).digest('hex') !== metadata.lcovSha256 || JSON.stringify([...windows.matchAll(/^SF:(.+)$/gm)].map(match => match[1])) !== JSON.stringify(['packages/tooling/src/projects.ts'])) throw new Error('Unexpected Windows source profile');
+          const linux = await readFile('dist/coverage/javascript.lcov', 'utf8');
+          const combined = mergeCoverage([linux, windows]);
+          await writeFile('dist/coverage/javascript.lcov', combined);
+          NODE
       - name: Retain public source branch coordinates from the successful collection
         if: always() && steps.javascript.outcome == 'success'
         run: |
