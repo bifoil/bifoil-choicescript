@@ -90,6 +90,13 @@ function writeAll(fd: number, bytes: Uint8Array): void {
   }
 }
 
+function stagedFile(file: string): BigIntStats {
+  const before = lstatSync(file, { bigint: true });
+  if (!before.isFile() || before.isSymbolicLink()) throw new Error("Tool scene must be a regular staged file.");
+  if (before.size > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("Tool scene exceeds safe file-offset precision.");
+  return before;
+}
+
 function verifyCapture(before: BigIntStats, after: BigIntStats, bytes: number): void {
   if (
     before.dev !== after.dev ||
@@ -104,8 +111,8 @@ function verifyCapture(before: BigIntStats, after: BigIntStats, bytes: number): 
 
 // headless.slurpFile normalizes once; Scene.loadLines splits that normalized
 // text again. Repeated CRs before LF preserve this upstream distinction.
-function splitLineEnding(text: string, line: number, lines: number, splitCR: boolean): string {
-  return splitCR && line + 1 < lines && text.endsWith("\r") ? text.slice(0, -1) : text;
+function splitLineEnding(text: string, line: number, lines: number): string {
+  return line + 1 < lines && text.endsWith("\r") ? text.slice(0, -1) : text;
 }
 
 /** Only this freshly created directory is eligible for recursive disposal. */
@@ -141,10 +148,7 @@ export class SceneSources {
     const absolute = path.resolve(file);
     if (!this.accepts(absolute)) throw new Error("Tool scene is outside its staged scene directory.");
 
-    const before = lstatSync(absolute, { bigint: true });
-    if (!before.isFile() || before.isSymbolicLink()) throw new Error("Tool scene must be a regular staged file.");
-    if (before.size > BigInt(Number.MAX_SAFE_INTEGER))
-      throw new Error("Tool scene exceeds safe file-offset precision.");
+    const before = stagedFile(absolute);
     const identity = `${before.dev}:${before.ino}:${before.size}:${before.mtimeNs}:${before.ctimeNs}`;
     const previous = this.latest.get(absolute);
     if (previous?.identity === identity) return new SceneText(this, previous, file);
@@ -315,11 +319,10 @@ export class SceneSources {
     return bytes.toString("utf8");
   }
 
-  line(snapshot: Snapshot, line: number, splitCR = false): string {
+  line(snapshot: Snapshot, line: number): string {
     if (this.closed) throw new Error("Tool source storage is closed.");
     const prior = this.lastLine;
-    if (prior?.snapshot === snapshot.id && prior.line === line)
-      return splitLineEnding(prior.text, line, snapshot.lines, splitCR);
+    if (prior?.snapshot === snapshot.id && prior.line === line) return prior.text;
     const key = `${snapshot.id}:${line}`;
     let text = this.decoded.get(key);
     if (text === undefined) {
@@ -330,7 +333,11 @@ export class SceneSources {
     }
     // A single giant physical line must not bypass the decoded-cache budget.
     this.lastLine = text.length <= pageBytes / 2 ? { snapshot: snapshot.id, line, text } : undefined;
-    return splitLineEnding(text, line, snapshot.lines, splitCR);
+    return text;
+  }
+
+  splitLine(snapshot: Snapshot, line: number): string {
+    return splitLineEnding(this.line(snapshot, line), line, snapshot.lines);
   }
 
   dispose(): void {
@@ -366,7 +373,7 @@ export class SceneText {
   }
 
   lines(throwOnError = false): string[] {
-    const lines = sourceLines(this.store, this.snapshot, this.snapshot.lines, false);
+    const lines = sourceLines(this.snapshot.lines, (line) => this.store.line(this.snapshot, line));
     if (throwOnError)
       for (let line = 0; line < lines.length; line++) {
         const invalid = /^(.*)\ufffd/.exec(lines[line]);
@@ -383,7 +390,11 @@ export class SceneText {
     if (separator !== "\n" && pattern !== String.raw`\n` && pattern !== String.raw`\r?\n`)
       throw new Error("Unsupported source split in the pinned tool adapter.");
     const count = Math.min(this.snapshot.lines, limit === undefined ? this.snapshot.lines : limit >>> 0);
-    return sourceLines(this.store, this.snapshot, count, pattern === String.raw`\r?\n`);
+    const read =
+      pattern === String.raw`\r?\n`
+        ? (line: number) => this.store.splitLine(this.snapshot, line)
+        : (line: number) => this.store.line(this.snapshot, line);
+    return sourceLines(count, read);
   }
 
   /** The two whole-source metadata regexes used by pinned autotest.js. */
@@ -424,7 +435,7 @@ export class SceneText {
   }
 }
 
-function sourceLines(store: SceneSources, snapshot: Snapshot, count: number, splitCR: boolean): string[] {
+function sourceLines(count: number, read: (line: number) => string): string[] {
   const target: string[] = [];
   // An accessor moves V8's target to sparse dictionary elements before length is
   // assigned. A hole-filled array would itself cost O(physical lines) in memory.
@@ -441,7 +452,7 @@ function sourceLines(store: SceneSources, snapshot: Snapshot, count: number, spl
     get(target, key, receiver) {
       if (key === "length") return target.length;
       const index = indexOf(key);
-      if (index !== undefined && virtual(index)) return store.line(snapshot, index, splitCR);
+      if (index !== undefined && virtual(index)) return read(index);
       return Reflect.get(target, key, receiver);
     },
     has(target, key) {
@@ -451,7 +462,7 @@ function sourceLines(store: SceneSources, snapshot: Snapshot, count: number, spl
     getOwnPropertyDescriptor(target, key) {
       const index = indexOf(key);
       if (index !== undefined && virtual(index))
-        return { configurable: true, enumerable: true, writable: true, value: store.line(snapshot, index, splitCR) };
+        return { configurable: true, enumerable: true, writable: true, value: read(index) };
       return Reflect.getOwnPropertyDescriptor(target, key);
     },
     ownKeys(target) {
@@ -476,7 +487,7 @@ function sourceLines(store: SceneSources, snapshot: Snapshot, count: number, spl
           configurable: true,
           enumerable: true,
           writable: true,
-          value: store.line(snapshot, index, splitCR),
+          value: read(index),
         });
       const accepted = Reflect.defineProperty(target, key, descriptor);
       if (key === "length") visible = Math.min(visible, target.length);
@@ -489,8 +500,7 @@ function sourceLines(store: SceneSources, snapshot: Snapshot, count: number, spl
       return accepted;
     },
     preventExtensions(target) {
-      for (let index = 0; index < visible; index++)
-        if (virtual(index)) target[index] = store.line(snapshot, index, splitCR);
+      for (let index = 0; index < visible; index++) if (virtual(index)) target[index] = read(index);
       visible = 0;
       deleted.clear();
       return Reflect.preventExtensions(target);

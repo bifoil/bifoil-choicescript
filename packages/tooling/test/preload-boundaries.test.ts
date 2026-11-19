@@ -114,34 +114,80 @@ test("export spooling preserves ordinary JSON and rejects missing or repeated pl
       await writeFile(path.join(stage, ".bifoil-tool-stage.json"), JSON.stringify({ format: marker }));
       const lines = [
         "Original Ω",
+        "Original Ω",
         ...Array.from({ length: 80 }, (_, i) => String(i) + "x".repeat(5000)),
         "large".repeat(15000),
       ];
       await writeFile(path.join(stage, "web/mygame/scenes/startup.txt"), lines.join("\n"));
+      let selected = "rows.map((row)=>row)";
+      if (mode === "direct") selected = "rows";
+      if (mode === "non-string") selected = "rows.map((row,index)=>index%2?index:row)";
+      const headlessOptions = mode === "string-options" ? "'headless.js'" : "{filename:'headless.js'}";
       await writeFile(
         path.join(stage, "compile.js"),
         `
         const fs=require('node:fs'),vm=require('node:vm');
+        if(vm.runInThisContext('41+1')!==42)throw new Error('unlabelled VM evaluation changed');
         vm.runInThisContext("global.slurpFile=()=>'';global.slurpFileLines=()=>[];"+
-          ${JSON.stringify(mode === "no-encoder" ? "" : "global.toJson=JSON.stringify;")},{filename:'headless.js'});
+          ${JSON.stringify(mode === "no-encoder" ? "" : "global.toJson=JSON.stringify;")},${headlessOptions});
+        if(global.checkOriginalGlobals)process.once('exit',global.checkOriginalGlobals);
         const source=global.slurpFile('web/mygame/scenes/startup.txt');
         const rows=source.lines();
-        const encoded=global.toJson(${mode === "direct" ? "rows" : "rows.map((row)=>row)"});
+        if(JSON.stringify([1,2].map((value)=>value+1))!=='[2,3]')throw new Error('ordinary map changed');
+        if(${JSON.stringify(mode)}==='short-write')fs.writeSync=()=>0;
+        if(${JSON.stringify(mode)}==='lost-encoder'){
+          let refused=false;
+          try{vm.runInThisContext('global.toJson=undefined',{filename:'headless.js'});}
+          catch(error){refused=/encoder is unavailable/.test(String(error));}
+          if(!refused)throw new Error('missing encoder activation was accepted');
+          rows.map((row)=>row);
+        }
+        const encoded=global.toJson(${selected});
         fs.writeFileSync('ordinary.txt',Buffer.from('Unchanged ordinary write'));
         const result=${mode === "lost" ? "'missing'" : mode === "duplicate" ? "encoded+encoded" : mode === "unknown" ? "encoded.replace(/_[0-9]+_END/,'_999_END')" : "'before'+encoded+'after'"};
         fs.writeFileSync(process.argv[2]||'output.html',result);
         if(global.toJson({original:1})!=='{\"original\":1}')throw new Error('ordinary JSON changed');
+        if(${JSON.stringify(mode)}==='dispose-twice'){
+          for(const dispose of process.listeners('exit')){dispose(0);dispose(0);}
+        }
       `,
       );
-      const child = execute(process.execPath, ["--import", pathToFileURL(preload).href, "compile.js", destination], {
-        cwd: stage,
-        timeout: 15000,
-      });
-      if (["lost", "duplicate", "unknown", "no-encoder", "bad-marker", "outside"].includes(mode))
-        await assert.rejects(child, /placeholder|encoder is unavailable|owned staging directory|owned stage/);
+      const arguments_ = ["--import", pathToFileURL(preload).href, "compile.js", destination];
+      if (mode === "prior-globals") {
+        const bridge = path.join(stage, "previous.cjs");
+        await writeFile(
+          bridge,
+          `
+          const assert=require('node:assert/strict');
+          const previous=(value)=>JSON.stringify(value);
+          global.rootDir='original-root';
+          Object.defineProperty(global,'toJson',{value:previous,writable:true,configurable:true});
+          const descriptor=Object.getOwnPropertyDescriptor(global,'toJson');
+          global.checkOriginalGlobals=()=>{
+            assert.equal(global.rootDir,'original-root');
+            assert.deepEqual(Object.getOwnPropertyDescriptor(global,'toJson'),descriptor);
+          };
+        `,
+        );
+        arguments_.unshift("--require", bridge);
+      }
+      const child = execute(process.execPath, arguments_, { cwd: stage, timeout: 15000 });
+      if (
+        ["lost", "duplicate", "unknown", "no-encoder", "lost-encoder", "short-write", "bad-marker", "outside"].includes(
+          mode,
+        )
+      )
+        await assert.rejects(
+          child,
+          /placeholder|encoder is unavailable|complete compiled source|owned staging directory|owned stage/,
+        );
       else {
         await child;
-        assert.equal(await readFile(path.join(stage, destination), "utf8"), "before" + JSON.stringify(lines) + "after");
+        const expected = mode === "non-string" ? lines.map((row, index) => (index % 2 ? index : row)) : lines;
+        assert.equal(
+          await readFile(path.join(stage, destination || "output.html"), "utf8"),
+          "before" + JSON.stringify(expected) + "after",
+        );
         assert.equal(await readFile(path.join(stage, "ordinary.txt"), "utf8"), "Unchanged ordinary write");
       }
       assert(
@@ -150,7 +196,29 @@ test("export spooling preserves ordinary JSON and rejects missing or repeated pl
         ),
       );
     };
-    for (const mode of ["mapped", "direct", "lost", "duplicate", "unknown", "no-encoder"]) await invoke(mode);
+    for (const mode of [
+      "mapped",
+      "direct",
+      "non-string",
+      "string-options",
+      "prior-globals",
+      "dispose-twice",
+      "lost",
+      "duplicate",
+      "unknown",
+      "no-encoder",
+      "lost-encoder",
+      "short-write",
+    ])
+      await invoke(mode);
+    await invoke("default-output", 1, "");
+    const imported = await execute(process.execPath, [
+      "--input-type=module",
+      "--eval",
+      `await import(${JSON.stringify(pathToFileURL(preload).href)})`,
+    ]);
+    assert.equal(imported.stdout, "");
+    assert.equal(imported.stderr, "");
     await invoke("bad-marker", 0);
     await invoke("outside", 1, "../must-not-write.html");
   } finally {
