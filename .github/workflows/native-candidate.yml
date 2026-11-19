@@ -19,7 +19,7 @@ jobs:
         os: [ubuntu-24.04, ubuntu-24.04-arm, windows-2025, windows-11-arm, macos-15, macos-15-intel]
     runs-on: ${{ matrix.os }}
     env:
-      NATIVE_CANDIDATE: 8b50d8ba64867f23c420f79470ebdcc9cac4f451
+      NATIVE_CANDIDATE: e8c4c39e0dce819d2e408c3220473e47490f07f5
       NATIVE_HOST: ${{ matrix.os }}
       GOTOOLCHAIN: local
       GOPROXY: off

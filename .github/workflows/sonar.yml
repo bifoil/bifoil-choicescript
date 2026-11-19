@@ -59,7 +59,7 @@ jobs:
       - name: Collect source-mapped JavaScript condition coverage
         id: javascript
         run: pnpm test:coverage
-      - name: Retain parser branch coordinates from the successful collection
+      - name: Retain public source branch coordinates from the successful collection
         if: always() && steps.javascript.outcome == 'success'
         run: |
           node node_modules/c8/bin/c8.js report --reporter=json --reports-dir=dist/coverage/javascript-diagnostics
@@ -67,11 +67,15 @@ jobs:
           import { readFile, writeFile } from 'node:fs/promises';
           import { createHash } from 'node:crypto';
           const report = JSON.parse(await readFile('dist/coverage/javascript-diagnostics/coverage-final.json', 'utf8'));
-          const name = 'packages/core/src/parser.ts';
-          const entry = Object.entries(report).find(([file]) => file === name || file.endsWith('/' + name));
-          if (!entry) throw new Error('The successful collection has no parser branch coordinates');
-          const sha256 = createHash('sha256').update(await readFile(name)).digest('hex');
-          await writeFile('dist/coverage/parser-conditions.json', JSON.stringify({ revision: process.env.GITHUB_SHA, sha256, coverage: entry[1] }));
+          for (const [name, output] of [
+            ['packages/core/src/parser.ts', 'parser-conditions.json'],
+            ['packages/tooling/src/projects.ts', 'projects-conditions.json'],
+          ]) {
+            const entry = Object.entries(report).find(([file]) => file === name || file.endsWith('/' + name));
+            if (!entry) throw new Error('The successful collection has no branch coordinates for ' + name);
+            const sha256 = createHash('sha256').update(await readFile(name)).digest('hex');
+            await writeFile('dist/coverage/' + output, JSON.stringify({ revision: process.env.GITHUB_SHA, sha256, coverage: entry[1] }));
+          }
           NODE
       - name: Retain measured JavaScript coverage for branch diagnostics
         if: always() && steps.javascript.outcome == 'success'
@@ -81,6 +85,7 @@ jobs:
           path: |
             dist/coverage/javascript.lcov
             dist/coverage/parser-conditions.json
+            dist/coverage/projects-conditions.json
           if-no-files-found: error
           retention-days: 1
       - name: Use a matched LLVM installation for the original C coverage shim
