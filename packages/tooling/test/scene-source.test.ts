@@ -444,3 +444,25 @@ test("shrinking lazy line arrays preserves deleted rows below the new length", (
     f.close();
   }
 });
+
+test("source checksum callbacks receive normalized immutable text and the caller's initial seed", () => {
+  const f = fixture();
+  try {
+    const file = path.join(f.scenes, "checksum.txt");
+    const raw = "\ufeffOriginal Ω.\r\nSecond 😀 row.\r\n";
+    writeFileSync(file, raw);
+    const text = f.store.text(file);
+    const checksum = (value: string, prior = 0) => {
+      let result = prior;
+      for (let index = 0; index < value.length; index++) result = (result * 31 + value.charCodeAt(index)) >>> 0;
+      return result;
+    };
+    const normalized = originalLines(Buffer.from(raw)).join("\n");
+    writeFileSync(file, "Revised source must not change the captured checksum.");
+    assert.equal(text.crc32(checksum), checksum(normalized));
+    assert.equal(text.crc32(checksum, 19), checksum(normalized, 19));
+    assert.notEqual(text.crc32(checksum, 19), checksum(normalized));
+  } finally {
+    f.close();
+  }
+});

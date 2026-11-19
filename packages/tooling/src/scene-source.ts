@@ -29,17 +29,14 @@ class BudgetCache<T> {
     return entry.value;
   }
 
-  set(key: string, value: T, bytes: number): void {
-    const prior = this.entries.get(key);
-    if (prior) {
-      this.entries.delete(key);
-      this.bytes -= prior.bytes;
-    }
+  // Both synchronous callers add only after a cache miss.
+  add(key: string, value: T, bytes: number): void {
     if (bytes > this.limit) return;
 
     while (this.bytes + bytes > this.limit || this.entries.size >= this.count) {
-      const first = this.entries.keys().next().value;
-      if (first === undefined) break;
+      // Capacities are positive and an oversized value was already declined.
+      // An empty cache therefore cannot enter this eviction loop.
+      const first = this.entries.keys().next().value!;
       this.bytes -= this.entries.get(first)!.bytes;
       this.entries.delete(first);
     }
@@ -260,7 +257,7 @@ export class SceneSources {
       if (!count) throw new Error("Incomplete immutable tool source storage.");
       used += count;
     }
-    this.pages.set(key, buffer, buffer.length);
+    this.pages.add(key, buffer, buffer.length);
     this.hotPages[slot] = { identity, ordinal, buffer };
     return buffer;
   }
@@ -306,7 +303,7 @@ export class SceneSources {
         }
       }
       if (line === 0 && text.charCodeAt(0) === 0xfeff) text = text.slice(1);
-      this.decoded.set(key, text, text.length * 2 + 96);
+      this.decoded.add(key, text, text.length * 2 + 96);
     }
     // A single giant physical line must not bypass the decoded-cache budget.
     this.lastLine = text.length <= pageBytes / 2 ? { snapshot: snapshot.id, line, text } : undefined;
