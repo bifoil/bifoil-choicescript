@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { affectedProjects, discoverProjects, ToolRunner } from "@bifoil/choicescript-tooling";
+import { discoverProjects, ToolRunner } from "@bifoil/choicescript-tooling";
 import type { JobEvent } from "@bifoil/choicescript-protocol";
 import { waitFor } from "../../server/test/helpers.js";
 
@@ -21,42 +21,6 @@ async function createGameFixture(root: string) {
 
   return { fakeEngine, game };
 }
-
-test("malformed configurations isolate failures from healthy neighboring games", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "bifoil discovery "));
-
-  try {
-    for (const [name, config] of [
-      ["null", "null"],
-      ["array", "[]"],
-      ["broken", "{"],
-      ["paths", '{"assets":2}'],
-      ["seeds", '{"randomtest":{"seed":9007199254740991}}'],
-    ]) {
-      await mkdir(path.join(root, name));
-      await writeFile(path.join(root, name, "choicescript.json"), config);
-    }
-
-    await mkdir(path.join(root, "healthy/scenes"), { recursive: true });
-    await writeFile(path.join(root, "healthy/scenes/startup.txt"), "*ending");
-
-    const errors: string[] = [];
-    const projects = await discoverProjects([root], (_, message) => errors.push(message));
-
-    assert.equal(errors.length, 5);
-    assert.equal(projects.length, 1);
-    assert.equal(projects[0].name, "healthy");
-    assert.equal(affectedProjects(projects, pathToFileURL(path.join(root, "healthy/image.png")).href).length, 1);
-    assert.equal(affectedProjects(projects, pathToFileURL(path.join(root, "other.txt")).href).length, 0);
-    assert.equal(
-      affectedProjects(projects, pathToFileURL(path.join(root, "healthy/.bifoil-choicescript/logs/job.log")).href)
-        .length,
-      0,
-    );
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
 
 test("flat scene roots survive repeated runs, coverage prose and warnings", { timeout: 30_000 }, async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "bifoil flat Ω "));

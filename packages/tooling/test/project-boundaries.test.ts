@@ -4,7 +4,15 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { affectedProjects, discoverProjects, projectSources, sameFileUri, sourceUri } from "../src/projects.js";
+import {
+  affectedProjects,
+  discoverProjects,
+  exists,
+  projectSources,
+  readProject,
+  sameFileUri,
+  sourceUri,
+} from "../src/projects.js";
 
 test("invalid RandomTest configuration reports its field and preserves neighboring discovery", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "bifoil project options "));
@@ -52,12 +60,26 @@ test("valid configuration selects default directories and claims an absent start
     await mkdir(path.join(claimed, "nested/scenes"), { recursive: true });
     await writeFile(path.join(claimed, "nested/scenes/startup.txt"), "*ending");
     await writeFile(path.join(claimed, "choicescript.json"), "{}");
+    const explicit = path.join(root, "explicit");
+    await mkdir(path.join(explicit, "story"), { recursive: true });
+    await writeFile(path.join(explicit, "story/startup.txt"), "*ending");
+    await writeFile(
+      path.join(explicit, "choicescript.json"),
+      JSON.stringify({ scenes: "story", assets: "assets", randomtest: { iterations: 1, seed: 0 } }),
+    );
+    const invalid = path.join(root, "absolute");
+    await mkdir(invalid);
+    await writeFile(path.join(invalid, "choicescript.json"), JSON.stringify({ scenes: path.parse(root).root }));
     const found = await discoverProjects([pathToFileURL(root).href, path.join(root, "absent")]);
-    assert.equal(found.length, 1);
-    assert.equal(found[0].root, configured);
-    assert.equal(found[0].sceneDir, path.join(configured, "scenes"));
-    assert.equal(found[0].assetDir, configured);
-    assert.deepEqual(found[0].randomtest, {});
+    assert.equal(found.length, 2);
+    const defaults = found.find((project) => project.root === configured)!;
+    assert.equal(defaults.sceneDir, path.join(configured, "scenes"));
+    assert.equal(defaults.assetDir, configured);
+    assert.deepEqual(defaults.randomtest, {});
+    const selected = found.find((project) => project.root === explicit)!;
+    assert.equal(selected.sceneDir, path.join(explicit, "story"));
+    assert.equal(selected.assetDir, path.join(explicit, "assets"));
+    assert.deepEqual(selected.randomtest, { iterations: 1, seed: 0 });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -114,6 +136,113 @@ test("source enumeration ignores unrelated buffers and hidden directories withou
     assert.equal(sameFileUri("untitled:first", "untitled:second"), false);
     assert.equal(sourceUri(["untitled:first"], "untitled:second"), undefined);
     assert.equal(sourceUri(["untitled:first"], "untitled:first"), "untitled:first");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("project reads preserve disk versions and copy supplied snapshots", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bifoil project reads Ω "));
+  try {
+    const startup = path.join(root, "startup.txt");
+    const disk = path.join(root, "chapter.txt");
+    await writeFile(startup, "Original disk startup.");
+    await writeFile(disk, "Original chapter Ω.");
+    const project = { id: pathToFileURL(root).href, name: "Original", root, sceneDir: root, assetDir: root };
+    const snapshot = { uri: pathToFileURL(startup).href, text: "Unsaved Ω startup.", version: 17 };
+    const expected = structuredClone(snapshot);
+    assert.equal(await exists(startup), true);
+    assert.equal(await exists(path.join(root, "absent.txt")), false);
+    const sources = await readProject(project, [snapshot]);
+    assert.equal(sources.length, 2);
+    assert.deepEqual(
+      sources.find((source) => source.uri === snapshot.uri),
+      expected,
+    );
+    assert.notEqual(
+      sources.find((source) => source.uri === snapshot.uri),
+      snapshot,
+    );
+    assert.deepEqual(
+      sources.find((source) => source.uri === pathToFileURL(disk).href),
+      { uri: pathToFileURL(disk).href, text: "Original chapter Ω.", version: 0 },
+    );
+    assert.deepEqual(snapshot, expected);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("malformed configurations isolate failures from healthy neighboring games", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bifoil discovery "));
+
+  try {
+    for (const [name, config] of [
+      ["null", "null"],
+      ["array", "[]"],
+      ["broken", "{"],
+      ["paths", '{"assets":2}'],
+      ["seeds", '{"randomtest":{"seed":9007199254740991}}'],
+    ]) {
+      await mkdir(path.join(root, name));
+      await writeFile(path.join(root, name, "choicescript.json"), config);
+    }
+
+    await mkdir(path.join(root, "healthy/scenes"), { recursive: true });
+    await writeFile(path.join(root, "healthy/scenes/startup.txt"), "*ending");
+
+    const errors: string[] = [];
+    const projects = await discoverProjects([root], (_, message) => errors.push(message));
+
+    assert.equal(errors.length, 5);
+    assert.equal(projects.length, 1);
+    assert.equal(projects[0].name, "healthy");
+    assert.equal(affectedProjects(projects, pathToFileURL(path.join(root, "healthy/image.png")).href).length, 1);
+    assert.equal(affectedProjects(projects, pathToFileURL(path.join(root, "other.txt")).href).length, 0);
+    assert.equal(
+      affectedProjects(projects, pathToFileURL(path.join(root, "healthy/.bifoil-choicescript/logs/job.log")).href)
+        .length,
+      0,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("source, configuration and asset notifications invalidate exactly their owning project", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bifoil project changes "));
+  try {
+    const project = {
+      id: "original",
+      name: "Original",
+      root,
+      sceneDir: path.join(root, "scenes"),
+      assetDir: path.join(root, "assets"),
+    };
+    const other = {
+      id: "other",
+      name: "Other",
+      root: path.join(root, "other"),
+      sceneDir: path.join(root, "other/scenes"),
+      assetDir: path.join(root, "other/assets"),
+    };
+    for (const file of [
+      path.join(project.sceneDir, "startup.txt"),
+      path.join(root, "choicescript.json"),
+      path.join(project.assetDir, "image.png"),
+    ])
+      assert.deepEqual(affectedProjects([project, other], pathToFileURL(file).href), [project]);
+    for (const file of [
+      path.join(project.sceneDir, ".hidden/startup.txt"),
+      path.join(project.assetDir, "export/output.html"),
+      path.join(project.assetDir, "build/generated.png"),
+      path.join(project.assetDir, ".hidden/image.png"),
+      path.join(root, "unrelated.txt"),
+    ])
+      assert.deepEqual(affectedProjects([project], pathToFileURL(file).href), []);
+    assert.deepEqual(affectedProjects([project, other], pathToFileURL(path.join(other.sceneDir, "startup.txt")).href), [
+      other,
+    ]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

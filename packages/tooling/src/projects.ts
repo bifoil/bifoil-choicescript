@@ -226,8 +226,11 @@ export async function projectSources<T extends { uri: string } = BufferSnapshot>
     for (const entry of await readdir(dir, { withFileTypes: true })) {
       signal?.throwIfAborted();
       const file = path.join(dir, entry.name);
-      if (entry.isDirectory() && !excluded.has(entry.name) && !entry.name.startsWith(".")) await walk(file);
-      else if (entry.isFile() && /\.txt$/i.test(entry.name)) sources.push({ file, uri: pathToFileURL(file).href });
+      if (entry.isDirectory() && !excluded.has(entry.name) && !entry.name.startsWith(".")) {
+        await walk(file);
+      } else if (entry.isFile() && /\.txt$/i.test(entry.name)) {
+        sources.push({ file, uri: pathToFileURL(file).href });
+      }
     }
   }
   await walk(project.sceneDir);
